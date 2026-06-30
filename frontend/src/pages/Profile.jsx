@@ -19,6 +19,7 @@ import {
 import { api } from '../services/api';
 import ApplyProgressSection from '../components/ApplyProgressSection';
 import HdnkNckhSection from '../components/HdnkNckhSection';
+import ProfileActivitiesSection from '../components/ProfileActivitiesSection';
 import ParentProfile from './ParentProfile';
 
 const MENU_ITEMS = [
@@ -270,6 +271,7 @@ function MenteeProfile() {
     if ((user?.mentor || '').trim() === 'Thanh Hà') {
       items.push({ id: 'hdnk-nckh', label: 'Keep track HDNK + NCKH' });
     }
+    items.push({ id: 'profile-activities', label: 'Hoạt động làm đẹp hồ sơ' });
     return items;
   }, [user?.mentor]);
 
@@ -1858,6 +1860,10 @@ function MenteeProfile() {
 
     if (sectionId === 'hdnk-nckh') {
       return <HdnkNckhSection />;
+    }
+
+    if (sectionId === 'profile-activities') {
+      return <ProfileActivitiesSection user={user} />;
     }
 
     if (sectionId !== 'feedback') {

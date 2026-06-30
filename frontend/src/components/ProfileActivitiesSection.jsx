@@ -116,20 +116,25 @@ export default function ProfileActivitiesSection({ user }) {
   };
 
   return (
-    <section className="profile-activities-home">
-      <div className="profile-activities-head">
-        <h3>Hoạt động làm đẹp hồ sơ</h3>
-        <button type="button" className="btn btn-outline btn-sm" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? 'Thu gọn' : 'Mở rộng'}
-        </button>
-      </div>
-      {error && <p className="form-error">{error}</p>}
-      {loading ? (
-        <p className="profile-note">Đang tải hoạt động...</p>
-      ) : !expanded ? (
-        <p className="muted">Có {totalItems} hoạt động.</p>
-      ) : (
-        <div className="profile-activities-days">
+    <>
+      <h2>Hoạt động làm đẹp hồ sơ</h2>
+      <p className="profile-panel-desc">
+        Theo dõi và đăng ký các hoạt động hỗ trợ làm đẹp hồ sơ apply.
+      </p>
+
+      <div className="profile-card">
+        <div className="profile-activities-head">
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => setExpanded((v) => !v)}>
+            {expanded ? 'Thu gọn' : 'Mở rộng'}
+          </button>
+        </div>
+        {error && <p className="form-error">{error}</p>}
+        {loading ? (
+          <p className="profile-note">Đang tải hoạt động...</p>
+        ) : !expanded ? (
+          <p className="muted">Có {totalItems} hoạt động.</p>
+        ) : (
+          <div className="profile-activities-days">
           {days.map((day) => (
             <div key={day.date_key} className="profile-activities-day">
               <h4>Ngày {day.date_label}</h4>
@@ -150,8 +155,9 @@ export default function ProfileActivitiesSection({ user }) {
                 ))}
             </div>
           )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       {detail && (
         <div className="modal-backdrop" onClick={() => setDetail(null)} role="presentation">
@@ -202,6 +208,6 @@ export default function ProfileActivitiesSection({ user }) {
           </div>
         </div>
       )}
-    </section>
+    </>
   );
 }

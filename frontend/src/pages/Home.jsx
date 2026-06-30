@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import ProfileActivitiesSection from '../components/ProfileActivitiesSection';
 
 const heroImageUrl = `${import.meta.env.BASE_URL}tron-tru-girl.svg`;
 
@@ -71,7 +70,6 @@ export default function Home() {
           </div>
         )}
       </section>
-      {user && <ProfileActivitiesSection user={user} />}
     </div>
   );
 }
