@@ -7,6 +7,7 @@ export default function ActivityKeeptrackBar({
   onAbandon,
   saving = false,
   disabled = false,
+  hideHead = false,
 }) {
   const [showPrizeStep, setShowPrizeStep] = useState(false);
   const [hasAward, setHasAward] = useState(false);
@@ -47,12 +48,14 @@ export default function ActivityKeeptrackBar({
 
   return (
     <div className="profile-activity-keeptrack profile-activity-keeptrack--active">
-      <div className="profile-activity-keeptrack-head">
-        <span className="profile-activity-keeptrack-icon" aria-hidden="true">
-          🍀
-        </span>
-        <strong>Đang tiến hành</strong>
-      </div>
+      {!hideHead && (
+        <div className="profile-activity-keeptrack-head">
+          <span className="profile-activity-keeptrack-icon" aria-hidden="true">
+            🍀
+          </span>
+          <strong>Đang tiến hành</strong>
+        </div>
+      )}
 
       {reviewMessage && (
         <p

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api';
 import ActivityKeeptrackBar from './ActivityKeeptrackBar';
 import {
@@ -77,6 +77,7 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
   const [registerChoice, setRegisterChoice] = useState({});
   const [keeptrackSaving, setKeeptrackSaving] = useState({});
   const [expandedGroupViews, setExpandedGroupViews] = useState({});
+  const [keeptrackExpanded, setKeeptrackExpanded] = useState(true);
 
   const refresh = async () => {
     const data = await api.getProfileActivities();
@@ -366,14 +367,6 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
             {renderDeadlineBadge(item)}
             {renderRegistrationStatus(item)}
             {renderGroupMembers(item)}
-            {item.keeptrack?.active && (
-              <ActivityKeeptrackBar
-                keeptrack={item.keeptrack}
-                saving={Boolean(keeptrackSaving[item.id])}
-                onComplete={(body) => completeKeeptrack(item.id, body)}
-                onAbandon={(body) => abandonKeeptrack(item.id, body)}
-              />
-            )}
           </div>
         </div>
         <div className="profile-activity-line-actions">
@@ -434,6 +427,14 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
   const totalCount = (currentDay?.items?.length || 0) + otherItemCount;
   const primaryDateLabel = currentDay?.date_label;
 
+  const activeKeeptrackItems = useMemo(() => {
+    const allItems = [
+      ...(currentDay?.items || []),
+      ...otherDays.flatMap((day) => day.items || []),
+    ];
+    return allItems.filter((item) => item.keeptrack?.active);
+  }, [currentDay, otherDays]);
+
   return (
     <>
       <h2>Hoạt động làm đẹp hồ sơ</h2>
@@ -474,6 +475,45 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
           <p className="profile-note">Đang tải hoạt động...</p>
         ) : !expanded ? null : (
           <div className="profile-activities-days">
+            {activeKeeptrackItems.length > 0 && (
+              <div className="profile-activities-keeptrack-panel">
+                <div className="profile-activities-keeptrack-head">
+                  <h4>
+                    🍀 Đang tiến hành ({activeKeeptrackItems.length})
+                  </h4>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => setKeeptrackExpanded((value) => !value)}
+                    aria-expanded={keeptrackExpanded}
+                  >
+                    {keeptrackExpanded ? 'Thu gọn' : 'Mở rộng'}
+                  </button>
+                </div>
+                {keeptrackExpanded ? (
+                  <div className="profile-activities-keeptrack-list">
+                    {activeKeeptrackItems.map((item) => (
+                      <div key={item.id} className="profile-activities-keeptrack-item">
+                        <p className="profile-activities-keeptrack-item-label muted">
+                          {feedLineText(item)}
+                        </p>
+                        <ActivityKeeptrackBar
+                          keeptrack={item.keeptrack}
+                          hideHead
+                          saving={Boolean(keeptrackSaving[item.id])}
+                          onComplete={(body) => completeKeeptrack(item.id, body)}
+                          onAbandon={(body) => abandonKeeptrack(item.id, body)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="profile-activities-keeptrack-collapsed muted">
+                    {activeKeeptrackItems.length} hoạt động đang theo dõi tiến độ — bấm Mở rộng để xem
+                  </p>
+                )}
+              </div>
+            )}
             <DayBlock day={currentDay} renderItem={renderItem} />
             {!loading && !error && !currentDay?.items?.length && !otherItemCount && (
               <p className="muted">Chưa có hoạt động nào.</p>
