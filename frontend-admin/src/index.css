@@ -3742,24 +3742,15 @@ html.device-phone .daily-summary-status {
 }
 
 .profile-activity-progress-panel {
-  margin-bottom: 1.25rem;
+  margin-bottom: 1rem;
 }
 
-.profile-activity-progress-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.profile-activity-progress-head h3 {
-  margin: 0;
+.profile-activity-progress-panel .daily-summary-body {
+  padding-top: 0.65rem;
 }
 
 .profile-activity-progress-empty {
   margin: 0;
-  padding: 0.75rem 0;
 }
 
 .profile-activity-progress-activities {
@@ -3772,6 +3763,7 @@ html.device-phone .daily-summary-status {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+  background: var(--white);
 }
 
 .profile-activity-progress-activity-head {
@@ -3779,16 +3771,28 @@ html.device-phone .daily-summary-status {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  width: 100%;
   padding: 0.55rem 0.75rem;
+  background: #fdf2f4;
+  border: 0;
+  border-bottom: 1px solid #f5e6e8;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.profile-activity-progress-activity-head:hover {
   background: #fce7f3;
-  border-bottom: 1px solid #f9a8d4;
 }
 
 .profile-activity-progress-activity-title {
   margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
-  color: #9d174d;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
 }
 
 .profile-activity-progress-activity-body {
@@ -3797,7 +3801,7 @@ html.device-phone .daily-summary-status {
 
 .profile-activity-progress-activity-collapsed {
   margin: 0;
-  padding: 0.35rem 0.75rem 0.65rem;
+  padding: 0.55rem 0.75rem 0.75rem;
 }
 
 .profile-activity-progress-table {
@@ -3814,9 +3818,22 @@ html.device-phone .daily-summary-status {
 }
 
 .profile-activity-progress-table th {
-  background: rgba(244, 114, 182, 0.12);
+  background: #fdf2f4;
+  color: var(--text-soft);
   text-align: left;
   white-space: nowrap;
+}
+
+.btn-outline-pastel {
+  color: var(--text-soft);
+  border-color: #ecd0de;
+  background: #fdf2f4;
+}
+
+.btn-outline-pastel:hover:not(:disabled) {
+  background: #fce7f3;
+  border-color: #d9a8be;
+  color: var(--text);
 }
 
 .profile-activity-progress-type {

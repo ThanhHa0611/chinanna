@@ -143,7 +143,7 @@ function ProgressTrackingRows({ rows, activityId, saving, onDelete }) {
             <td rowSpan={memberCount} className="profile-activity-progress-delete">
               <button
                 type="button"
-                className="btn btn-outline btn-sm"
+                className="btn btn-outline btn-outline-pastel btn-sm"
                 onClick={() => onDelete(activityId, row)}
                 disabled={saving}
                 title="Gỡ khỏi bảng theo dõi tiến độ"
@@ -254,13 +254,14 @@ export default function ProfileActivities() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [createFormCollapsed, setCreateFormCollapsed] = useState(false);
+  const [manageFormCollapsed, setManageFormCollapsed] = useState(false);
   const [moveTargets, setMoveTargets] = useState({});
   const [addToGroupTargets, setAddToGroupTargets] = useState({});
   const [keeptrackReviews, setKeeptrackReviews] = useState([]);
   const [selectedKeeptrackReviews, setSelectedKeeptrackReviews] = useState([]);
   const [abandonRequests, setAbandonRequests] = useState([]);
   const [progressTracking, setProgressTracking] = useState([]);
-  const [progressTrackingExpanded, setProgressTrackingExpanded] = useState(true);
+  const [progressTrackingExpanded, setProgressTrackingExpanded] = useState(false);
   const [progressActivityExpanded, setProgressActivityExpanded] = useState({});
   const [finalizeSuccessByGroup, setFinalizeSuccessByGroup] = useState({});
   const [leaderPickerVisible, setLeaderPickerVisible] = useState({});
@@ -932,11 +933,11 @@ export default function ProfileActivities() {
   const toggleProgressActivity = (activityId) => {
     setProgressActivityExpanded((prev) => ({
       ...prev,
-      [activityId]: prev[activityId] === false,
+      [activityId]: !prev[activityId],
     }));
   };
 
-  const isProgressActivityExpanded = (activityId) => progressActivityExpanded[activityId] !== false;
+  const isProgressActivityExpanded = (activityId) => Boolean(progressActivityExpanded[activityId]);
 
   const handleRemoveProgressTracking = async (activityId, row) => {
     const label =
@@ -1332,90 +1333,6 @@ export default function ProfileActivities() {
         </div>
       )}
 
-      <div className="panel-card profile-activity-progress-panel">
-        <div className="profile-activity-progress-head">
-          <h3>Theo dõi tiến độ{progressTrackingRowCount > 0 ? ` (${progressTrackingRowCount})` : ''}</h3>
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={() => setProgressTrackingExpanded((value) => !value)}
-            aria-expanded={progressTrackingExpanded}
-          >
-            {progressTrackingExpanded ? 'Thu gọn' : 'Mở rộng'}
-          </button>
-        </div>
-        {progressTrackingExpanded ? (
-          progressTracking.length > 0 ? (
-            <div className="profile-activity-progress-activities">
-              {progressTracking.map((activityBlock) => {
-                const expanded = isProgressActivityExpanded(activityBlock.activity_id);
-                const rowCount = activityBlock.rows?.length || 0;
-                return (
-                  <div
-                    key={activityBlock.activity_id}
-                    className="profile-activity-progress-activity"
-                  >
-                    <div className="profile-activity-progress-activity-head">
-                      <h4 className="profile-activity-progress-activity-title">
-                        {activityBlock.activity_name}
-                      </h4>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => toggleProgressActivity(activityBlock.activity_id)}
-                        aria-expanded={expanded}
-                      >
-                        {expanded ? 'Thu gọn' : 'Mở rộng'}
-                      </button>
-                    </div>
-                    {expanded ? (
-                      <div className="profile-activity-progress-activity-body">
-                        <div className="table-wrap">
-                          <table className="profile-activity-progress-table">
-                            <thead>
-                              <tr>
-                                <th>Loại</th>
-                                <th>Tên</th>
-                                <th>Ngày bắt đầu</th>
-                                <th>Trạng thái</th>
-                                <th>Xóa</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <ProgressTrackingRows
-                                rows={activityBlock.rows || []}
-                                activityId={activityBlock.activity_id}
-                                saving={saving}
-                                onDelete={handleRemoveProgressTracking}
-                              />
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="profile-activity-progress-activity-collapsed muted">
-                        {rowCount} dòng tiến độ — bấm Mở rộng để xem
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="profile-activity-progress-empty muted">
-              Chưa có tiến độ nào được theo dõi. Tiến độ sẽ xuất hiện sau khi mentee báo danh và bắt
-              đầu keep track.
-            </p>
-          )
-        ) : (
-          <p className="profile-activity-progress-empty muted">
-            {progressTrackingRowCount > 0
-              ? `${progressTrackingRowCount} dòng tiến độ — bấm Mở rộng để xem`
-              : 'Chưa có tiến độ nào được theo dõi.'}
-          </p>
-        )}
-      </div>
-
       {canReview && pendingGroupActions.length > 0 && (
         <div className="panel-card profile-activity-pending-queue">
           <h3>Chờ duyệt phân nhóm / từ chối ({pendingGroupActions.length})</h3>
@@ -1510,6 +1427,95 @@ export default function ProfileActivities() {
           </ul>
         </div>
       )}
+
+      <div className="panel-card daily-summary-panel profile-activity-progress-panel">
+        <button
+          type="button"
+          className="daily-summary-head"
+          onClick={() => setProgressTrackingExpanded((value) => !value)}
+          aria-expanded={progressTrackingExpanded}
+        >
+          <span className="daily-summary-title">
+            Theo dõi tiến độ
+            {progressTrackingRowCount > 0 ? ` (${progressTrackingRowCount})` : ''}
+          </span>
+          <span className="daily-summary-toggle">
+            {progressTrackingExpanded ? 'Thu gọn' : 'Mở rộng'}
+          </span>
+        </button>
+        <div className="daily-summary-body">
+          {progressTrackingExpanded ? (
+            progressTracking.length > 0 ? (
+              <div className="profile-activity-progress-activities">
+                {progressTracking.map((activityBlock) => {
+                  const expanded = isProgressActivityExpanded(activityBlock.activity_id);
+                  const rowCount = activityBlock.rows?.length || 0;
+                  return (
+                    <div
+                      key={activityBlock.activity_id}
+                      className="profile-activity-progress-activity"
+                    >
+                      <button
+                        type="button"
+                        className="profile-activity-progress-activity-head"
+                        onClick={() => toggleProgressActivity(activityBlock.activity_id)}
+                        aria-expanded={expanded}
+                      >
+                        <span className="profile-activity-progress-activity-title">
+                          {activityBlock.activity_name}
+                        </span>
+                        <span className="daily-summary-toggle">
+                          {expanded ? 'Thu gọn' : 'Mở rộng'}
+                        </span>
+                      </button>
+                      {expanded ? (
+                        <div className="profile-activity-progress-activity-body">
+                          <div className="table-wrap">
+                            <table className="profile-activity-progress-table">
+                              <thead>
+                                <tr>
+                                  <th>Loại</th>
+                                  <th>Tên</th>
+                                  <th>Ngày bắt đầu</th>
+                                  <th>Trạng thái</th>
+                                  <th>Xóa</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <ProgressTrackingRows
+                                  rows={activityBlock.rows || []}
+                                  activityId={activityBlock.activity_id}
+                                  saving={saving}
+                                  onDelete={handleRemoveProgressTracking}
+                                />
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="profile-activity-progress-activity-collapsed muted">
+                          {rowCount} dòng tiến độ — bấm Mở rộng để xem
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="profile-activity-progress-empty muted">
+                Chưa có tiến độ nào được theo dõi. Tiến độ sẽ xuất hiện sau khi mentee báo danh và bắt
+                đầu keep track.
+              </p>
+            )
+          ) : (
+            <p className="profile-activity-progress-empty muted">
+              {progressTrackingRowCount > 0
+                ? `${progressTrackingRowCount} dòng tiến độ — bấm Mở rộng để xem`
+                : 'Chưa có tiến độ nào được theo dõi.'}
+            </p>
+          )}
+        </div>
+      </div>
 
       <div className="panel-card daily-summary-panel">
         <button
@@ -1647,8 +1653,20 @@ export default function ProfileActivities() {
         )}
       </div>
 
-      <div className="panel-card">
-        <h3>Quản lý hoạt động</h3>
+      <div className="panel-card daily-summary-panel">
+        <button
+          type="button"
+          className="daily-summary-head"
+          onClick={() => setManageFormCollapsed((v) => !v)}
+          aria-expanded={!manageFormCollapsed}
+        >
+          <span className="daily-summary-title">Quản lý hoạt động</span>
+          <span className="daily-summary-toggle">
+            {manageFormCollapsed ? 'Mở rộng' : 'Thu gọn'}
+          </span>
+        </button>
+        {!manageFormCollapsed && (
+          <div className="daily-summary-body">
         <label>
           Chọn hoạt động
           <ActivityPickerDropdown
@@ -1805,6 +1823,8 @@ export default function ProfileActivities() {
                 );
               })}
             </div>
+          </div>
+        )}
           </div>
         )}
       </div>
