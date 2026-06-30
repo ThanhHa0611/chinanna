@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
+import ActivityKeeptrackBar from './ActivityKeeptrackBar';
 import {
   MENTEE_PARTICIPATION_CHOICES,
   feedLineLink,
@@ -74,6 +75,7 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [registerChoice, setRegisterChoice] = useState({});
+  const [keeptrackSaving, setKeeptrackSaving] = useState({});
 
   const refresh = async () => {
     const data = await api.getProfileActivities();
@@ -178,6 +180,27 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
     }
   };
 
+  const saveKeeptrack = async (itemId, body) => {
+    setKeeptrackSaving((prev) => ({ ...prev, [itemId]: true }));
+    try {
+      const result = await api.updateProfileActivityKeeptrack(itemId, body);
+      if (result?.activity) {
+        const patchItem = (item) => (item.id === itemId ? { ...item, ...result.activity } : item);
+        setCurrentDay((day) =>
+          day ? { ...day, items: (day.items || []).map(patchItem) } : day,
+        );
+        setOtherDays((days) =>
+          days.map((day) => ({ ...day, items: (day.items || []).map(patchItem) })),
+        );
+      }
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setKeeptrackSaving((prev) => ({ ...prev, [itemId]: false }));
+    }
+  };
+
   const renderDeadlineBadge = (item) => {
     const badge = getDeadlineBadge(item.deadline, item.deadline_badge);
     if (!badge) return null;
@@ -269,6 +292,14 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
             {renderDeadlineBadge(item)}
             {renderRegistrationStatus(item)}
             {renderGroupMembers(item)}
+            {item.keeptrack?.active && (
+              <ActivityKeeptrackBar
+                keeptrack={item.keeptrack}
+                saving={Boolean(keeptrackSaving[item.id])}
+                disabled={item.keeptrack?.review_status === 'pending'}
+                onSave={(body) => saveKeeptrack(item.id, body)}
+              />
+            )}
           </div>
         </div>
         <div className="profile-activity-line-actions">
@@ -329,6 +360,8 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
 
   const otherDayCount = otherDays.length;
   const otherItemCount = otherDays.reduce((sum, day) => sum + (day.items || []).length, 0);
+  const totalCount = (currentDay?.items?.length || 0) + otherItemCount;
+  const primaryDateLabel = currentDay?.date_label;
 
   return (
     <>
@@ -339,6 +372,28 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
 
       <div className="profile-card">
         <div className="profile-activities-head">
+          {!loading && (
+            <p className="profile-activities-head-summary muted">
+              {primaryDateLabel && (
+                <>
+                  <strong>Ngày {primaryDateLabel}</strong>
+                  {!expanded && totalCount > 0 && (
+                    <>
+                      {' · '}
+                      Có {totalCount} hoạt động
+                      {unviewedCount > 0 ? ` (${unviewedCount} mới)` : ''}
+                    </>
+                  )}
+                </>
+              )}
+              {!primaryDateLabel && !expanded && (
+                <>
+                  Có {totalCount} hoạt động
+                  {unviewedCount > 0 ? ` (${unviewedCount} mới)` : ''}.
+                </>
+              )}
+            </p>
+          )}
           <button type="button" className="btn btn-outline btn-sm" onClick={() => setExpanded((v) => !v)}>
             {expanded ? 'Thu gọn' : 'Mở rộng'}
           </button>
@@ -346,12 +401,7 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
         {error && <p className="form-error">{error}</p>}
         {loading ? (
           <p className="profile-note">Đang tải hoạt động...</p>
-        ) : !expanded ? (
-          <p className="muted">
-            Có {(currentDay?.items?.length || 0) + otherItemCount} hoạt động
-            {unviewedCount > 0 ? ` (${unviewedCount} mới)` : ''}.
-          </p>
-        ) : (
+        ) : !expanded ? null : (
           <div className="profile-activities-days">
             <DayBlock day={currentDay} renderItem={renderItem} />
             {otherDayCount > 0 && (

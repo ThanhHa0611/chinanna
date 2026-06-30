@@ -2355,9 +2355,15 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
 .profile-activities-head {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
+}
+
+.profile-activities-head-summary {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 .profile-activities-other {
