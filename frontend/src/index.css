@@ -2536,6 +2536,19 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
   margin-bottom: 0.65rem;
 }
 
+.profile-activity-keeptrack-status {
+  margin: 0 0 0.65rem;
+  font-size: 0.85rem;
+}
+
+.profile-activity-keeptrack-status.is-pending {
+  color: #b45309;
+}
+
+.profile-activity-keeptrack-status.is-rejected {
+  color: #b91c1c;
+}
+
 .profile-activity-keeptrack-icon {
   font-size: 1rem;
   line-height: 1;
