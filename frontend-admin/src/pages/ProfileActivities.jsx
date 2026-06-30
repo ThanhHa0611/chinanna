@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import ActivityKeeptrackBar from '../components/ActivityKeeptrackBar';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { isLevel1MentorAccount } from '../utils/mentorDisplay';
@@ -109,7 +108,6 @@ export default function ProfileActivities() {
   const [createFormCollapsed, setCreateFormCollapsed] = useState(false);
   const [moveTargets, setMoveTargets] = useState({});
   const [addToGroupTargets, setAddToGroupTargets] = useState({});
-  const [keeptrackSaving, setKeeptrackSaving] = useState({});
 
   const canReview = Boolean(admin?.is_super_admin || isLevel1MentorAccount(admin));
   const isL2 = Boolean(admin && !canReview);
@@ -536,27 +534,6 @@ export default function ProfileActivities() {
       setError(err.message);
     } finally {
       setSaving(false);
-    }
-  };
-
-  const saveKeeptrack = async (menteeId, body) => {
-    if (!selectedActivity) return;
-    setKeeptrackSaving((prev) => ({ ...prev, [menteeId]: true }));
-    setError('');
-    try {
-      const result = await api.updateProfileActivityKeeptrack(selectedActivity.id, menteeId, body);
-      if (result?.registration) {
-        setRegistrations((prev) =>
-          prev.map((item) => (item.mentee_id === menteeId ? result.registration : item)),
-        );
-      } else {
-        await loadRegistrations(selectedActivity.id);
-      }
-      setMessage('Đã cập nhật tiến độ keeptrack.');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setKeeptrackSaving((prev) => ({ ...prev, [menteeId]: false }));
     }
   };
 
@@ -1003,18 +980,6 @@ export default function ProfileActivities() {
                           )}
                       </td>
                     </tr>
-                    {item.keeptrack?.active && (
-                      <tr key={`${item.mentee_id}-keeptrack`} className="profile-activity-keeptrack-row">
-                        <td colSpan={8}>
-                          <ActivityKeeptrackBar
-                            compact
-                            keeptrack={item.keeptrack}
-                            saving={Boolean(keeptrackSaving[item.mentee_id])}
-                            onSave={(body) => saveKeeptrack(item.mentee_id, body)}
-                          />
-                        </td>
-                      </tr>
-                    )}
                     </>
                     );
                   })}
