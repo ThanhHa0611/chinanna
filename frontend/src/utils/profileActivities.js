@@ -67,6 +67,8 @@ export function compose_activity_name(data) {
   return line.trim() || 'Hoạt động hồ sơ';
 }
 
+export const FEED_INLINE_LINK_LABEL = '(Link)';
+
 export function format_activity_feed_line(activity) {
   let line = compose_activity_name(activity);
   const stored = (activity?.activity_name || '').trim();
@@ -74,9 +76,9 @@ export function format_activity_feed_line(activity) {
     line = stored;
   }
   if (!line) line = 'Hoạt động hồ sơ';
-  const link = (activity?.link || '').trim();
+  const link = feedLineLink(activity);
   if (link) {
-    return `${line}\nLink: ${link}`;
+    return `${line} ${FEED_INLINE_LINK_LABEL}`;
   }
   return line;
 }
@@ -105,3 +107,12 @@ export const MENTEE_PARTICIPATION_CHOICES = [
   { value: 'individual', label: 'Cá nhân' },
   { value: 'group', label: 'Nhóm' },
 ];
+
+export function participationModeDisplayLabel(activity) {
+  const mode = activity?.participation_mode;
+  const label = activity?.participation_mode_label;
+  if (mode === 'unknown' || label === PARTICIPATION_MODE_LABELS.unknown) {
+    return null;
+  }
+  return label || null;
+}

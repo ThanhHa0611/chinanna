@@ -10,6 +10,7 @@ import {
   feedLineText,
   formatImportanceStars,
   getDeadlineBadge,
+  participationModeDisplayLabel,
 } from '../utils/profileActivities';
 
 const ACTIVITY_TYPES = ['Cuộc thi', 'NCKH', 'HĐNK', 'Hội thảo', 'Chương trình hè', 'Dự án', 'Khác'];
@@ -66,15 +67,22 @@ function FeedLinePreview({ activity }) {
   const link = feedLineLink(activity);
   return (
     <div className="profile-activity-feed-preview-line">
-      <div>{text}</div>
-      {link && (
-        <div className="profile-activity-feed-link-line">
-          Link:{' '}
-          <a href={link} target="_blank" rel="noreferrer">
-            {link}
-          </a>
-        </div>
-      )}
+      <div>
+        {text}
+        {link && (
+          <>
+            {' '}
+            <a
+              href={link}
+              target="_blank"
+              rel="noreferrer"
+              className="profile-activity-inline-link"
+            >
+              (Link)
+            </a>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -108,6 +116,8 @@ export default function ProfileActivities() {
     () => activities.find((item) => item.id === selectedId) || null,
     [activities, selectedId],
   );
+
+  const selectedParticipationLabel = participationModeDisplayLabel(selectedActivity);
 
   const pendingActivities = useMemo(
     () => activities.filter((item) => item.approval_status === 'pending_l1_approval'),
@@ -843,8 +853,8 @@ export default function ProfileActivities() {
                   : ''}
               </p>
             )}
-            {selectedActivity.participation_mode_label && (
-              <p className="muted">Hình thức tham gia: {selectedActivity.participation_mode_label}</p>
+            {selectedParticipationLabel && (
+              <p className="muted">Hình thức tham gia: {selectedParticipationLabel}</p>
             )}
             <div className="table-wrap">
               <table>

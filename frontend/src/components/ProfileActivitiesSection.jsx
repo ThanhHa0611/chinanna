@@ -28,6 +28,20 @@ function FeedLine({ item, onLinkClick }) {
           </span>
         )}
         {text}
+        {link && (
+          <>
+            {' '}
+            <a
+              href={link}
+              target="_blank"
+              rel="noreferrer"
+              className="profile-activity-inline-link"
+              onClick={onLinkClick}
+            >
+              (Link)
+            </a>
+          </>
+        )}
       </div>
       {(item.target_audience || participationLabel) && (
         <div className="profile-activity-feed-meta muted">
@@ -36,20 +50,6 @@ function FeedLine({ item, onLinkClick }) {
           {participationLabel && (
             <span>Hình thức: {participationLabel}</span>
           )}
-        </div>
-      )}
-      {link && (
-        <div className="profile-activity-feed-link-line">
-          Link:{' '}
-          <a
-            href={link}
-            target="_blank"
-            rel="noreferrer"
-            className="profile-activity-inline-link"
-            onClick={onLinkClick}
-          >
-            {link}
-          </a>
         </div>
       )}
     </div>

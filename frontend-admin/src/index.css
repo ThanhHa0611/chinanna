@@ -3398,6 +3398,12 @@ html.device-phone .daily-summary-status {
   word-break: break-word;
 }
 
+.profile-activity-inline-link {
+  color: var(--primary, #2563eb);
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
 .profile-activity-name-preview {
   margin: 0 0 0.75rem;
   font-size: 0.92rem;
