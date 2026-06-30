@@ -97,6 +97,7 @@ def format_hdnk_reminder_date(value) -> str:
 
 
 def hdnk_nckh_mentee_snapshot(entry: dict) -> dict:
+    from services.misc import serialize_hdnk_nckh_entry
     return serialize_hdnk_nckh_entry(entry, for_mentee=True)
 
 

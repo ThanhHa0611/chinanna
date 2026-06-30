@@ -39,6 +39,7 @@ from services.notifications import *
 from services.utils import *
 
 def apply_progress_fields_equal(left: dict | None, right: dict | None) -> bool:
+    from services.misc import extract_apply_progress_fields
     return extract_apply_progress_fields(left) == extract_apply_progress_fields(right)
 
 
@@ -109,6 +110,7 @@ def serialize_mentor_l2_activity(raw: dict) -> dict:
 
 
 def count_mentor_l2_activity_unread(user: dict) -> int:
+    from services.misc import get_mentor_l2_activity_raw
     return sum(1 for item in get_mentor_l2_activity_raw(user) if item.get("l1_unread"))
 
 
@@ -152,6 +154,7 @@ def push_l2_mentor_activity(mentee_id, admin: dict, section: str, action: str, s
 
 
 def ack_mentor_l2_activity(mentee_id, admin: dict, section: str | None = None) -> dict:
+    from services.misc import get_mentor_l2_activity_raw
     from bson import ObjectId
 
     mentee = users.find_one({"_id": ObjectId(mentee_id)})
@@ -294,6 +297,7 @@ def get_apply_progress_row_count(user: dict) -> int:
 
 
 def get_apply_progress_rows_raw(user: dict) -> list[dict]:
+    from services.misc import extract_apply_progress_fields
     row_count = get_apply_progress_row_count(user)
     stored = user.get("apply_progress_rows")
     by_num: dict[int, dict] = {}
@@ -323,6 +327,7 @@ def get_apply_progress_rows_raw(user: dict) -> list[dict]:
 
 
 def serialize_apply_progress_row(row: dict, viewer: str = "mentee") -> dict:
+    from services.misc import extract_apply_progress_fields, mask_apply_progress_value
     pending = row.get("pending")
     pending_fields = extract_apply_progress_fields(pending) if isinstance(pending, dict) else None
     if pending_fields and not any(pending_fields.values()):
