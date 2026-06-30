@@ -2451,6 +2451,39 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
   flex-wrap: wrap;
 }
 
+.profile-activity-group-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.profile-activity-group-invite-text {
+  width: 100%;
+  margin: 0;
+}
+
+.profile-activity-group-members {
+  margin-top: 0.45rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.45rem;
+  background: #f3f4f6;
+}
+
+.profile-activity-group-members-title {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.profile-activity-group-members-list {
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+.profile-activity-group-members-list li + li {
+  margin-top: 0.2rem;
+}
+
 .profile-activity-modal {
   width: min(100%, 560px);
 }

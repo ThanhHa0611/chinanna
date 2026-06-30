@@ -478,6 +478,73 @@ def _find_mentee_group(activity: dict, mentee_id: str) -> dict | None:
     return None
 
 
+def _is_auto_solo_group(group: dict | None) -> bool:
+    return bool(group and group.get("is_auto_solo"))
+
+
+def _find_mentee_notified_group(activity: dict, mentee_id: str) -> dict | None:
+    for group in activity.get("groups", []):
+        if not group_is_approved(group) or _is_auto_solo_group(group):
+            continue
+        mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
+        if mentee_id in mentee_ids and group.get("notification_sent_at"):
+            return group
+    return None
+
+
+def _find_mentee_display_group(activity: dict, mentee_id: str, state: dict) -> dict | None:
+    if state.get("participation_choice") == "individual":
+        return None
+    if _normalize_participation_mode(activity.get("participation_mode")) == "individual":
+        return None
+    notified = _find_mentee_notified_group(activity, mentee_id)
+    if notified:
+        return notified
+    for group in activity.get("groups", []):
+        if not group_is_approved(group) or _is_auto_solo_group(group):
+            continue
+        mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
+        if mentee_id in mentee_ids:
+            return group
+    return None
+
+
+def _mentee_requires_group_confirmation(activity: dict, mentee_id: str, state: dict) -> bool:
+    if not state.get("registered_at"):
+        return False
+    if state.get("participation_choice") == "individual":
+        return False
+    if _normalize_participation_mode(activity.get("participation_mode")) == "individual":
+        return False
+    if (state.get("group_response_status") or "").strip().lower() != "pending":
+        return False
+    return _find_mentee_notified_group(activity, mentee_id) is not None
+
+
+def serialize_group_members_for_mentee(group: dict) -> list[dict]:
+    member_ids = [str(item) for item in (group.get("mentee_ids") or []) if str(item)]
+    if not member_ids:
+        return []
+    object_ids = [ObjectId(item) for item in member_ids if ObjectId.is_valid(item)]
+    users_by_id = {
+        str(user["_id"]): user
+        for user in users.find({"_id": {"$in": object_ids}, "role": {"$ne": ROLE_PARENT}})
+    }
+    members: list[dict] = []
+    for member_id in member_ids:
+        user = users_by_id.get(member_id)
+        if not user:
+            continue
+        members.append(
+            {
+                "mentee_id": member_id,
+                "full_name": user.get("full_name") or user.get("username") or user.get("email", ""),
+                "zalo_phone": user.get("zalo_phone") or "",
+            }
+        )
+    return members
+
+
 def _mentee_awaiting_group_assignment(activity: dict, mentee_id: str, state: dict) -> bool:
     if not state.get("registered_at"):
         return False
@@ -646,13 +713,7 @@ def _matches_other_major(activity: dict, mentee: dict) -> bool:
 
 
 def _mentee_has_notified_group_assignment(activity: dict, mentee_id: str) -> bool:
-    for group in activity.get("groups", []):
-        if not group_is_approved(group):
-            continue
-        mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
-        if mentee_id in mentee_ids and group.get("notification_sent_at"):
-            return True
-    return False
+    return _find_mentee_notified_group(activity, mentee_id) is not None
 
 
 def _resolve_group_name_for_admin(activity: dict, mentee_id: str) -> str:
@@ -692,6 +753,10 @@ def registration_response_display(activity: dict, state: dict, mentee_id: str) -
     if response == "rejected":
         return {"status": "rejected", "label": "Từ chối"}
     if response == "pending":
+        if state.get("participation_choice") == "individual":
+            return {"status": "confirmed", "label": "Đã duyệt"}
+        if _normalize_participation_mode(activity.get("participation_mode")) == "individual":
+            return {"status": "confirmed", "label": "Đã duyệt"}
         return {"status": "pending", "label": "Chờ mentee xác nhận"}
     return {"status": "", "label": "—"}
 
@@ -757,11 +822,14 @@ def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidd
         return {}
     registration_count = sum(1 for item in doc.get("mentee_states", []) if item.get("registered_at"))
     group_response_status = state.get("group_response_status")
-    group_assignment_pending = bool(
-        state.get("registered_at")
-        and group_response_status == "pending"
-        and _mentee_has_notified_group_assignment(doc, mentee_id)
-    )
+    display_group = _find_mentee_display_group(doc, mentee_id, state)
+    group_assignment_pending = _mentee_requires_group_confirmation(doc, mentee_id, state)
+    group_members: list[dict] = []
+    if (
+        display_group
+        and (group_response_status or "").strip().lower() == "confirmed"
+    ):
+        group_members = serialize_group_members_for_mentee(display_group)
     payload = {
         "id": str(doc["_id"]),
         "activity_name": doc.get("activity_name", ""),
@@ -784,6 +852,8 @@ def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidd
         "group_response_status": group_response_status,
         "group_response_note": state.get("group_response_note", ""),
         "group_assignment_pending": group_assignment_pending,
+        "group_name": (display_group or {}).get("group_name", "") if display_group else "",
+        "group_members": group_members,
         "highlight_star": activity_matches_mentee_major(doc, mentee),
         "importance": _normalize_importance(doc.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE)),
         "registration_count": registration_count,
@@ -1356,20 +1426,25 @@ def _build_team_message(activity: dict, group: dict, member_profiles: list[dict]
 
 
 def notify_group_assignment(activity: dict, group: dict) -> dict:
-    if not group_is_approved(group):
+    if not group_is_approved(group) or _is_auto_solo_group(group):
         return activity
     member_ids = [ObjectId(item) for item in group.get("mentee_ids", []) if ObjectId.is_valid(item)]
     members = list(users.find({"_id": {"$in": member_ids}, "role": {"$ne": ROLE_PARENT}}))
     message = _build_team_message(activity, group, members)
+    group_name = (group.get("group_name") or "").strip() or "nhóm"
     for mentee in members:
         state = _get_or_create_state(activity, str(mentee["_id"]))
+        if state.get("participation_choice") == "individual":
+            continue
+        if _normalize_participation_mode(activity.get("participation_mode")) == "individual":
+            continue
         state["group_response_status"] = "pending"
         state["group_response_note"] = ""
         state["group_response_at"] = None
         notify_mentee_mentor_activity(
             mentee,
             action="profile_activity_group",
-            title="Bạn đã được xếp nhóm",
+            title=f"Mentor mời bạn vào {group_name}",
             description=message,
             mentor_name=activity.get("mentor_name", ""),
         )
@@ -1387,11 +1462,21 @@ def notify_group_assignment(activity: dict, group: dict) -> dict:
     return activity
 
 
+class ProfileActivityGroupResponseError(ValueError):
+    pass
+
+
 def update_group_response(activity: dict, mentee: dict, status: str, note: str = "") -> dict:
     response = (status or "").strip().lower()
     if response not in {"confirmed", "rejected"}:
         response = "pending"
-    state = _get_or_create_state(activity, str(mentee["_id"]))
+    mentee_id = str(mentee["_id"])
+    state = _get_or_create_state(activity, mentee_id)
+    if not _mentee_requires_group_confirmation(activity, mentee_id, state) and response in {
+        "confirmed",
+        "rejected",
+    }:
+        raise ProfileActivityGroupResponseError("Bạn không cần xác nhận nhóm cho hình thức tham gia này.")
     state["group_response_status"] = response
     state["group_response_note"] = (note or "").strip()
     state["group_response_at"] = datetime.now(timezone.utc)

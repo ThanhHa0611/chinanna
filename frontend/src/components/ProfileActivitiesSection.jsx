@@ -162,7 +162,16 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
 
   const respondGroup = async (itemId, status) => {
     try {
-      await api.respondProfileActivityGroup(itemId, { status });
+      const result = await api.respondProfileActivityGroup(itemId, { status });
+      if (result?.activity) {
+        const patchItem = (item) => (item.id === itemId ? { ...item, ...result.activity } : item);
+        setCurrentDay((day) =>
+          day ? { ...day, items: (day.items || []).map(patchItem) } : day,
+        );
+        setOtherDays((days) =>
+          days.map((day) => ({ ...day, items: (day.items || []).map(patchItem) })),
+        );
+      }
       await refresh();
     } catch (err) {
       setError(err.message);
@@ -178,8 +187,22 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
   };
 
   const renderRegistrationStatus = (item) => {
+    if (item.group_assignment_pending && item.group_name) {
+      return (
+        <span className="muted profile-activity-group-invite-text">
+          Mentor mời bạn vào {item.group_name}
+        </span>
+      );
+    }
     if (item.registered && item.awaiting_group_assignment) {
       return <span className="muted">Đã báo danh — chờ mentor phân nhóm</span>;
+    }
+    if (
+      item.registered &&
+      item.participation_choice === 'individual' &&
+      item.group_response_status === 'confirmed'
+    ) {
+      return <span className="muted">Đã báo danh (Cá nhân)</span>;
     }
     if (item.registered && item.participation_choice_label) {
       return <span className="muted">Đã báo danh ({item.participation_choice_label})</span>;
@@ -188,6 +211,25 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
       return <span className="muted">Đã báo danh</span>;
     }
     return null;
+  };
+
+  const renderGroupMembers = (item) => {
+    if (item.group_response_status !== 'confirmed' || !item.group_members?.length) {
+      return null;
+    }
+    return (
+      <div className="profile-activity-group-members">
+        <p className="profile-activity-group-members-title">Nhóm bao gồm:</p>
+        <ol className="profile-activity-group-members-list">
+          {item.group_members.map((member) => (
+            <li key={member.mentee_id}>
+              {member.full_name}
+              {member.zalo_phone ? ` — ${member.zalo_phone}` : ' — Chưa có Zalo'}
+            </li>
+          ))}
+        </ol>
+      </div>
+    );
   };
 
   const handleViewActivity = (item) => {
@@ -226,26 +268,30 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
             />
             {renderDeadlineBadge(item)}
             {renderRegistrationStatus(item)}
+            {renderGroupMembers(item)}
           </div>
         </div>
         <div className="profile-activity-line-actions">
           {item.group_assignment_pending && (
-            <>
+            <div className="profile-activity-group-actions">
+              {!item.group_name && (
+                <p className="muted profile-activity-group-invite-text">Mentor mời bạn vào nhóm</p>
+              )}
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
                 onClick={() => respondGroup(item.id, 'confirmed')}
               >
-                Xác nhận nhóm
+                Xác nhận
               </button>
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
                 onClick={() => respondGroup(item.id, 'rejected')}
               >
-                Từ chối nhóm
+                Từ chối
               </button>
-            </>
+            </div>
           )}
           {!item.registered && item.needs_participation_choice && (
             <div className="profile-activity-register-choice">

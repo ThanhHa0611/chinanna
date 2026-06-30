@@ -6,6 +6,7 @@ from auth.security import get_authenticated_user, require_mentee_account
 from database import profile_activities, with_db
 from extensions import app
 from services.profile_activities import (
+    ProfileActivityGroupResponseError,
     ProfileActivityRegistrationError,
     activity_visible_to_mentee,
     group_mentee_feed_by_day,
@@ -147,5 +148,10 @@ def mentee_profile_activity_group_response(activity_id: str):
     status = (data.get("status") or "").strip().lower()
     if status not in {"confirmed", "rejected"}:
         return jsonify({"detail": "Trạng thái phản hồi không hợp lệ"}), 400
-    update_group_response(activity, user, status, data.get("note", ""))
-    return jsonify({"message": "Đã gửi phản hồi nhóm"})
+    try:
+        update_group_response(activity, user, status, data.get("note", ""))
+    except ProfileActivityGroupResponseError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    payload = serialize_profile_activity_for_feed(refreshed, user, include_hidden=True)
+    return jsonify({"message": "Đã gửi phản hồi nhóm", "activity": payload})
