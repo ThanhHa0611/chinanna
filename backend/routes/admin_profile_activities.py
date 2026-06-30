@@ -10,6 +10,7 @@ from extensions import app
 from services.admins import admin_display_name, admin_is_approved, is_super_admin
 from services.apply_progress import admin_is_level1_mentor
 from services.profile_activities import (
+    ProfileActivityKeeptrackError,
     ProfileActivityRegistrationError,
     add_mentee_to_group,
     approve_pending_group,
@@ -30,6 +31,7 @@ from services.profile_activities import (
     serialize_admin_registration,
     submit_mentor_reject_registration,
     suggest_group_name,
+    update_activity_keeptrack,
     upsert_activity_group,
 )
 
@@ -457,3 +459,38 @@ def admin_deny_reject_activity_registration(activity_id: str, mentee_id: str):
         return jsonify({"detail": "Mentee không tồn tại"}), 404
     reject_pending_mentor_reject(activity, mentee_id)
     return jsonify({"message": "Đã hủy yêu cầu từ chối báo danh."})
+
+
+@app.patch("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/keeptrack")
+@with_db
+def admin_update_activity_keeptrack(activity_id: str, mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    if not ObjectId.is_valid(mentee_id):
+        return jsonify({"detail": "Mentee không tồn tại"}), 404
+    mentee = users.find_one({"_id": ObjectId(mentee_id)})
+    if not mentee:
+        return jsonify({"detail": "Mentee không tồn tại"}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        update_activity_keeptrack(activity, mentee_id, data)
+    except ProfileActivityKeeptrackError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    state = next(
+        (item for item in refreshed.get("mentee_states", []) if item.get("mentee_id") == mentee_id),
+        {},
+    )
+    return jsonify(
+        {
+            "message": "Đã cập nhật tiến độ",
+            "registration": serialize_admin_registration(refreshed, state, mentee),
+        }
+    )

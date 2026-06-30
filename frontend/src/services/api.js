@@ -252,6 +252,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  updateProfileActivityKeeptrack: (activityId, body) =>
+    request(`/api/profile-activities/${activityId}/keeptrack`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
   openApplyDocumentFile: async (docId) => {
     const token = localStorage.getItem('token');
     const response = await fetch(`${API_BASE}/api/documents/apply/${docId}/file`, {

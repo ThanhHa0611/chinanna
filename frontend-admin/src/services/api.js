@@ -410,6 +410,12 @@ export const api = {
       { method: 'POST' },
     ),
 
+  updateProfileActivityKeeptrack: (activityId, menteeId, body) =>
+    request(`/api/admin/profile-activities/${activityId}/registrations/${menteeId}/keeptrack`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
   getMenteeRegistrations: () => request('/api/admin/mentee-registrations'),
 
   reviewMenteeRegistration: (id, body) =>

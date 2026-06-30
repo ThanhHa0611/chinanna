@@ -7,6 +7,7 @@ from database import profile_activities, with_db
 from extensions import app
 from services.profile_activities import (
     ProfileActivityGroupResponseError,
+    ProfileActivityKeeptrackError,
     ProfileActivityRegistrationError,
     activity_visible_to_mentee,
     group_mentee_feed_by_day,
@@ -15,6 +16,7 @@ from services.profile_activities import (
     register_for_activity,
     serialize_profile_activity_for_feed,
     set_activity_hidden,
+    update_activity_keeptrack,
     update_group_response,
 )
 
@@ -155,3 +157,28 @@ def mentee_profile_activity_group_response(activity_id: str):
     refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
     payload = serialize_profile_activity_for_feed(refreshed, user, include_hidden=True)
     return jsonify({"message": "Đã gửi phản hồi nhóm", "activity": payload})
+
+
+@app.patch("/api/profile-activities/<activity_id>/keeptrack")
+@with_db
+def mentee_update_profile_activity_keeptrack(activity_id: str):
+    user, error_response = get_authenticated_user()
+    if error_response:
+        return error_response
+    user, error_response = require_mentee_account(user)
+    if error_response:
+        return error_response
+
+    activity, error = _find_activity_or_404(activity_id)
+    if error:
+        return error
+    if not activity_visible_to_mentee(activity):
+        return jsonify({"detail": "Hoạt động không tồn tại"}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        update_activity_keeptrack(activity, str(user["_id"]), data)
+    except ProfileActivityKeeptrackError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    payload = serialize_profile_activity_for_feed(refreshed, user, include_hidden=True)
+    return jsonify({"message": "Đã cập nhật tiến độ", "activity": payload})
