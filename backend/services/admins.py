@@ -379,6 +379,8 @@ def mentee_needs_attention(summary: dict, admin: dict | None = None) -> bool:
 
 
 def count_mentees_needing_attention(admin: dict) -> int:
+    from services.access import mentee_admin_list_query
+
     total = 0
     for user in users.find(mentee_admin_list_query(admin)):
         summary = serialize_admin_mentee_summary(user, admin)
