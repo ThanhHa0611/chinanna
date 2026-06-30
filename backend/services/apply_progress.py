@@ -76,6 +76,7 @@ def get_mentor_l2_activity_raw(user: dict) -> list[dict]:
 
 
 def apply_progress_fields_equal(left: dict | None, right: dict | None) -> bool:
+    from services.misc import extract_apply_progress_fields
     return extract_apply_progress_fields(left) == extract_apply_progress_fields(right)
 
 
@@ -96,6 +97,7 @@ def is_thanh_ha_l1_mentor(admin: dict | None) -> bool:
 
 
 def apply_progress_viewer_key(admin: dict | None = None, *, mentee: bool = False, parent: bool = False) -> str:
+    from services.admins import is_super_admin
     if mentee:
         return "mentee"
     if parent:
@@ -123,6 +125,7 @@ def apply_progress_progress_options_for_viewer(viewer: str) -> list[str]:
 
 
 def is_l2_mentor_admin(admin: dict | None) -> bool:
+    from services.admins import admin_is_approved, is_super_admin
     if not admin or not admin_is_approved(admin):
         return False
     if is_super_admin(admin):
@@ -146,6 +149,7 @@ def serialize_mentor_l2_activity(raw: dict) -> dict:
 
 
 def count_mentor_l2_activity_unread(user: dict) -> int:
+    from services.misc import get_mentor_l2_activity_raw
     return sum(1 for item in get_mentor_l2_activity_raw(user) if item.get("l1_unread"))
 
 
@@ -156,6 +160,7 @@ def mentor_l2_activity_has_unread(user: dict) -> bool:
 
 
 def push_l2_mentor_activity(mentee_id, admin: dict, section: str, action: str, summary: str) -> None:
+    from services.admins import admin_display_name
     if not is_l2_mentor_admin(admin):
         return
 
@@ -189,6 +194,8 @@ def push_l2_mentor_activity(mentee_id, admin: dict, section: str, action: str, s
 
 
 def ack_mentor_l2_activity(mentee_id, admin: dict, section: str | None = None) -> dict:
+    from services.admins import admin_display_name
+    from services.misc import get_mentor_l2_activity_raw
     from bson import ObjectId
 
     mentee = users.find_one({"_id": ObjectId(mentee_id)})
@@ -281,6 +288,7 @@ def get_apply_progress_activity_raw(user: dict) -> list[dict]:
 
 
 def mark_apply_progress_activity_processed(user_id, row_num: int, admin: dict, action: str) -> None:
+    from services.admins import admin_display_name
     from bson import ObjectId
 
     now = datetime.now(timezone.utc)
@@ -331,6 +339,7 @@ def get_apply_progress_row_count(user: dict) -> int:
 
 
 def get_apply_progress_rows_raw(user: dict) -> list[dict]:
+    from services.misc import extract_apply_progress_fields
     row_count = get_apply_progress_row_count(user)
     stored = user.get("apply_progress_rows")
     by_num: dict[int, dict] = {}
@@ -360,6 +369,7 @@ def get_apply_progress_rows_raw(user: dict) -> list[dict]:
 
 
 def serialize_apply_progress_row(row: dict, viewer: str = "mentee") -> dict:
+    from services.misc import extract_apply_progress_fields, mask_apply_progress_value
     pending = row.get("pending")
     pending_fields = extract_apply_progress_fields(pending) if isinstance(pending, dict) else None
     if pending_fields and not any(pending_fields.values()):

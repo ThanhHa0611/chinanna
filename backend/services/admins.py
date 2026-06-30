@@ -270,6 +270,7 @@ def get_mentee_for_admin(admin: dict, mentee_id: str):
 
 
 def serialize_admin_mentee_summary(user: dict, admin: dict | None = None) -> dict:
+    from services.misc import get_mentor_l2_activity_raw
     summary = {
         "id": str(user["_id"]),
         "username": user["username"],
@@ -392,6 +393,7 @@ def count_mentees_needing_attention(admin: dict) -> int:
 
 
 def serialize_admin_mentee_detail(user: dict, admin: dict | None = None) -> dict:
+    from services.misc import serialize_hdnk_nckh_payload
     apply_docs = user.get("apply_documents") or {}
     documents = [
         serialize_apply_document_for_admin(doc_id, apply_docs.get(doc_id), user, str(user["_id"]))

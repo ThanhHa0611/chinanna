@@ -96,6 +96,7 @@ def admin_delete_mentee(mentee_id: str):
 @app.put("/api/admin/mentees/<mentee_id>/apply-progress")
 @with_db
 def admin_update_apply_progress(mentee_id: str):
+    from services.misc import extract_apply_progress_fields, validate_apply_progress_field_values
     admin, error_response = get_authenticated_admin()
     if error_response:
         return error_response
@@ -274,6 +275,7 @@ def admin_modify_apply_progress_rows(mentee_id: str):
 @app.post("/api/admin/mentees/<mentee_id>/apply-progress/review")
 @with_db
 def admin_review_apply_progress(mentee_id: str):
+    from services.misc import extract_apply_progress_fields
     admin, error_response = get_authenticated_admin()
     if error_response:
         return error_response
@@ -515,6 +517,7 @@ def admin_ack_preferred_schools_note(mentee_id: str):
 @app.post("/api/admin/mentees/<mentee_id>/hdnk-nckh/ack")
 @with_db
 def admin_ack_hdnk_nckh(mentee_id: str):
+    from services.misc import serialize_hdnk_nckh_payload
     admin, error_response = get_authenticated_admin()
     if error_response:
         return error_response
@@ -553,6 +556,7 @@ def admin_ack_hdnk_nckh(mentee_id: str):
 @app.patch("/api/admin/mentees/<mentee_id>/hdnk-nckh/reminder")
 @with_db
 def admin_set_hdnk_nckh_reminder(mentee_id: str):
+    from services.misc import serialize_hdnk_nckh_payload
     admin, error_response = get_authenticated_admin()
     if error_response:
         return error_response
@@ -606,6 +610,7 @@ def admin_set_hdnk_nckh_reminder(mentee_id: str):
 @app.put("/api/admin/mentees/<mentee_id>/hdnk-nckh")
 @with_db
 def admin_update_hdnk_nckh(mentee_id: str):
+    from services.misc import serialize_hdnk_nckh_payload
     admin, error_response = get_authenticated_admin()
     if error_response:
         return error_response
