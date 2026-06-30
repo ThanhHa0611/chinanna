@@ -12,17 +12,19 @@ function FeedLine({ item, onLinkClick }) {
   const link = feedLineLink(item);
 
   return (
-    <span className="profile-activity-feed-text">
-      {item.highlight_star ? '⭐ ' : ''}
-      {item.importance > 0 && (
-        <span className="importance-stars-display" title="Mức độ quan trọng">
-          {formatImportanceStars(item.importance)}{' '}
-        </span>
-      )}
-      {text}
+    <div className="profile-activity-feed-text">
+      <div>
+        {item.highlight_star ? '⭐ ' : ''}
+        {item.importance > 0 && (
+          <span className="importance-stars-display" title="Mức độ quan trọng">
+            {formatImportanceStars(item.importance)}{' '}
+          </span>
+        )}
+        {text}
+      </div>
       {link && (
-        <>
-          {' '}
+        <div className="profile-activity-feed-link-line">
+          Link:{' '}
           <a
             href={link}
             target="_blank"
@@ -32,9 +34,9 @@ function FeedLine({ item, onLinkClick }) {
           >
             {link}
           </a>
-        </>
+        </div>
       )}
-    </span>
+    </div>
   );
 }
 
@@ -130,7 +132,7 @@ export default function ProfileActivitiesSection({ user }) {
         </div>
       </div>
       <div className="profile-activity-line-actions">
-        {item.group_response_status === 'pending' && (
+        {item.group_assignment_pending && (
           <>
             <button
               type="button"

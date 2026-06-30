@@ -44,10 +44,18 @@ export function getDeadlineBadge(deadlineStr, badgeFromApi = null) {
   return null;
 }
 
+function stripLeadingVe(content) {
+  const text = (content || '').trim();
+  if (/^về\s+/iu.test(text)) {
+    return text.replace(/^về\s+/iu, '').trim();
+  }
+  return text;
+}
+
 export function compose_activity_name(data) {
   const activityType = (data?.activity_type || '').trim() || 'Khác';
   const organizer = (data?.organizer || '').trim();
-  const content = (data?.content || '').trim();
+  const content = stripLeadingVe(data?.content);
   const target = (data?.target_audience || '').trim();
   const deadline = (data?.deadline || '').trim();
 
@@ -68,7 +76,7 @@ export function format_activity_feed_line(activity) {
   if (!line) line = 'Hoạt động hồ sơ';
   const link = (activity?.link || '').trim();
   if (link) {
-    line = `${line} ${link}`;
+    return `${line}\nLink: ${link}`;
   }
   return line;
 }

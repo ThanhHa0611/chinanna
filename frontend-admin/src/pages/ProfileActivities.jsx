@@ -63,17 +63,17 @@ function FeedLinePreview({ activity }) {
   const text = feedLineText(activity);
   const link = feedLineLink(activity);
   return (
-    <span className="profile-activity-feed-preview-line">
-      {text}
+    <div className="profile-activity-feed-preview-line">
+      <div>{text}</div>
       {link && (
-        <>
-          {' '}
+        <div className="profile-activity-feed-link-line">
+          Link:{' '}
           <a href={link} target="_blank" rel="noreferrer">
             {link}
           </a>
-        </>
+        </div>
       )}
-    </span>
+    </div>
   );
 }
 

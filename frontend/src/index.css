@@ -2364,6 +2364,10 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
   color: inherit;
 }
 
+.profile-activity-feed-link-line {
+  margin-top: 0.15rem;
+}
+
 .profile-activity-inline-link {
   color: var(--primary, #2563eb);
   text-decoration: underline;

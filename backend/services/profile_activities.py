@@ -328,10 +328,17 @@ def _extract_majors(text: str) -> list[str]:
     return majors
 
 
+def _strip_leading_ve(content: str) -> str:
+    text = (content or "").strip()
+    if re.match(r"^về\s+", text, flags=re.IGNORECASE):
+        return re.sub(r"^về\s+", "", text, count=1, flags=re.IGNORECASE).strip()
+    return text
+
+
 def compose_activity_name(data: dict) -> str:
     activity_type = (data.get("activity_type") or "").strip() or "Khác"
     organizer = (data.get("organizer") or "").strip()
-    content = (data.get("content") or "").strip()
+    content = _strip_leading_ve(data.get("content") or "")
     target = (data.get("target_audience") or "").strip()
     deadline = (data.get("deadline") or "").strip()
 
@@ -450,7 +457,7 @@ def _get_or_create_state(doc: dict, mentee_id: str) -> dict:
         "read_at": None,
         "hidden": False,
         "registered_at": None,
-        "group_response_status": "pending",
+        "group_response_status": None,
         "group_response_note": "",
         "group_response_at": None,
     }
@@ -494,6 +501,14 @@ def _matches_other_major(activity: dict, mentee: dict) -> bool:
     return other in mentee_text
 
 
+def _mentee_has_notified_group_assignment(activity: dict, mentee_id: str) -> bool:
+    for group in activity.get("groups", []):
+        mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
+        if mentee_id in mentee_ids and group.get("notification_sent_at"):
+            return True
+    return False
+
+
 def format_activity_feed_line(activity: dict, mentee: dict | None = None) -> str:
     line = compose_activity_name(activity)
     stored = (activity.get("activity_name") or "").strip()
@@ -503,7 +518,7 @@ def format_activity_feed_line(activity: dict, mentee: dict | None = None) -> str
         line = "Hoạt động hồ sơ"
     link = (activity.get("link") or "").strip()
     if link:
-        line = f"{line} {link}"
+        return f"{line}\nLink: {link}"
     return line
 
 
@@ -530,6 +545,12 @@ def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidd
     if state.get("hidden") and not include_hidden:
         return {}
     registration_count = sum(1 for item in doc.get("mentee_states", []) if item.get("registered_at"))
+    group_response_status = state.get("group_response_status")
+    group_assignment_pending = bool(
+        state.get("registered_at")
+        and group_response_status == "pending"
+        and _mentee_has_notified_group_assignment(doc, mentee_id)
+    )
     payload = {
         "id": str(doc["_id"]),
         "activity_name": doc.get("activity_name", ""),
@@ -548,8 +569,9 @@ def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidd
         "read": bool(state.get("read_at")),
         "hidden": bool(state.get("hidden")),
         "registered": bool(state.get("registered_at")),
-        "group_response_status": state.get("group_response_status", "pending"),
+        "group_response_status": group_response_status,
         "group_response_note": state.get("group_response_note", ""),
+        "group_assignment_pending": group_assignment_pending,
         "highlight_star": activity_matches_mentee_major(doc, mentee),
         "importance": _normalize_importance(doc.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE)),
         "registration_count": registration_count,

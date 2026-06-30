@@ -64,7 +64,7 @@ def _serialize_registration(activity: dict, state: dict) -> dict:
         "apply_major": mentor_apply_direction_label(mentee.get("mentor_apply_direction", ""))
         or mentee.get("apply_direction", ""),
         "group_name": _resolve_group_name(activity, mentee_id),
-        "group_response_status": state.get("group_response_status", "pending"),
+        "group_response_status": state.get("group_response_status") or "",
         "group_response_note": state.get("group_response_note", ""),
     }
 
