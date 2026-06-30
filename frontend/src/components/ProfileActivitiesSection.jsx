@@ -80,6 +80,8 @@ export default function ProfileActivitiesSection({ user }) {
   };
 
   const hideActivity = async (itemId) => {
+    if (!window.confirm('Bạn có chắc muốn ẩn hoạt động này?')) return;
+
     try {
       await api.hideProfileActivity(itemId, { hidden: true });
       await refresh();
@@ -89,6 +91,8 @@ export default function ProfileActivitiesSection({ user }) {
   };
 
   const registerActivity = async (itemId) => {
+    if (!window.confirm('Bạn có chắc muốn báo danh hoạt động này?')) return;
+
     try {
       await api.registerProfileActivity(itemId);
       await refresh();
