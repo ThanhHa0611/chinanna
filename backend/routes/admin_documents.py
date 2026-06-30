@@ -315,20 +315,24 @@ def admin_bulk_approve_documents(mentee_id: str):
         updates[f"apply_documents.{doc_id}.mentor_status"] = DOC_MENTOR_STATUS_APPROVED
         updates[f"apply_documents.{doc_id}.mentor_note"] = record.get("mentor_note") or ""
         updates[f"apply_documents.{doc_id}.mentor_updated_at"] = now
-        updates[f"apply_documents.{doc_id}.mentor_unread"] = False
         updates[f"apply_documents.{doc_id}.mentor_viewed_at"] = now
+        updates[f"apply_documents.{doc_id}.mentor_processed_at"] = now
         updates[f"apply_documents.{doc_id}.mentee_unread_feedback"] = True
         if doc_id == "personal-declaration" and not record:
             updates[f"apply_documents.{doc_id}"] = {
                 "mentor_status": DOC_MENTOR_STATUS_APPROVED,
                 "mentor_note": "",
                 "mentor_updated_at": now,
-                "mentor_unread": False,
                 "mentor_viewed_at": now,
+                "mentor_processed_at": now,
                 "mentee_unread_feedback": True,
             }
 
-    users.update_one({"_id": ObjectId(mentee["_id"])}, {"$set": updates})
+    unset_fields = {f"apply_documents.{doc_id}.scheduled_process_at": "" for doc_id in doc_ids}
+    users.update_one({"_id": ObjectId(mentee["_id"])}, {"$set": updates, "$unset": unset_fields})
+
+    for doc_id in doc_ids:
+        sync_apply_inbox_confirm(mentee_id, doc_id, via="app")
 
     labels = [APPLY_DOC_LABELS.get(doc_id, doc_id) for doc_id in doc_ids]
     notify_mentee_mentor_activity(
@@ -397,22 +401,119 @@ def admin_mark_mentee_document_viewed(mentee_id: str, doc_id: str):
         return jsonify({"detail": "Mentee chưa có giấy tờ này"}), 400
 
     updates = {
-        f"apply_documents.{doc_id}.mentor_unread": False,
         f"apply_documents.{doc_id}.mentor_viewed_at": now,
     }
     if doc_id == "personal-declaration" and not record:
         updates[f"apply_documents.{doc_id}"] = {
-            "mentor_unread": False,
             "mentor_viewed_at": now,
             "mentor_status": DOC_MENTOR_STATUS_WAITING,
         }
 
     users.update_one({"_id": ObjectId(mentee["_id"])}, {"$set": updates})
+    sync_apply_inbox_view(mentee_id, doc_id)
 
     fresh = users.find_one({"_id": ObjectId(mentee["_id"])}) or mentee
     fresh_record = (fresh.get("apply_documents") or {}).get(doc_id) or {}
     item = serialize_apply_document_for_admin(doc_id, fresh_record, fresh, mentee_id)
     return jsonify(item)
+
+
+@app.post("/api/admin/mentees/<mentee_id>/documents/<doc_id>/process")
+@with_db
+def admin_mark_mentee_document_processed(mentee_id: str, doc_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    if doc_id not in VALID_APPLY_DOC_IDS:
+        return jsonify({"detail": "Mục giấy tờ không hợp lệ"}), 400
+
+    mentee, error = get_mentee_for_admin(admin, mentee_id)
+    if error:
+        return error
+
+    from bson import ObjectId
+
+    now = datetime.now(timezone.utc)
+    apply_docs = mentee.get("apply_documents") or {}
+    record = apply_docs.get(doc_id) or {}
+
+    if not apply_document_has_content(doc_id, record, mentee):
+        return jsonify({"detail": "Mentee chưa có giấy tờ này"}), 400
+
+    updates = {
+        f"apply_documents.{doc_id}.mentor_viewed_at": now,
+        f"apply_documents.{doc_id}.mentor_processed_at": now,
+    }
+    users.update_one(
+        {"_id": ObjectId(mentee["_id"])},
+        {
+            "$set": updates,
+            "$unset": {f"apply_documents.{doc_id}.scheduled_process_at": ""},
+        },
+    )
+    sync_apply_inbox_confirm(mentee_id, doc_id, via="app")
+
+    fresh = users.find_one({"_id": ObjectId(mentee["_id"])}) or mentee
+    fresh_record = (fresh.get("apply_documents") or {}).get(doc_id) or {}
+    item = serialize_apply_document_for_admin(doc_id, fresh_record, fresh, mentee_id)
+    return jsonify(item)
+
+
+@app.patch("/api/admin/mentees/<mentee_id>/documents/<doc_id>/schedule")
+@with_db
+def admin_schedule_mentee_document_process(mentee_id: str, doc_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    if doc_id not in VALID_APPLY_DOC_IDS:
+        return jsonify({"detail": "Mục giấy tờ không hợp lệ"}), 400
+
+    mentee, error = get_mentee_for_admin(admin, mentee_id)
+    if error:
+        return error
+
+    data = request.get_json(silent=True) or {}
+    reminder_at_raw = (data.get("scheduled_at") or data.get("reminder_at") or "").strip()
+    if not reminder_at_raw:
+        return jsonify({"detail": "Cần scheduled_at (ISO datetime)"}), 400
+
+    try:
+        reminder_at = datetime.fromisoformat(reminder_at_raw.replace("Z", "+00:00"))
+    except ValueError:
+        return jsonify({"detail": "Thời gian hẹn không hợp lệ"}), 400
+
+    if reminder_at.tzinfo is None:
+        reminder_at = reminder_at.replace(tzinfo=timezone.utc)
+
+    now = datetime.now(timezone.utc)
+    if reminder_at <= now:
+        return jsonify({"detail": "Thời gian hẹn phải ở tương lai"}), 400
+
+    from bson import ObjectId
+
+    apply_docs = mentee.get("apply_documents") or {}
+    record = apply_docs.get(doc_id) or {}
+    if not apply_document_has_content(doc_id, record, mentee):
+        return jsonify({"detail": "Mentee chưa có giấy tờ này"}), 400
+
+    users.update_one(
+        {"_id": ObjectId(mentee["_id"])},
+        {"$set": {f"apply_documents.{doc_id}.scheduled_process_at": reminder_at}},
+    )
+    sync_apply_inbox_schedule(mentee_id, doc_id, reminder_at=reminder_at)
+
+    fresh = users.find_one({"_id": ObjectId(mentee["_id"])}) or mentee
+    fresh_record = (fresh.get("apply_documents") or {}).get(doc_id) or {}
+    item = serialize_apply_document_for_admin(doc_id, fresh_record, fresh, mentee_id)
+    return jsonify({"message": "Đã hẹn ngày xử lí", "item": item})
 
 
 @app.get("/api/admin/language-updates")
@@ -590,8 +691,8 @@ def admin_review_apply_document(mentee_id: str, doc_id: str):
         f"apply_documents.{doc_id}.mentor_status": mentor_status,
         f"apply_documents.{doc_id}.mentor_note": mentor_note,
         f"apply_documents.{doc_id}.mentor_updated_at": now,
-        f"apply_documents.{doc_id}.mentor_unread": False,
         f"apply_documents.{doc_id}.mentor_viewed_at": now,
+        f"apply_documents.{doc_id}.mentor_processed_at": now,
         f"apply_documents.{doc_id}.mentee_unread_feedback": True,
     }
 
@@ -600,12 +701,13 @@ def admin_review_apply_document(mentee_id: str, doc_id: str):
             "mentor_status": mentor_status,
             "mentor_note": mentor_note,
             "mentor_updated_at": now,
-            "mentor_unread": False,
             "mentor_viewed_at": now,
+            "mentor_processed_at": now,
             "mentee_unread_feedback": True,
         }
 
-    users.update_one({"_id": mentee_oid}, {"$set": updates})
+    users.update_one({"_id": mentee_oid}, {"$set": updates, "$unset": {f"apply_documents.{doc_id}.scheduled_process_at": ""}})
+    sync_apply_inbox_confirm(mentee_id, doc_id, via="app")
 
     doc_label = APPLY_DOC_LABELS.get(doc_id, doc_id)
     profile_url = os.getenv("MENTEE_PROFILE_URL", "http://localhost:5173/profile").strip()

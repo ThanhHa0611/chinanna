@@ -41,11 +41,14 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [inboxItems, setInboxItems] = useState([]);
-  const [inboxBoard, setInboxBoard] = useState(null);
+  const [dailySummary, setDailySummary] = useState(null);
+  const [archiveDays, setArchiveDays] = useState([]);
   const [inboxPendingCount, setInboxPendingCount] = useState(0);
   const [inboxSavingId, setInboxSavingId] = useState('');
   const [reminderDrafts, setReminderDrafts] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
+  const [archiveView, setArchiveView] = useState(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
 
   const canSeeProcessor = Boolean(admin?.is_super_admin || isLevel1MentorAccount(admin));
 
@@ -56,7 +59,8 @@ export default function Home() {
         setMentees(menteeData || []);
         setFeedback(feedbackData || []);
         setInboxItems(inboxData?.items || []);
-        setInboxBoard(inboxData?.board || null);
+        setDailySummary(inboxData?.daily_summary || null);
+        setArchiveDays(inboxData?.archive_days || []);
         setInboxPendingCount(inboxData?.pending_count || 0);
       })
       .catch((err) => setError(err.message))
@@ -152,7 +156,8 @@ export default function Home() {
   const refreshInbox = () =>
     api.getInbox().then((data) => {
       setInboxItems(data?.items || []);
-      setInboxBoard(data?.board || null);
+      setDailySummary(data?.daily_summary || null);
+      setArchiveDays(data?.archive_days || []);
       setInboxPendingCount(data?.pending_count || 0);
     });
 
@@ -162,6 +167,20 @@ export default function Home() {
       [sectionKey]: !prev[sectionKey],
     }));
   };
+
+  const openArchiveDay = async (dateKey) => {
+    setArchiveLoading(true);
+    try {
+      const data = await api.getInboxArchiveDay(dateKey);
+      setArchiveView(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setArchiveLoading(false);
+    }
+  };
+
+  const closeArchiveView = () => setArchiveView(null);
 
   const handleViewInbox = async (item) => {
     setInboxSavingId(item.id);
@@ -190,7 +209,7 @@ export default function Home() {
     }
   };
 
-  const handleUpdateReminder = async (taskId, mode = 'hours') => {
+  const handleUpdateReminder = async (taskId, mode = 'datetime') => {
     setInboxSavingId(taskId);
     try {
       const payload =
@@ -206,44 +225,29 @@ export default function Home() {
     }
   };
 
-  const renderInboxRow = (item) => {
-    const stateClass =
-      item.display_state === 'done'
-        ? 'is-done'
-        : item.display_state === 'viewed'
-          ? 'is-viewed'
-          : 'is-new';
-    const stateLabel =
-      item.display_state === 'done'
-        ? `Đã xử lí${item.processed_via ? ` (${item.processed_via})` : ''}`
-        : item.display_state === 'viewed'
-          ? 'Đã xem · chưa xử lí · nhắc dự kiến ngày mai'
-          : 'Chưa xem';
+  const renderDailySummaryRow = (item, { readOnly = false } = {}) => {
+    const isDone = item.is_processed || item.display_state === 'done' || item.status === 'done';
+    const isViewed = !isDone && (item.display_state === 'viewed' || Boolean(item.viewed_at));
+    const stateClass = isDone ? 'is-done' : isViewed ? 'is-viewed' : 'is-new';
+    const statusClass = isDone ? 'is-done' : isViewed ? 'is-viewed' : 'is-new';
+    const statusLine =
+      item.status_line ||
+      (isDone ? 'Đã xử lí' : isViewed ? 'Đã xem · chưa xử lí' : 'Chưa xem');
+    const reminderHours = reminderDrafts[`${item.id}-hours`] ?? 24;
 
     return (
-      <div key={item.id} className={`home-inbox-item ${stateClass}`}>
-        <div className="home-inbox-main">
-          <strong>{item.summary_line || item.title}</strong>
-          <span className="muted home-inbox-meta">
-            {item.mentee_name || item.mentee_email} · {formatDateTime(item.created_at)}
+      <div key={item.id} className={`daily-summary-row ${stateClass}`}>
+        <div className="daily-summary-main">
+          <span className="daily-summary-action">{item.action_line || item.summary_line || item.title}</span>
+          <span className={`daily-summary-status-line daily-summary-badge ${statusClass}`}>
+            {statusLine}
           </span>
-          {item.description && item.description !== item.summary_line && (
-            <p className="home-inbox-desc">{item.description}</p>
-          )}
-          <span className={`home-inbox-status status-${item.display_state || 'new'}`}>
-            {stateLabel}
-          </span>
-          {item.status === 'pending' && item.next_reminder_at && (
-            <span className="muted home-inbox-remind">
-              Nhắc lại: {formatDateTime(item.next_reminder_at)}
-            </span>
-          )}
         </div>
-        {item.status === 'pending' && (
-          <div className="home-inbox-actions">
+        {!readOnly && !isDone && (
+          <div className="daily-summary-actions-inline">
             <button
               type="button"
-              className="btn btn-outline btn-sm"
+              className="daily-summary-link"
               disabled={inboxSavingId === item.id}
               onClick={() => handleViewInbox(item)}
             >
@@ -251,19 +255,19 @@ export default function Home() {
             </button>
             <button
               type="button"
-              className="btn btn-primary btn-sm"
+              className="daily-summary-link confirm-link"
               disabled={inboxSavingId === item.id}
               onClick={() => handleConfirmInbox(item.id)}
             >
-              {inboxSavingId === item.id ? '...' : 'Đã xử lí'}
+              Đã xử lí
             </button>
-            <label className="home-inbox-reminder-field">
+            <label className="daily-summary-reminder-field">
               Nhắc sau (giờ)
               <input
                 type="number"
                 min="1"
                 max="720"
-                value={reminderDrafts[`${item.id}-hours`] ?? item.reminder_interval_hours ?? 24}
+                value={reminderHours}
                 onChange={(e) =>
                   setReminderDrafts((prev) => ({
                     ...prev,
@@ -274,38 +278,12 @@ export default function Home() {
             </label>
             <button
               type="button"
-              className="btn btn-outline btn-sm"
+              className="daily-summary-link muted-link"
               disabled={inboxSavingId === item.id}
               onClick={() => handleUpdateReminder(item.id, 'hours')}
             >
-              Lưu giờ
+              Lưu nhắc
             </button>
-            <label className="home-inbox-reminder-field">
-              Hoặc chọn ngày giờ
-              <input
-                type="datetime-local"
-                value={reminderDrafts[item.id] || ''}
-                onChange={(e) =>
-                  setReminderDrafts((prev) => ({
-                    ...prev,
-                    [item.id]: e.target.value,
-                  }))
-                }
-              />
-            </label>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              disabled={inboxSavingId === item.id || !reminderDrafts[item.id]}
-              onClick={() => handleUpdateReminder(item.id, 'datetime')}
-            >
-              Lưu lịch
-            </button>
-            {item.mentee_id && (
-              <Link to="/mentees" className="btn btn-outline btn-sm">
-                Mở mentee
-              </Link>
-            )}
           </div>
         )}
       </div>
@@ -361,48 +339,103 @@ export default function Home() {
         )}
       </div>
 
-      {(inboxBoard?.sections?.some((s) => s.item_count > 0) || inboxItems.length > 0) && (
-        <div className="panel-card home-inbox-panel">
-          <div className="home-section-head">
-            <div>
-              <h3>{inboxBoard?.title || 'Tổng hợp Trơn Tru hôm nay'}</h3>
-              <p className="muted">
-                {inboxPendingCount} chưa xử lí · Đồng bộ với email · Hàng xám = đã xem, chưa xử lí
-              </p>
-            </div>
-          </div>
-          <div className="home-inbox-board">
-            {(inboxBoard?.sections || []).map((section) => {
-              if (!section.item_count) return null;
-              const collapsed = collapsedSections[section.key];
-              return (
-                <section key={section.key} className="home-inbox-section">
-                  <button
-                    type="button"
-                    className="home-inbox-section-head"
-                    onClick={() => toggleSection(section.key)}
-                    aria-expanded={!collapsed}
-                  >
-                    <span>
-                      {section.label}
-                      <span className="home-inbox-section-count">
-                        {section.pending_count > 0
-                          ? `${section.pending_count} chưa xử lí`
-                          : `${section.item_count} mục`}
-                      </span>
-                    </span>
-                    <span className="home-inbox-section-toggle">
-                      {collapsed ? 'Mở rộng' : 'Thu gọn'}
-                    </span>
-                  </button>
-                  {!collapsed && (
-                    <div className="home-inbox-list">
-                      {section.items.map((item) => renderInboxRow(item))}
+      {(dailySummary?.items?.length > 0 || archiveDays.length > 0 || inboxItems.length > 0) && (
+        <div className="daily-summary-wrap">
+          {(dailySummary?.items?.length > 0 || inboxItems.length > 0) && (
+            <div className="panel-card daily-summary-panel">
+              <button
+                type="button"
+                className="daily-summary-head"
+                onClick={() => toggleSection('today')}
+                aria-expanded={!collapsedSections.today}
+              >
+                <span className="daily-summary-title">{dailySummary?.title || 'Tóm tắt ngày'}</span>
+                <span className="daily-summary-toggle">
+                  {collapsedSections.today ? 'Mở rộng' : 'Thu gọn'}
+                </span>
+              </button>
+              {!collapsedSections.today && (
+                <div className="daily-summary-body">
+                  <p className="daily-summary-date">
+                    Ngày {dailySummary?.date_label || '—'}
+                  </p>
+                  {(dailySummary?.items || []).length === 0 ? (
+                    <p className="muted">Không có hoạt động hôm nay.</p>
+                  ) : (
+                    <div className="daily-summary-list">
+                      {(dailySummary?.items || []).map((item) => renderDailySummaryRow(item))}
                     </div>
                   )}
-                </section>
-              );
-            })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {archiveDays.length > 0 && (
+            <div className="panel-card daily-summary-panel">
+              <button
+                type="button"
+                className="daily-summary-head"
+                onClick={() => toggleSection('archive')}
+                aria-expanded={!collapsedSections.archive}
+              >
+                <span className="daily-summary-title">Bảng tin trước</span>
+                <span className="daily-summary-toggle">
+                  {collapsedSections.archive ? 'Mở rộng' : 'Thu gọn'}
+                </span>
+              </button>
+              {!collapsedSections.archive && (
+                <div className="daily-summary-body">
+                  <div className="daily-summary-archive-list">
+                    {archiveDays.map((day) => (
+                      <div key={day.date} className="daily-summary-archive-row">
+                        <span>Ngày {day.date_label}</span>
+                        <button
+                          type="button"
+                          className="daily-summary-link"
+                          disabled={archiveLoading}
+                          onClick={() => openArchiveDay(day.date)}
+                        >
+                          Xem
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {archiveView && (
+        <div className="daily-summary-modal-backdrop" onClick={closeArchiveView} role="presentation">
+          <div
+            className="panel-card daily-summary-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="archive-summary-title"
+          >
+            <div className="daily-summary-head static-head">
+              <div>
+                <h3 id="archive-summary-title">{archiveView.title || 'Tóm tắt ngày'}</h3>
+                <p className="daily-summary-date">Ngày {archiveView.date_label}</p>
+              </div>
+              <button type="button" className="btn btn-outline btn-sm" onClick={closeArchiveView}>
+                Đóng
+              </button>
+            </div>
+            <div className="daily-summary-body">
+              {(archiveView.items || []).length === 0 ? (
+                <p className="muted">Không có mục nào trong ngày này.</p>
+              ) : (
+                <div className="daily-summary-list">
+                  {(archiveView.items || []).map((item) =>
+                    renderDailySummaryRow(item, { readOnly: true }),
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

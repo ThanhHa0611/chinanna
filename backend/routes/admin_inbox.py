@@ -44,7 +44,14 @@ from services.utils import *
 @app.get("/api/admin/inbox")
 @with_db
 def admin_inbox_list():
-    from inbox_tasks import build_daily_board, list_inbox_for_admin, process_due_reminders
+    from inbox_tasks import (
+        build_daily_board,
+        build_daily_summary,
+        ensure_stale_pending_daily_reminders,
+        list_archive_days,
+        list_inbox_for_admin,
+        process_due_reminders,
+    )
 
     admin, error_response = get_authenticated_admin()
     if error_response:
@@ -53,15 +60,43 @@ def admin_inbox_list():
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
+    ensure_stale_pending_daily_reminders(mentor_inbox)
     process_due_reminders(mentor_inbox, send_daily_inbox_summary_for_mentor)
     items = list_inbox_for_admin(mentor_inbox, admin, limit=100, base_url=BACKEND_PUBLIC_URL)
     pending = [item for item in items if item.get("status") == "pending"]
     board = build_daily_board(items)
+    daily_summary = build_daily_summary(items)
+    archive_days = list_archive_days(mentor_inbox, admin, limit=30)
     return jsonify({
         "items": items,
         "pending_count": len(pending),
         "board": board,
+        "daily_summary": daily_summary,
+        "archive_days": archive_days,
     })
+
+
+@app.get("/api/admin/inbox/archive/<date_key>")
+@with_db
+def admin_inbox_archive_day(date_key: str):
+    from inbox_tasks import build_archive_day_summary, list_inbox_for_day
+
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    items = list_inbox_for_day(
+        mentor_inbox,
+        admin,
+        date_key,
+        limit=100,
+        base_url=BACKEND_PUBLIC_URL,
+    )
+    summary = build_archive_day_summary(items, date_key)
+    return jsonify(summary)
 
 
 @app.post("/api/admin/inbox/<task_id>/view")

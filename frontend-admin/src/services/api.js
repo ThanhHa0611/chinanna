@@ -135,6 +135,9 @@ export const api = {
 
   getInbox: () => request('/api/admin/inbox'),
 
+  getInboxArchiveDay: (dateKey) =>
+    request(`/api/admin/inbox/archive/${encodeURIComponent(dateKey)}`),
+
   confirmInboxTask: (taskId) =>
     request(`/api/admin/inbox/${taskId}/confirm`, { method: 'POST' }),
 
@@ -164,6 +167,17 @@ export const api = {
   markMenteeDocumentViewed: (menteeId, docId) =>
     request(`/api/admin/mentees/${menteeId}/documents/${docId}/view`, {
       method: 'POST',
+    }),
+
+  markMenteeDocumentProcessed: (menteeId, docId) =>
+    request(`/api/admin/mentees/${menteeId}/documents/${docId}/process`, {
+      method: 'POST',
+    }),
+
+  scheduleMenteeDocumentProcess: (menteeId, docId, body) =>
+    request(`/api/admin/mentees/${menteeId}/documents/${docId}/schedule`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
     }),
 
   ackPreferredSchoolsNote: (menteeId) =>

@@ -285,6 +285,7 @@ def serialize_admin_mentee_summary(user: dict, admin: dict | None = None) -> dic
             user.get("personal_declaration") or {},
         ),
         "unread_documents_count": count_unread_apply_documents(user),
+        "processed_documents_count": count_processed_apply_documents(user),
         "scholarship_system": user.get("scholarship_system", ""),
         "scholarship_system_label": scholarship_system_label(user.get("scholarship_system", "")),
         "apply_direction": user.get("apply_direction", ""),
@@ -301,6 +302,7 @@ def serialize_admin_mentee_summary(user: dict, admin: dict | None = None) -> dic
         "zalo_phone": user.get("zalo_phone", ""),
         "account_password": user.get("mentor_visible_password", ""),
         "uploaded_count": count_uploaded_apply_documents(user),
+        "approved_count": count_approved_apply_documents(user),
         "total_documents_count": len(VALID_APPLY_DOC_IDS),
         "submitted_schools_count": count_submitted_apply_schools(user),
         "total_schools_count": get_apply_progress_row_count(user),
@@ -401,6 +403,7 @@ def serialize_admin_mentee_detail(user: dict, admin: dict | None = None) -> dict
     summary["documents"] = documents
     summary["admin_documents_count"] = len(documents)
     summary["uploaded_count"] = count_uploaded_apply_documents(user)
+    summary["approved_count"] = count_approved_apply_documents(user)
     summary["total_documents_count"] = len(VALID_APPLY_DOC_IDS)
     summary["apply_progress"] = serialize_apply_progress_payload(user, viewer, include_activity=True)
     summary["apply_progress_pending_count"] = summary["apply_progress"]["pending_count"]

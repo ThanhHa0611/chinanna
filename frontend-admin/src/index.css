@@ -1456,6 +1456,20 @@ th {
   color: var(--text);
 }
 
+.mentee-folder-doc-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(201, 141, 168, 0.15);
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
 .mentee-folder-meta {
   font-size: 0.76rem;
   color: var(--text-muted);
@@ -1787,7 +1801,24 @@ th {
 }
 
 .apply-doc-item-unread {
-  box-shadow: inset 0 0 0 1px rgba(246, 224, 94, 0.35);
+  box-shadow: inset 3px 0 0 #eb2233;
+  background: rgba(235, 34, 51, 0.05);
+}
+
+.apply-doc-schedule-panel {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.apply-doc-schedule-panel input[type='datetime-local'] {
+  font-size: 0.85rem;
 }
 
 .apply-global-download-panel {
@@ -2198,6 +2229,20 @@ th {
   border-radius: 999px;
   background: rgba(201, 141, 168, 0.15);
   border: 1px solid var(--border);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.apply-doc-approved-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.35rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(72, 187, 120, 0.12);
+  border: 1px solid rgba(72, 187, 120, 0.35);
   font-size: 0.82rem;
   font-weight: 600;
   color: var(--text);
@@ -3007,4 +3052,257 @@ html.device-phone .home-inbox-actions {
 
 html.device-phone .home-inbox-actions .btn {
   flex: 1 1 calc(50% - 0.25rem);
+}
+
+.daily-summary-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.daily-summary-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.daily-summary-head {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: #fafafa;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.daily-summary-head.static-head {
+  cursor: default;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+
+.daily-summary-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.daily-summary-toggle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.daily-summary-body {
+  padding: 0.75rem 1rem 1rem;
+}
+
+.daily-summary-date {
+  margin: 0 0 0.65rem;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.daily-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.daily-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+
+.daily-summary-row:last-child {
+  border-bottom: none;
+}
+
+.daily-summary-row.is-viewed {
+  background: #f3f4f6;
+}
+
+.daily-summary-main {
+  flex: 1;
+  min-width: min(100%, 12rem);
+}
+
+.daily-summary-action {
+  display: block;
+  font-size: 0.92rem;
+}
+
+.daily-summary-status-line {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.daily-summary-badge.is-viewed {
+  color: #6b7280;
+}
+
+.daily-summary-badge.is-new {
+  color: #c05621;
+}
+
+.daily-summary-reminder-field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.daily-summary-reminder-field input {
+  width: 4.5rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.78rem;
+}
+
+.daily-summary-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.daily-summary-badge {
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.daily-summary-badge.is-done {
+  color: #276749;
+}
+
+.daily-summary-badge.is-pending {
+  color: #c05621;
+}
+
+.daily-summary-actions-inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.daily-summary-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--accent, #2563eb);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.daily-summary-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.daily-summary-link.muted-link {
+  color: var(--text-muted);
+}
+
+.daily-summary-link.confirm-link {
+  color: #276749;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.daily-summary-schedule {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: flex-end;
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed var(--border);
+}
+
+.daily-summary-schedule-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.daily-summary-schedule-field input {
+  padding: 0.35rem 0.45rem;
+}
+
+.daily-summary-scheduled-at {
+  font-size: 0.75rem;
+  align-self: center;
+}
+
+.daily-summary-archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.daily-summary-archive-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+
+.daily-summary-archive-row:last-child {
+  border-bottom: none;
+}
+
+.daily-summary-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.daily-summary-modal {
+  width: min(100%, 42rem);
+  max-height: min(85vh, 36rem);
+  overflow: auto;
+  padding: 0;
+}
+
+html.device-phone .daily-summary-row {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+html.device-phone .daily-summary-status {
+  width: 100%;
 }

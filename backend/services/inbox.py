@@ -124,7 +124,6 @@ def apply_inbox_view_side_effects(task: dict):
             {"_id": mentee_oid},
             {
                 "$set": {
-                    f"apply_documents.{doc_id}.mentor_unread": False,
                     f"apply_documents.{doc_id}.mentor_viewed_at": now,
                 }
             },
@@ -152,9 +151,10 @@ def apply_inbox_confirm_side_effects(task: dict):
             {"_id": mentee_oid},
             {
                 "$set": {
-                    f"apply_documents.{doc_id}.mentor_unread": False,
                     f"apply_documents.{doc_id}.mentor_viewed_at": now,
-                }
+                    f"apply_documents.{doc_id}.mentor_processed_at": now,
+                },
+                "$unset": {f"apply_documents.{doc_id}.scheduled_process_at": ""},
             },
         )
     elif action == "feedback":

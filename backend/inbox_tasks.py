@@ -117,22 +117,83 @@ def task_display_state(doc: dict) -> str:
     return "new"
 
 
-def format_task_summary_line(doc: dict) -> str:
-    created = _parse_dt(doc.get("created_at"))
-    date_part = ""
-    if created:
-        local = created.astimezone(VN_TZ)
-        date_part = f"{local.day}/{local.month}/{local.year}"
+def format_mentee_action_line(doc: dict) -> str:
+    """Display line for daily summary: «Hà Phương đã nộp giấy tờ»."""
     mentee = (doc.get("mentee_name") or doc.get("mentee_email") or "Mentee").strip()
     action = doc.get("action") or ""
     verb = ACTION_SUMMARY_VERBS.get(action)
     if verb:
         detail = doc.get("description") or doc.get("title") or ""
         if action == "document_upload" and detail:
-            return f"{date_part} {mentee} {verb}: {detail}" if date_part else f"{mentee} {verb}: {detail}"
-        return f"{date_part} {mentee} {verb}" if date_part else f"{mentee} {verb}"
+            return f"{mentee} {verb}: {detail}"
+        return f"{mentee} {verb}"
     title = doc.get("title") or doc.get("description") or "Có cập nhật mới"
-    return f"{date_part} {title}" if date_part else title
+    return f"{mentee} · {title}"
+
+
+def format_task_summary_line(doc: dict) -> str:
+    created = _parse_dt(doc.get("created_at"))
+    date_part = ""
+    if created:
+        local = created.astimezone(VN_TZ)
+        date_part = f"{local.day}/{local.month}/{local.year}"
+    action_line = format_mentee_action_line(doc)
+    return f"{date_part} {action_line}" if date_part else action_line
+
+
+def format_reminder_hint(next_reminder_at) -> str:
+    dt = _parse_dt(next_reminder_at)
+    if not dt:
+        return ""
+    local = dt.astimezone(VN_TZ)
+    today = datetime.now(VN_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow = today + timedelta(days=1)
+    reminder_day = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    if reminder_day == tomorrow:
+        return "nhắc dự kiến ngày mai"
+    return f"nhắc dự kiến {local.day}/{local.month}/{local.year}"
+
+
+def format_task_status_line(doc: dict) -> str:
+    if doc.get("status") == "done":
+        return "Đã xử lí"
+    if not doc.get("viewed_at"):
+        return "Chưa xem"
+    parts = ["Đã xem", "chưa xử lí"]
+    reminder = format_reminder_hint(doc.get("next_reminder_at"))
+    if reminder:
+        parts.append(reminder)
+    return " · ".join(parts)
+
+
+def _vn_day_start_from_dt(dt: datetime) -> datetime:
+    local = dt.astimezone(VN_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    return local.astimezone(timezone.utc)
+
+
+def _vn_day_start_from_key(date_key: str) -> datetime | None:
+    """Parse YYYY-MM-DD (VN calendar day) to UTC start."""
+    try:
+        year, month, day = (int(part) for part in date_key.split("-"))
+        local = datetime(year, month, day, tzinfo=VN_TZ)
+        return local.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def _vn_morning_on_day(day_start_utc: datetime, hour: int = 8) -> datetime:
+    local = day_start_utc.astimezone(VN_TZ)
+    morning = local.replace(hour=hour, minute=0, second=0, microsecond=0)
+    return morning.astimezone(timezone.utc)
+
+
+def doc_belongs_to_vn_day(doc: dict, day_start: datetime) -> bool:
+    day_end = day_start + timedelta(days=1)
+    for field in ("created_at", "processed_at"):
+        dt = _parse_dt(doc.get(field))
+        if dt and day_start <= dt < day_end:
+            return True
+    return False
 
 
 def task_visible_on_daily_board(doc: dict) -> bool:
@@ -318,6 +379,31 @@ def list_inbox_for_admin(collection, admin: dict, *, limit: int = 80, base_url: 
     return items
 
 
+def enrich_daily_summary_item(item: dict) -> dict:
+    is_processed = item.get("status") == "done"
+    return {
+        **item,
+        "action_line": format_mentee_action_line(item),
+        "is_processed": is_processed,
+        "status_label": "Đã xử lí" if is_processed else "Chưa xử lí",
+        "status_line": format_task_status_line(item),
+        "scheduled_at": item.get("next_reminder_at") or "",
+    }
+
+
+def build_daily_summary(items: list[dict]) -> dict:
+    today_label = format_date_vn_line(_now())
+    summary_items = [enrich_daily_summary_item(item) for item in items]
+    pending_count = sum(1 for item in summary_items if not item.get("is_processed"))
+    return {
+        "date_label": today_label,
+        "title": "Tóm tắt ngày",
+        "items": summary_items,
+        "item_count": len(summary_items),
+        "pending_count": pending_count,
+    }
+
+
 def build_daily_board(items: list[dict]) -> dict:
     today_label = format_date_vn_title(_now())
     sections = []
@@ -338,6 +424,107 @@ def build_daily_board(items: list[dict]) -> dict:
         "title": f"Tổng hợp Trơn Tru ngày {today_label}",
         "sections": sections,
     }
+
+
+def list_archive_days(collection, admin: dict, *, limit: int = 30) -> list[dict]:
+    mentor_name = (admin.get("mentor_name") or "").strip()
+    filt = mentor_inbox_filter(admin, mentor_name)
+    today_start = _vn_today_start()
+    cursor = collection.find(filt).sort("created_at", -1).limit(500)
+    day_counts: dict[str, dict] = {}
+    for doc in cursor:
+        doc_id = str(doc["_id"])
+        touched_days: set[str] = set()
+        for field in ("created_at", "processed_at"):
+            dt = _parse_dt(doc.get(field))
+            if not dt:
+                continue
+            day_start = _vn_day_start_from_dt(dt)
+            if day_start >= today_start:
+                continue
+            key = day_start.astimezone(VN_TZ).strftime("%Y-%m-%d")
+            touched_days.add(key)
+        for key in touched_days:
+            bucket = day_counts.setdefault(
+                key,
+                {
+                    "date": key,
+                    "date_label": format_date_vn_line(_vn_day_start_from_key(key)),
+                    "item_count": 0,
+                    "pending_count": 0,
+                    "_seen": set(),
+                },
+            )
+            if doc_id in bucket["_seen"]:
+                continue
+            bucket["_seen"].add(doc_id)
+            bucket["item_count"] += 1
+            if doc.get("status") == "pending":
+                bucket["pending_count"] += 1
+    days = []
+    for row in day_counts.values():
+        row.pop("_seen", None)
+        days.append(row)
+    days.sort(key=lambda row: row["date"], reverse=True)
+    return days[:limit]
+
+
+def list_inbox_for_day(
+    collection,
+    admin: dict,
+    date_key: str,
+    *,
+    limit: int = 100,
+    base_url: str = "",
+) -> list[dict]:
+    day_start = _vn_day_start_from_key(date_key)
+    if not day_start:
+        return []
+    day_end = day_start + timedelta(days=1)
+    mentor_name = (admin.get("mentor_name") or "").strip()
+    filt = mentor_inbox_filter(admin, mentor_name)
+    filt["$or"] = [
+        {"created_at": {"$gte": day_start, "$lt": day_end}},
+        {"processed_at": {"$gte": day_start, "$lt": day_end}},
+    ]
+    cursor = collection.find(filt).sort("created_at", -1).limit(limit)
+    items = []
+    for doc in cursor:
+        items.append(serialize_inbox_task(doc, base_url=base_url))
+    return items
+
+
+def build_archive_day_summary(items: list[dict], date_key: str) -> dict:
+    day_start = _vn_day_start_from_key(date_key)
+    date_label = format_date_vn_line(day_start) if day_start else date_key
+    summary_items = [enrich_daily_summary_item(item) for item in items]
+    pending_count = sum(1 for item in summary_items if not item.get("is_processed"))
+    return {
+        "date": date_key,
+        "date_label": date_label,
+        "title": "Tóm tắt ngày",
+        "items": summary_items,
+        "item_count": len(summary_items),
+        "pending_count": pending_count,
+    }
+
+
+def ensure_stale_pending_daily_reminders(collection) -> int:
+    """Roll unprocessed items from previous days to today's morning reminder."""
+    today_start = _vn_today_start()
+    morning = _vn_morning_on_day(today_start, 8)
+    now = _now()
+    target = morning if now < morning else now
+    result = collection.update_many(
+        {
+            "audience": "mentor",
+            "status": "pending",
+            "created_at": {"$lt": today_start},
+            "next_reminder_at": {"$lt": today_start},
+        },
+        {"$set": {"next_reminder_at": target, "reminder_interval_hours": DEFAULT_REMINDER_HOURS}},
+    )
+    return result.modified_count
 
 
 def confirm_inbox_task(collection, *, task_id=None, confirm_token=None, via: str = "app") -> dict | None:

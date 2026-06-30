@@ -38,13 +38,45 @@ from services.inbox import *
 from services.notifications import *
 from services.utils import *
 
+def _apply_doc_vn_today_start() -> datetime:
+    from zoneinfo import ZoneInfo
+
+    vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+    local_now = datetime.now(vn_tz)
+    start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return start.astimezone(timezone.utc)
+
+
+def _apply_doc_vn_day_start(value) -> datetime | None:
+    from zoneinfo import ZoneInfo
+
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+    local = dt.astimezone(vn_tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    return local.astimezone(timezone.utc)
+
+
+def apply_document_is_processed(record: dict | None) -> bool:
+    record = record or {}
+    return bool(record.get("mentor_processed_at"))
+
+
 def is_apply_document_unread(doc_id: str, record: dict | None, user: dict | None = None) -> bool:
+    """True when mentor should pay attention (new upload, or viewed but not processed past due)."""
     record = record or {}
     user = user or {}
-    if record.get("mentor_unread") is True:
-        return True
-    if record.get("mentor_unread") is False:
-        return False
     if record.get("mentor_handles") or record.get("needs_mentor_edit"):
         return True
     if doc_id == "language":
@@ -53,7 +85,28 @@ def is_apply_document_unread(doc_id: str, record: dict | None, user: dict | None
             return True
     if not apply_document_has_content(doc_id, record, user):
         return False
-    return not record.get("mentor_viewed_at")
+    if apply_document_is_processed(record):
+        return False
+
+    now = datetime.now(timezone.utc)
+    scheduled = record.get("scheduled_process_at")
+    if scheduled:
+        if scheduled.tzinfo is None:
+            scheduled = scheduled.replace(tzinfo=timezone.utc)
+        if scheduled > now:
+            return False
+
+    viewed_at = record.get("mentor_viewed_at")
+    if not viewed_at:
+        return True
+
+    if viewed_at.tzinfo is None:
+        viewed_at = viewed_at.replace(tzinfo=timezone.utc)
+    viewed_day = _apply_doc_vn_day_start(viewed_at)
+    today_start = _apply_doc_vn_today_start()
+    if viewed_day and viewed_day >= today_start and not scheduled:
+        return False
+    return True
 
 
 def count_mentee_unread_mentor_uploads(user: dict) -> int:

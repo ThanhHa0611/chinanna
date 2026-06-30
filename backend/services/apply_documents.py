@@ -42,6 +42,11 @@ def apply_doc_upload_dir(user_id: str, doc_id: str) -> Path:
     return UPLOAD_ROOT / str(user_id) / doc_id
 
 
+def apply_document_is_processed(record: dict | None) -> bool:
+    record = record or {}
+    return bool(record.get("mentor_processed_at"))
+
+
 def serialize_apply_document(doc_id: str, record: dict | None, user: dict | None = None) -> dict:
     record = record or {}
     item = {
@@ -99,6 +104,59 @@ def count_unread_apply_documents(user: dict) -> int:
         if is_apply_document_unread(doc_id, record, user):
             unread += 1
     return unread
+
+
+def count_processed_apply_documents(user: dict) -> int:
+    apply_docs = user.get("apply_documents") or {}
+    count = 0
+    for doc_id in VALID_APPLY_DOC_IDS:
+        record = apply_docs.get(doc_id) or {}
+        if not apply_document_has_content(doc_id, record, user):
+            continue
+        if apply_document_is_processed(record):
+            count += 1
+    return count
+
+
+def find_pending_apply_inbox_task(mentee_id: str, doc_id: str) -> dict | None:
+    return mentor_inbox.find_one(
+        {
+            "audience": "mentor",
+            "mentee_id": str(mentee_id),
+            "doc_id": doc_id,
+            "action": "document_upload",
+            "status": "pending",
+        },
+        sort=[("created_at", -1)],
+    )
+
+
+def sync_apply_inbox_view(mentee_id: str, doc_id: str):
+    from inbox_tasks import record_inbox_view
+
+    task = find_pending_apply_inbox_task(mentee_id, doc_id)
+    if task:
+        record_inbox_view(mentor_inbox, task)
+
+
+def sync_apply_inbox_confirm(mentee_id: str, doc_id: str, *, via: str = "app"):
+    from inbox_tasks import confirm_inbox_task
+
+    task = find_pending_apply_inbox_task(mentee_id, doc_id)
+    if task:
+        confirm_inbox_task(mentor_inbox, task_id=str(task["_id"]), via=via)
+
+
+def sync_apply_inbox_schedule(mentee_id: str, doc_id: str, *, reminder_at: datetime):
+    from inbox_tasks import update_reminder_schedule
+
+    task = find_pending_apply_inbox_task(mentee_id, doc_id)
+    if task:
+        update_reminder_schedule(
+            mentor_inbox,
+            str(task["_id"]),
+            reminder_at=reminder_at,
+        )
 
 
 def apply_missing_reminder_unread(user: dict) -> bool:
@@ -290,6 +348,17 @@ def serialize_apply_document_for_admin(doc_id: str, record: dict | None, user: d
     item["mentor_viewed_at"] = (
         record.get("mentor_viewed_at").isoformat() if record and record.get("mentor_viewed_at") else ""
     )
+    item["mentor_processed_at"] = (
+        record.get("mentor_processed_at").isoformat()
+        if record and record.get("mentor_processed_at")
+        else ""
+    )
+    item["scheduled_process_at"] = (
+        record.get("scheduled_process_at").isoformat()
+        if record and record.get("scheduled_process_at")
+        else ""
+    )
+    item["mentor_processed"] = apply_document_is_processed(record)
     if item["uploaded"] and doc_id not in NO_FILE_UPLOAD_DOC_IDS and (record or {}).get("stored_name"):
         item["has_file"] = True
     else:
@@ -359,6 +428,7 @@ def save_apply_document_upload(user: dict, doc_id: str, uploaded, *, uploaded_by
                 "mentor_status": DOC_MENTOR_STATUS_APPROVED,
                 "mentor_unread": False,
                 "mentor_viewed_at": now,
+                "mentor_processed_at": now,
                 "mentee_unread_upload": True,
             },
         )
@@ -370,6 +440,9 @@ def save_apply_document_upload(user: dict, doc_id: str, uploaded, *, uploaded_by
                 "mentee_unread_upload": False,
             },
         )
+        record.pop("mentor_viewed_at", None)
+        record.pop("mentor_processed_at", None)
+        record.pop("scheduled_process_at", None)
         if doc_id == "language":
             prev_scores = existing.get("language_scores")
             if prev_scores:
@@ -406,7 +479,11 @@ def mark_apply_document_unread(user: dict, doc_id: str):
         {"_id": ObjectId(user["_id"])},
         {
             "$set": set_fields,
-            "$unset": {f"apply_documents.{doc_id}.mentor_viewed_at": ""},
+            "$unset": {
+                f"apply_documents.{doc_id}.mentor_viewed_at": "",
+                f"apply_documents.{doc_id}.mentor_processed_at": "",
+                f"apply_documents.{doc_id}.scheduled_process_at": "",
+            },
         },
     )
     fresh = users.find_one({"_id": ObjectId(user["_id"])}) or user
@@ -549,6 +626,18 @@ def count_uploaded_apply_documents(user: dict) -> int:
                 count += 1
             continue
         if (apply_docs.get(doc_id) or {}).get("stored_name"):
+            count += 1
+    return count
+
+
+def count_approved_apply_documents(user: dict) -> int:
+    apply_docs = user.get("apply_documents") or {}
+    count = 0
+    for doc_id in VALID_APPLY_DOC_IDS:
+        record = apply_docs.get(doc_id) or {}
+        if not apply_document_has_content(doc_id, record, user):
+            continue
+        if record.get("mentor_status") == DOC_MENTOR_STATUS_APPROVED:
             count += 1
     return count
 

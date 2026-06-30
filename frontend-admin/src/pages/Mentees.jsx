@@ -71,6 +71,21 @@ function ensureDisplayDocuments(documents, mentee) {
   return [...documents, buildSupportingMaterialsDoc(documents, mentee.scholarship_system)];
 }
 
+function countMenteeApplyDocStats(documents) {
+  const applyDocs = (documents || []).filter((doc) => doc.doc_id !== 'supporting-materials');
+  return {
+    uploaded_count: applyDocs.filter((doc) => doc.uploaded).length,
+    approved_count: applyDocs.filter(
+      (doc) => doc.uploaded && doc.mentor_status === 'đã duyệt',
+    ).length,
+  };
+}
+
+function patchMenteeApplyDocCounts(mentee, documents) {
+  const stats = countMenteeApplyDocStats(documents);
+  return { ...mentee, ...stats };
+}
+
 const MENTEE_SECTION_SEEN_KEY = 'mentor-mentee-sections-v1';
 
 const LANGUAGE_LABELS = { english: 'Tiếng Anh', chinese: 'Tiếng Trung' };
@@ -263,7 +278,9 @@ function computeSectionSignatures(mentee) {
     ].join('|'),
     documents: [
       mentee.unread_documents_count,
+      mentee.processed_documents_count,
       mentee.uploaded_count,
+      mentee.approved_count,
       mentee.preferred_schools_note_unread,
       mentee.preferred_schools_note,
       (mentee.documents || [])
@@ -392,6 +409,9 @@ export default function Mentees() {
   const [viewerUrl, setViewerUrl] = useState('');
   const [viewerMime, setViewerMime] = useState('');
   const [mentorUploadingDocId, setMentorUploadingDocId] = useState('');
+  const [docActionSavingId, setDocActionSavingId] = useState('');
+  const [docScheduleId, setDocScheduleId] = useState('');
+  const [docScheduleDrafts, setDocScheduleDrafts] = useState({});
   const [expandedSections, setExpandedSections] = useState({
     info: true,
     device: true,
@@ -487,6 +507,8 @@ export default function Mentees() {
                   research_direction_label: data.research_direction_label,
                   scholarship_system: data.scholarship_system,
                   scholarship_system_label: data.scholarship_system_label,
+                  uploaded_count: data.uploaded_count,
+                  approved_count: data.approved_count,
                 }
               : item,
           ),
@@ -785,6 +807,82 @@ export default function Mentees() {
     markSectionSeenIfQuiet(detailData, 'device');
   };
 
+  const patchMenteeDocument = (docItem) => {
+    setSelectedMentee((prev) => {
+      if (!prev) return prev;
+      const documents = (prev.documents || []).map((doc) =>
+        doc.doc_id === docItem.doc_id ? { ...doc, ...docItem } : doc,
+      );
+      const unreadDocumentsCount = documents.filter((doc) => doc.mentor_unread).length;
+      const processedDocumentsCount = documents.filter(
+        (doc) => doc.uploaded && doc.mentor_processed,
+      ).length;
+      const nextMentee = patchMenteeApplyDocCounts(
+        {
+          ...prev,
+          documents,
+          unread_documents_count: unreadDocumentsCount,
+          processed_documents_count: processedDocumentsCount,
+        },
+        documents,
+      );
+      const signatures = computeSectionSignatures(nextMentee);
+      const alerts = computeSectionAlerts(nextMentee, isSuperAdmin, isLevel1);
+      if (!alerts.documents) {
+        saveSeenSection(nextMentee.id, 'documents', signatures.documents);
+      }
+      setMentees((list) =>
+        list.map((item) =>
+          item.id === nextMentee.id
+            ? {
+                ...item,
+                unread_documents_count: unreadDocumentsCount,
+                processed_documents_count: processedDocumentsCount,
+                uploaded_count: nextMentee.uploaded_count,
+                approved_count: nextMentee.approved_count,
+              }
+            : item,
+        ),
+      );
+      return nextMentee;
+    });
+  };
+
+  const handleProcessDocument = async (doc) => {
+    if (!selectedMentee || !doc.uploaded) return;
+    setDocActionSavingId(doc.doc_id);
+    setError('');
+    try {
+      const updated = await api.markMenteeDocumentProcessed(selectedMentee.id, doc.doc_id);
+      patchMenteeDocument(updated);
+      setDocScheduleId('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDocActionSavingId('');
+    }
+  };
+
+  const handleScheduleDocument = async (docId) => {
+    if (!selectedMentee || !docScheduleDrafts[docId]) {
+      setError('Chọn ngày giờ hẹn xử lí.');
+      return;
+    }
+    setDocActionSavingId(docId);
+    setError('');
+    try {
+      const result = await api.scheduleMenteeDocumentProcess(selectedMentee.id, docId, {
+        scheduled_at: new Date(docScheduleDrafts[docId]).toISOString(),
+      });
+      patchMenteeDocument(result.item);
+      setDocScheduleId('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDocActionSavingId('');
+    }
+  };
+
   const handleViewDocument = async (doc) => {
     if (!selectedMentee || !doc.uploaded) return;
 
@@ -1023,11 +1121,14 @@ export default function Mentees() {
           itemsById[doc.doc_id] ? { ...doc, ...itemsById[doc.doc_id] } : doc,
         );
         const unreadDocumentsCount = documents.filter((doc) => doc.mentor_unread).length;
-        const nextMentee = {
-          ...prev,
+        const nextMentee = patchMenteeApplyDocCounts(
+          {
+            ...prev,
+            documents,
+            unread_documents_count: unreadDocumentsCount,
+          },
           documents,
-          unread_documents_count: unreadDocumentsCount,
-        };
+        );
         const signatures = computeSectionSignatures(nextMentee);
         const alerts = computeSectionAlerts(nextMentee, isSuperAdmin, isLevel1);
         if (!alerts.documents) {
@@ -1036,7 +1137,12 @@ export default function Mentees() {
         setMentees((list) =>
           list.map((item) =>
             item.id === nextMentee.id
-              ? { ...item, unread_documents_count: unreadDocumentsCount }
+              ? {
+                  ...item,
+                  unread_documents_count: unreadDocumentsCount,
+                  uploaded_count: nextMentee.uploaded_count,
+                  approved_count: nextMentee.approved_count,
+                }
               : item,
           ),
         );
@@ -1409,11 +1515,14 @@ export default function Mentees() {
           doc.doc_id === result.doc_id ? { ...doc, ...result } : doc,
         );
         const unreadDocumentsCount = documents.filter((doc) => doc.mentor_unread).length;
-        const nextMentee = {
-          ...prev,
+        const nextMentee = patchMenteeApplyDocCounts(
+          {
+            ...prev,
+            documents,
+            unread_documents_count: unreadDocumentsCount,
+          },
           documents,
-          unread_documents_count: unreadDocumentsCount,
-        };
+        );
         const signatures = computeSectionSignatures(nextMentee);
         const alerts = computeSectionAlerts(nextMentee, isSuperAdmin, isLevel1);
         if (!alerts.documents) {
@@ -1422,7 +1531,13 @@ export default function Mentees() {
         setMentees((list) =>
           list.map((item) =>
             item.id === nextMentee.id
-              ? { ...item, unread_documents_count: unreadDocumentsCount }
+              ? {
+                  ...item,
+                  unread_documents_count: unreadDocumentsCount,
+                  processed_documents_count: nextMentee.processed_documents_count,
+                  uploaded_count: nextMentee.uploaded_count,
+                  approved_count: nextMentee.approved_count,
+                }
               : item,
           ),
         );
@@ -1452,14 +1567,7 @@ export default function Mentees() {
           ),
           prev,
         );
-        const uploadedCount = documents.filter(
-          (doc) => doc.doc_id !== 'supporting-materials' && doc.uploaded,
-        ).length;
-        return {
-          ...prev,
-          documents,
-          uploaded_count: uploadedCount,
-        };
+        return patchMenteeApplyDocCounts({ ...prev, documents }, documents);
       });
       setMentees((list) =>
         list.map((item) => {
@@ -1470,10 +1578,12 @@ export default function Mentees() {
             ),
             item,
           );
-          const uploadedCount = documents.filter(
-            (doc) => doc.doc_id !== 'supporting-materials' && doc.uploaded,
-          ).length;
-          return { ...item, uploaded_count: uploadedCount };
+          const patched = patchMenteeApplyDocCounts({ ...item, documents }, documents);
+          return {
+            ...item,
+            uploaded_count: patched.uploaded_count,
+            approved_count: patched.approved_count,
+          };
         }),
       );
     } catch (err) {
@@ -1750,6 +1860,9 @@ export default function Mentees() {
   const approvedDocumentsCount = menteeApplyDocuments.filter(
     (doc) => doc.uploaded && doc.mentor_status === 'đã duyệt',
   ).length;
+  const processedDocumentsCount =
+    selectedMentee?.processed_documents_count ??
+    menteeApplyDocuments.filter((doc) => doc.uploaded && doc.mentor_processed).length;
   const totalDocumentsCount =
     selectedMentee?.total_documents_count || menteeApplyDocuments.length || 0;
   const allDownloadSelected =
@@ -1961,6 +2074,12 @@ export default function Mentees() {
                 >
                   <span className="mentee-folder-name">
                     {menteeDisplayName(mentee)}
+                    <span
+                      className="mentee-folder-doc-badge"
+                      title="Đã duyệt / đã nộp"
+                    >
+                      {mentee.approved_count ?? 0}/{mentee.uploaded_count ?? 0}
+                    </span>
                     {needsAttention && (
                       <span className="notify-dot" title={attentionTitle || 'Cần xử lí'} />
                     )}
@@ -2235,14 +2354,20 @@ export default function Mentees() {
                   (
                     <>
                       Tài liệu Apply
-                      <span className="apply-doc-progress" title="Số giấy tờ đã duyệt">
-                        {approvedDocumentsCount}/{totalDocumentsCount}
+                      <span className="apply-doc-progress" title="Tài liệu mentee đã nộp">
+                        {uploadedDocumentsCount} đã nộp
+                      </span>
+                      <span
+                        className="apply-doc-approved-badge"
+                        title="Tài liệu chính xác (mentor đã duyệt)"
+                      >
+                        {approvedDocumentsCount} chính xác
                       </span>
                     </>
                   ),
-                  `${approvedDocumentsCount}/${totalDocumentsCount} đã duyệt · ${selectedMentee.uploaded_count}/${selectedMentee.total_documents_count} mục mentee · mục ${displayDocuments.length} Supporting Materials${
+                  `${uploadedDocumentsCount} đã nộp · ${approvedDocumentsCount} chính xác · ${processedDocumentsCount}/${totalDocumentsCount} đã xử lí · mục ${displayDocuments.length} Supporting Materials${
                     selectedMentee.unread_documents_count > 0
-                      ? ` · ${selectedMentee.unread_documents_count} chưa xem`
+                      ? ` · ${selectedMentee.unread_documents_count} cần xử lí`
                       : ''
                   }${
                     selectedMentee.preferred_schools_note_unread ? ' · Trường ưa thích mới' : ''
@@ -2255,8 +2380,9 @@ export default function Mentees() {
                   ) : (
                     <>
                       <p className="muted apply-doc-list-hint">
-                        {menteeApplyDocuments.length} mục mentee nộp hồ sơ · cuối danh sách là mục{' '}
-                        {displayDocuments.length} (Supporting Materials, chỉ mentor).
+                        {uploadedDocumentsCount} tài liệu đã nộp · {approvedDocumentsCount} tài
+                        liệu chính xác (mentor duyệt) · cuối danh sách là mục {displayDocuments.length}{' '}
+                        (Supporting Materials, chỉ mentor).
                       </p>
                       <div
                         className={`apply-preferred-schools-note${
@@ -2462,7 +2588,7 @@ export default function Mentees() {
                               )}
                               {doc.download_label || doc.label}
                               {doc.mentor_unread && (
-                                <span className="notify-dot" title="Chưa xem" />
+                                <span className="notify-dot" title="Cần xử lí" />
                               )}
                             </span>
                             {doc.download_label && doc.label && (
@@ -2490,6 +2616,19 @@ export default function Mentees() {
                                 {doc.mentor_note && (
                                   <span className="apply-doc-note">Nhận xét: {doc.mentor_note}</span>
                                 )}
+                                {doc.mentor_viewed_at && !doc.mentor_processed && (
+                                  <span className="muted apply-doc-meta">
+                                    Đã xem · chưa xử lí
+                                    {doc.scheduled_process_at
+                                      ? ` · hẹn ${formatDateTime(doc.scheduled_process_at)}`
+                                      : ''}
+                                  </span>
+                                )}
+                                {doc.mentor_processed_at && (
+                                  <span className="muted apply-doc-meta">
+                                    Đã xử lí · {formatDateTime(doc.mentor_processed_at)}
+                                  </span>
+                                )}
                               </>
                             ) : (
                               <span className="apply-doc-missing-note">
@@ -2511,6 +2650,38 @@ export default function Mentees() {
                               </div>
                             )}
                             {renderDocDownloadControls(doc.doc_id, { hideDownloadButton: true })}
+                            {doc.uploaded && !doc.mentor_processed && docScheduleId === doc.doc_id && (
+                              <div className="apply-doc-schedule-panel">
+                                <label className="muted">
+                                  Hẹn ngày xử lí
+                                  <input
+                                    type="datetime-local"
+                                    value={docScheduleDrafts[doc.doc_id] || ''}
+                                    onChange={(e) =>
+                                      setDocScheduleDrafts((prev) => ({
+                                        ...prev,
+                                        [doc.doc_id]: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline btn-sm"
+                                  disabled={docActionSavingId === doc.doc_id}
+                                  onClick={() => handleScheduleDocument(doc.doc_id)}
+                                >
+                                  Lưu hẹn
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline btn-sm"
+                                  onClick={() => setDocScheduleId('')}
+                                >
+                                  Hủy
+                                </button>
+                              </div>
+                            )}
                           </div>
                           <div className="apply-doc-actions">
                             {MENTOR_UPLOADABLE_DOC_IDS.has(doc.doc_id) && (
@@ -2557,6 +2728,32 @@ export default function Mentees() {
                             >
                               Nhận xét
                             </button>
+                            {doc.uploaded && !doc.mentor_processed && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline btn-sm"
+                                  disabled={docActionSavingId === doc.doc_id}
+                                  onClick={() => {
+                                    setDocScheduleId(doc.doc_id);
+                                    setDocScheduleDrafts((prev) => ({
+                                      ...prev,
+                                      [doc.doc_id]: prev[doc.doc_id] || '',
+                                    }));
+                                  }}
+                                >
+                                  Hẹn ngày xử lí
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm"
+                                  disabled={docActionSavingId === doc.doc_id}
+                                  onClick={() => handleProcessDocument(doc)}
+                                >
+                                  Đã xử lí
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                         );

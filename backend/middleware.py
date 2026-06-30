@@ -30,8 +30,9 @@ def maybe_process_inbox_reminders():
 
     try:
         ensure_db()
-        from inbox_tasks import process_due_reminders
+        from inbox_tasks import ensure_stale_pending_daily_reminders, process_due_reminders
 
+        ensure_stale_pending_daily_reminders(mentor_inbox)
         process_due_reminders(mentor_inbox, send_daily_inbox_summary_for_mentor)
     except Exception:
         pass
