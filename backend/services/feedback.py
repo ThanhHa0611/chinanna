@@ -121,6 +121,7 @@ def count_mentee_unread_feedback_threads(user_id) -> int:
 
 
 def admin_can_see_feedback_processor(admin: dict | None) -> bool:
+    from services.admins import is_super_admin
     if not admin:
         return False
     if is_super_admin(admin):

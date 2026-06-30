@@ -186,6 +186,7 @@ def apply_inbox_confirm_side_effects(task: dict):
 
 
 def build_inbox_document_payload(task: dict):
+    from services.apply_documents import apply_doc_upload_dir, build_apply_download_filename, normalize_scholarship_system
     from bson import ObjectId
 
     doc_id = task.get("doc_id") or ""

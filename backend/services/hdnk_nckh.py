@@ -143,6 +143,7 @@ def validate_hdnk_nckh_entries(entries: list[dict]) -> str | None:
 
 
 def ensure_hdnk_nckh_reminder_sync(user: dict) -> dict:
+    from services.admins import is_thanh_ha_mentee
     if not is_thanh_ha_mentee(user):
         return user
 

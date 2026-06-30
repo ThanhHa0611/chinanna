@@ -663,6 +663,7 @@ def admin_review_apply_document(mentee_id: str, doc_id: str):
 @app.post("/api/admin/mentees/<mentee_id>/documents/remind-missing")
 @with_db
 def admin_remind_missing_documents(mentee_id: str):
+    from services.misc import serialize_apply_missing_reminder
     admin, error_response = get_authenticated_admin()
     if error_response:
         return error_response

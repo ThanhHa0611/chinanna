@@ -157,6 +157,7 @@ def register_personal_declaration_link():
 @app.post("/api/documents/personal-declaration")
 @with_db
 def create_personal_declaration():
+    from services.misc import attempt_create_personal_declaration, save_personal_declaration_record
     user, error_response = get_authenticated_user()
     if error_response:
         return error_response
@@ -212,6 +213,7 @@ def create_personal_declaration():
 @app.get("/api/documents/apply")
 @with_db
 def list_apply_documents():
+    from services.misc import count_mentee_unread_mentor_uploads, serialize_apply_missing_reminder
     user, error_response = get_authenticated_user()
     if error_response:
         return error_response
@@ -320,6 +322,7 @@ def mentee_ack_apply_progress():
 @app.put("/api/documents/apply-progress")
 @with_db
 def mentee_update_apply_progress():
+    from services.misc import extract_apply_progress_fields, validate_apply_progress_field_values
     user, error_response = get_authenticated_user()
     if error_response:
         return error_response
@@ -425,6 +428,7 @@ def mentee_update_apply_progress():
 @app.get("/api/documents/hdnk-nckh")
 @with_db
 def get_hdnk_nckh():
+    from services.misc import serialize_hdnk_nckh_payload
     user, error_response = get_authenticated_user()
     if error_response:
         return error_response
@@ -442,6 +446,7 @@ def get_hdnk_nckh():
 @app.put("/api/documents/hdnk-nckh")
 @with_db
 def update_hdnk_nckh():
+    from services.misc import serialize_hdnk_nckh_payload
     user, error_response = get_authenticated_user()
     if error_response:
         return error_response
@@ -914,6 +919,7 @@ def submit_language_score_update():
 @app.post("/api/documents/apply/ack-missing-reminder")
 @with_db
 def mentee_ack_missing_reminder():
+    from services.misc import serialize_apply_missing_reminder
     user, error_response = get_authenticated_user()
     if error_response:
         return error_response

@@ -319,6 +319,7 @@ def serialize_apply_document_for_admin(doc_id: str, record: dict | None, user: d
 
 
 def save_apply_document_upload(user: dict, doc_id: str, uploaded, *, uploaded_by: str, admin: dict | None = None):
+    from services.admins import admin_display_name
     from bson import ObjectId
 
     original_name = uploaded.filename.strip()
@@ -534,6 +535,7 @@ def language_block_for(scores: dict, lang: str) -> dict:
 
 
 def log_mentee_document_event(user: dict, action: str, description: str, **extra):
+    from services.admins import mentor_folder_name
     mentor_name = user.get("mentor", "").strip() or "Chung"
     mentor_activities.insert_one({
         "mentor_folder": mentor_folder_name(mentor_name),

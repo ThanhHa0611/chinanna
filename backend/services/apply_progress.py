@@ -60,6 +60,7 @@ def is_thanh_ha_l1_mentor(admin: dict | None) -> bool:
 
 
 def apply_progress_viewer_key(admin: dict | None = None, *, mentee: bool = False, parent: bool = False) -> str:
+    from services.admins import is_super_admin
     if mentee:
         return "mentee"
     if parent:
@@ -87,6 +88,7 @@ def apply_progress_progress_options_for_viewer(viewer: str) -> list[str]:
 
 
 def is_l2_mentor_admin(admin: dict | None) -> bool:
+    from services.admins import admin_is_approved, is_super_admin
     if not admin or not admin_is_approved(admin):
         return False
     if is_super_admin(admin):
@@ -121,6 +123,7 @@ def mentor_l2_activity_has_unread(user: dict) -> bool:
 
 
 def push_l2_mentor_activity(mentee_id, admin: dict, section: str, action: str, summary: str) -> None:
+    from services.admins import admin_display_name
     if not is_l2_mentor_admin(admin):
         return
 
@@ -154,6 +157,7 @@ def push_l2_mentor_activity(mentee_id, admin: dict, section: str, action: str, s
 
 
 def ack_mentor_l2_activity(mentee_id, admin: dict, section: str | None = None) -> dict:
+    from services.admins import admin_display_name
     from services.misc import get_mentor_l2_activity_raw
     from bson import ObjectId
 
@@ -247,6 +251,7 @@ def get_apply_progress_activity_raw(user: dict) -> list[dict]:
 
 
 def mark_apply_progress_activity_processed(user_id, row_num: int, admin: dict, action: str) -> None:
+    from services.admins import admin_display_name
     from bson import ObjectId
 
     now = datetime.now(timezone.utc)
