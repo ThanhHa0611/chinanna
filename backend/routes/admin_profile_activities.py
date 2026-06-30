@@ -19,8 +19,10 @@ from services.profile_activities import (
     approve_profile_activity,
     bulk_view_individual_keeptrack_reviews,
     create_profile_activity,
+    delete_activity_group,
     finalize_group_and_sync_hdnk,
     group_is_approved,
+    ProfileActivityGroupDeleteError,
     ProfileActivityGroupLeaderError,
     set_group_leader,
     list_pending_individual_keeptrack_reviews,
@@ -370,6 +372,30 @@ def admin_reject_activity_group(activity_id: str, group_id: str):
     return jsonify(
         {
             "message": "Đã từ chối phân nhóm.",
+            "activity": serialize_admin_profile_activity(updated, admin=admin),
+        }
+    )
+
+
+@app.delete("/api/admin/profile-activities/<activity_id>/groups/<group_id>")
+@with_db
+def admin_delete_activity_group(activity_id: str, group_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    try:
+        updated = delete_activity_group(activity, group_id, admin)
+    except ProfileActivityGroupDeleteError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify(
+        {
+            "message": "Đã xóa nhóm — mentee (nếu có) trở về trạng thái chờ phân nhóm.",
             "activity": serialize_admin_profile_activity(updated, admin=admin),
         }
     )

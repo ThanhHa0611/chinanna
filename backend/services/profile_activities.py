@@ -2221,6 +2221,53 @@ def reject_pending_group(activity: dict, group_id: str) -> dict:
     return profile_activities.find_one({"_id": activity["_id"]}) or activity
 
 
+class ProfileActivityGroupDeleteError(ValueError):
+    pass
+
+
+def delete_activity_group(activity: dict, group_id: str, admin: dict) -> dict:
+    group = _find_group(activity, group_id)
+    if not group:
+        raise ProfileActivityGroupDeleteError("Nhóm không tồn tại.")
+    if _is_auto_solo_group(group):
+        raise ProfileActivityGroupDeleteError("Không thể xóa nhóm cá nhân tự động.")
+
+    mentee_ids = [str(item) for item in (group.get("mentee_ids") or []) if str(item)]
+    if mentee_ids and admin_requires_l1_approval(admin):
+        raise ProfileActivityGroupDeleteError(
+            "Nhóm còn thành viên — vui lòng xóa hết thành viên trước hoặc liên hệ mentor cấp 1."
+        )
+
+    now = datetime.now(timezone.utc)
+    activity["groups"] = [
+        row for row in activity.get("groups", []) if row.get("group_id") != group_id
+    ]
+
+    for mentee_id in mentee_ids:
+        state = _get_mentee_state(activity, mentee_id)
+        if not state:
+            continue
+        state["group_response_status"] = None
+        state["group_response_note"] = ""
+        state["group_response_at"] = None
+        if _is_group_participant(activity, state):
+            keeptrack = _normalize_keeptrack(state.get("keeptrack"))
+            if keeptrack.get("active"):
+                _clear_keeptrack_on_reject(state)
+
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "groups": activity.get("groups", []),
+                "mentee_states": activity.get("mentee_states", []),
+                "updated_at": now,
+            }
+        },
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
 def _apply_mentor_reject(activity: dict, mentee: dict, note: str = "") -> None:
     state = _get_or_create_state(activity, str(mentee["_id"]))
     if _is_individual_participant(activity, state):

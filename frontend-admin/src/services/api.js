@@ -371,6 +371,11 @@ export const api = {
       method: 'POST',
     }),
 
+  deleteProfileActivityGroup: (activityId, groupId) =>
+    request(`/api/admin/profile-activities/${activityId}/groups/${groupId}`, {
+      method: 'DELETE',
+    }),
+
   setProfileActivityGroupLeader: (activityId, groupId, body) =>
     request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/leader`, {
       method: 'PATCH',

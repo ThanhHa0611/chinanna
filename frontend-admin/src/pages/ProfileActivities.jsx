@@ -661,6 +661,25 @@ export default function ProfileActivities() {
     return registration?.mentee_name || menteeId;
   };
 
+  const handleDeleteGroup = async (group) => {
+    if (!selectedActivity || !group?.group_id) return;
+    const groupName = (group.group_name || '').trim() || 'này';
+    if (!window.confirm(`Bạn có chắc muốn xóa nhóm ${groupName}?`)) return;
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.deleteProfileActivityGroup(selectedActivity.id, group.group_id);
+      await loadActivities();
+      await loadRegistrations(selectedActivity.id);
+      setMessage(result?.message || 'Đã xóa nhóm.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleFinalizeGroup = async (groupId) => {
     if (!selectedActivity) return;
     setSaving(true);
@@ -988,6 +1007,16 @@ export default function ProfileActivities() {
               disabled={saving || groupPending}
             >
               Chốt nhóm
+            </button>
+          )}
+          {!group.is_auto_solo && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => handleDeleteGroup(group)}
+              disabled={saving}
+            >
+              Xóa nhóm
             </button>
           )}
           {canReview && groupPending && (
