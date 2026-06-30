@@ -1096,9 +1096,10 @@ def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidd
     return payload
 
 
-def serialize_admin_profile_activity(doc: dict) -> dict:
+def serialize_admin_profile_activity(doc: dict, *, admin: dict | None = None) -> dict:
     mentee_states = doc.get("mentee_states") or []
     registrations = [item for item in mentee_states if item.get("registered_at")]
+    pending_action_count = count_pending_actions_for_activity(doc, admin) if admin else 0
     return {
         "id": str(doc["_id"]),
         "activity_name": doc.get("activity_name", ""),
@@ -1125,6 +1126,7 @@ def serialize_admin_profile_activity(doc: dict) -> dict:
         "rejected_by_admin_id": doc.get("rejected_by_admin_id", ""),
         "deadline_badge": get_deadline_badge(doc.get("deadline", "")),
         "pending_l1_actions": list_pending_l1_group_actions(doc),
+        "pending_action_count": pending_action_count,
         "participation_mode": _normalize_participation_mode(doc.get("participation_mode")),
         "participation_mode_label": participation_mode_label(doc.get("participation_mode")),
     }
@@ -1605,6 +1607,44 @@ def reject_pending_mentor_reject(activity: dict, mentee_id: str) -> dict:
     refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
     maybe_start_individual_keeptrack(refreshed, mentee_id)
     return profile_activities.find_one({"_id": activity["_id"]}) or refreshed
+
+
+def admin_can_review_profile_activity(admin: dict) -> bool:
+    from services.admins import is_super_admin
+    from services.apply_progress import admin_is_level1_mentor
+
+    return bool(is_super_admin(admin) or admin_is_level1_mentor(admin))
+
+
+def mentor_profile_activities_query(admin: dict) -> dict:
+    mentor_name = (admin.get("mentor_name") or "").strip()
+    if mentor_name:
+        return {"mentor_name": mentor_name}
+    return {}
+
+
+def count_pending_actions_for_activity(activity: dict, admin: dict) -> int:
+    count = 0
+    if admin_can_review_profile_activity(admin):
+        if _normalize_approval_status(activity.get("approval_status")) == PROFILE_ACTIVITY_APPROVAL_PENDING:
+            count += 1
+        count += len(list_pending_l1_group_actions(activity))
+
+    for state in activity.get("mentee_states", []):
+        if not state.get("registered_at"):
+            continue
+        mentee_id = state.get("mentee_id", "")
+        if _mentee_awaiting_group_assignment(activity, mentee_id, state):
+            count += 1
+
+    return count
+
+
+def count_total_pending_profile_actions(admin: dict) -> int:
+    total = 0
+    for doc in profile_activities.find(mentor_profile_activities_query(admin)):
+        total += count_pending_actions_for_activity(doc, admin)
+    return total
 
 
 def list_pending_l1_group_actions(activity: dict) -> list[dict]:

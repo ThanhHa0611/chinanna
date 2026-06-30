@@ -89,7 +89,7 @@ def admin_create_profile_activity():
     if not payload.get("activity_name"):
         return jsonify({"detail": "Không thể tạo tên hoạt động — vui lòng điền loại hoạt động"}), 400
     created = create_profile_activity(admin, payload)
-    response = serialize_admin_profile_activity(created)
+    response = serialize_admin_profile_activity(created, admin=admin)
     if created.get("approval_status") == "pending_l1_approval":
         response["message"] = "Hoạt động đã gửi, chờ mentor cấp 1 duyệt trước khi hiển thị cho mentee."
     return jsonify(response), 201
@@ -105,7 +105,9 @@ def admin_list_profile_activities():
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
     cursor = profile_activities.find(_admin_activity_query(admin)).sort("created_at", -1)
-    return jsonify([serialize_admin_profile_activity(doc) for doc in cursor])
+    items = [serialize_admin_profile_activity(doc, admin=admin) for doc in cursor]
+    total_pending_count = sum(item.get("pending_action_count", 0) for item in items)
+    return jsonify({"items": items, "total_pending_count": total_pending_count})
 
 
 @app.post("/api/admin/profile-activities/<activity_id>/approve")
@@ -123,9 +125,9 @@ def admin_approve_profile_activity(activity_id: str):
     if error:
         return error
     if activity.get("approval_status") == "approved":
-        return jsonify(serialize_admin_profile_activity(activity))
+        return jsonify(serialize_admin_profile_activity(activity, admin=admin))
     updated = approve_profile_activity(activity, admin)
-    return jsonify(serialize_admin_profile_activity(updated))
+    return jsonify(serialize_admin_profile_activity(updated, admin=admin))
 
 
 @app.post("/api/admin/profile-activities/<activity_id>/reject")
@@ -143,7 +145,7 @@ def admin_reject_profile_activity(activity_id: str):
     if error:
         return error
     updated = reject_profile_activity(activity, admin)
-    return jsonify(serialize_admin_profile_activity(updated))
+    return jsonify(serialize_admin_profile_activity(updated, admin=admin))
 
 
 @app.get("/api/admin/profile-activities/<activity_id>/registrations")
@@ -322,7 +324,7 @@ def admin_approve_activity_group(activity_id: str, group_id: str):
     return jsonify(
         {
             "message": "Đã duyệt phân nhóm — mentee sẽ nhận thông báo.",
-            "activity": serialize_admin_profile_activity(updated),
+            "activity": serialize_admin_profile_activity(updated, admin=admin),
         }
     )
 
@@ -348,7 +350,7 @@ def admin_reject_activity_group(activity_id: str, group_id: str):
     return jsonify(
         {
             "message": "Đã từ chối phân nhóm.",
-            "activity": serialize_admin_profile_activity(updated),
+            "activity": serialize_admin_profile_activity(updated, admin=admin),
         }
     )
 

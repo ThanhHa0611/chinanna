@@ -39,6 +39,7 @@ from services.files import *
 from services.hdnk_nckh import *
 from services.inbox import *
 from services.notifications import *
+from services.profile_activities import count_total_pending_profile_actions
 from services.utils import *
 
 @app.get("/api/admin/stats")
@@ -69,6 +70,7 @@ def admin_stats():
     pending_mentee_registrations = users.count_documents(pending_mentee_registration_query(admin))
     pending_access_requests_count = count_pending_access_requests(admin)
     mentee_attention_count = count_mentees_needing_attention(admin)
+    profile_activities_pending_count = count_total_pending_profile_actions(admin)
 
     return jsonify({
         "mentee_count": mentee_count,
@@ -80,6 +82,7 @@ def admin_stats():
         "pending_mentee_registrations": pending_mentee_registrations,
         "pending_access_requests_count": pending_access_requests_count,
         "mentee_attention_count": mentee_attention_count,
+        "profile_activities_pending_count": profile_activities_pending_count,
     })
 
 

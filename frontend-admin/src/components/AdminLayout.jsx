@@ -24,6 +24,7 @@ export default function AdminLayout() {
   const location = useLocation();
   const [pendingAccessCount, setPendingAccessCount] = useState(0);
   const [menteeAttentionCount, setMenteeAttentionCount] = useState(0);
+  const [profileActivitiesPendingCount, setProfileActivitiesPendingCount] = useState(0);
 
   useEffect(() => {
     if (!admin) return;
@@ -41,6 +42,7 @@ export default function AdminLayout() {
           setMenteeAttentionCount(
             countMenteesNeedingAttention(menteeData || [], attentionOptions),
           );
+          setProfileActivitiesPendingCount(statsData.profile_activities_pending_count || 0);
         }
       })
       .catch(() => {});
@@ -85,6 +87,14 @@ export default function AdminLayout() {
                 {item.to === '/mentees' && menteeAttentionCount > 0 && (
                   <span className="sidebar-notify-badge" title="Có mentee cần xử lí">
                     {menteeAttentionCount}
+                  </span>
+                )}
+                {item.to === '/profile-activities' && profileActivitiesPendingCount > 0 && (
+                  <span
+                    className="sidebar-notify-badge sidebar-notify-badge-activities"
+                    title="Có yêu cầu cần duyệt / xử lí"
+                  >
+                    {profileActivitiesPendingCount}
                   </span>
                 )}
               </span>

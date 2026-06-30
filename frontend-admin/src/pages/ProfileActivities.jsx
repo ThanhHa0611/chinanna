@@ -146,9 +146,10 @@ export default function ProfileActivities() {
 
   const loadActivities = async () => {
     const data = await api.getProfileActivities();
-    setActivities(data || []);
-    if (!selectedId && data?.length) {
-      setSelectedId(data[0].id);
+    const items = Array.isArray(data) ? data : data?.items || [];
+    setActivities(items);
+    if (!selectedId && items.length) {
+      setSelectedId(items[0].id);
     }
   };
 
@@ -829,6 +830,7 @@ export default function ProfileActivities() {
             {activities.map((item) => (
               <option key={item.id} value={item.id}>
                 {compose_activity_name(item)} ({item.registration_count || 0} báo danh)
+                {(item.pending_action_count || 0) > 0 ? ` (${item.pending_action_count})` : ''}
                 {item.approval_status === 'pending_l1_approval' ? ' · chờ duyệt' : ''}
               </option>
             ))}

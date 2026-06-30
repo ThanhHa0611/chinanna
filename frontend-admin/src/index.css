@@ -199,6 +199,11 @@ a:hover {
   line-height: 1;
 }
 
+.sidebar-notify-badge-activities {
+  background: #ca8a04;
+  color: #fff;
+}
+
 .sidebar-link:hover {
   background: rgba(255, 255, 255, 0.75);
 }
