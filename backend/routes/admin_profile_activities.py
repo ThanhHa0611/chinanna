@@ -20,6 +20,8 @@ from services.profile_activities import (
     create_profile_activity,
     finalize_group_and_sync_hdnk,
     group_is_approved,
+    ProfileActivityGroupLeaderError,
+    set_group_leader,
     list_pending_individual_keeptrack_reviews,
     move_mentee_to_group,
     notify_group_assignment,
@@ -391,7 +393,41 @@ def admin_finalize_activity_group(activity_id: str, group_id: str):
         finalize_group_and_sync_hdnk(activity, group_id, admin_display_name(admin))
     except ProfileActivityKeeptrackError as exc:
         return jsonify({"detail": str(exc)}), 400
-    return jsonify({"message": "Đã chốt nhóm và đồng bộ HDNK + NCKH"})
+    refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    return jsonify(
+        {
+            "message": "Đã chốt nhóm và đồng bộ HDNK + NCKH",
+            "activity": serialize_admin_profile_activity(refreshed, admin=admin),
+        }
+    )
+
+
+@app.patch("/api/admin/profile-activities/<activity_id>/groups/<group_id>/leader")
+@with_db
+def admin_set_activity_group_leader(activity_id: str, group_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    mentee_id = str(data.get("mentee_id") or "").strip()
+    if not mentee_id:
+        return jsonify({"detail": "Vui lòng chọn mentee làm nhóm trưởng."}), 400
+    try:
+        updated = set_group_leader(activity, group_id, mentee_id)
+    except ProfileActivityGroupLeaderError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify(
+        {
+            "message": "Đã chọn nhóm trưởng.",
+            "activity": serialize_admin_profile_activity(updated, admin=admin),
+        }
+    )
 
 
 @app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/reject")

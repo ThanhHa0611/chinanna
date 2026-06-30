@@ -247,6 +247,7 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
           {item.group_members.map((member) => (
             <li key={member.mentee_id}>
               {member.full_name}
+              {member.is_leader ? ' (nhóm trưởng)' : ''}
               {member.zalo_phone ? ` — ${member.zalo_phone}` : ' — Chưa có Zalo'}
             </li>
           ))}

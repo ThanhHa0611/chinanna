@@ -371,6 +371,12 @@ export const api = {
       method: 'POST',
     }),
 
+  setProfileActivityGroupLeader: (activityId, groupId, body) =>
+    request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/leader`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
   approveProfileActivity: (activityId) =>
     request(`/api/admin/profile-activities/${activityId}/approve`, { method: 'POST' }),
 

@@ -203,6 +203,10 @@ export default function ProfileActivities() {
   const [addToGroupTargets, setAddToGroupTargets] = useState({});
   const [keeptrackReviews, setKeeptrackReviews] = useState([]);
   const [selectedKeeptrackReviews, setSelectedKeeptrackReviews] = useState([]);
+  const [finalizeSuccessByGroup, setFinalizeSuccessByGroup] = useState({});
+  const [leaderPickerVisible, setLeaderPickerVisible] = useState({});
+  const [leaderTargets, setLeaderTargets] = useState({});
+  const finalizeTimeoutsRef = useRef({});
 
   const canReview = Boolean(admin?.is_super_admin || isLevel1MentorAccount(admin));
   const isL2 = Boolean(admin && !canReview);
@@ -269,6 +273,30 @@ export default function ProfileActivities() {
   useEffect(() => {
     loadRegistrations(selectedId).catch(() => {});
   }, [selectedId]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(finalizeTimeoutsRef.current).forEach(clearTimeout);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedActivity?.groups?.length) return;
+    setLeaderPickerVisible((prev) => {
+      const next = { ...prev };
+      for (const group of selectedActivity.groups) {
+        if (
+          group.finalized_at &&
+          !group.is_auto_solo &&
+          !group.leader_mentee_id &&
+          !finalizeSuccessByGroup[group.group_id]
+        ) {
+          next[group.group_id] = true;
+        }
+      }
+      return next;
+    });
+  }, [selectedActivity?.groups, finalizeSuccessByGroup]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -605,6 +633,11 @@ export default function ProfileActivities() {
     return '—';
   };
 
+  const getMenteeDisplayName = (menteeId) => {
+    const registration = registrations.find((item) => item.mentee_id === menteeId);
+    return registration?.mentee_name || menteeId;
+  };
+
   const handleFinalizeGroup = async (groupId) => {
     if (!selectedActivity) return;
     setSaving(true);
@@ -613,7 +646,46 @@ export default function ProfileActivities() {
       await api.finalizeProfileActivityGroup(selectedActivity.id, groupId);
       await loadActivities();
       await loadRegistrations(selectedActivity.id);
-      setMessage('Đã chốt nhóm và sync HDNK + NCKH.');
+      setFinalizeSuccessByGroup((prev) => ({ ...prev, [groupId]: true }));
+      if (finalizeTimeoutsRef.current[groupId]) {
+        clearTimeout(finalizeTimeoutsRef.current[groupId]);
+      }
+      finalizeTimeoutsRef.current[groupId] = setTimeout(() => {
+        setFinalizeSuccessByGroup((prev) => {
+          const next = { ...prev };
+          delete next[groupId];
+          return next;
+        });
+        setLeaderPickerVisible((prev) => ({ ...prev, [groupId]: true }));
+        delete finalizeTimeoutsRef.current[groupId];
+      }, 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSetGroupLeader = async (groupId) => {
+    if (!selectedActivity) return;
+    const menteeId = leaderTargets[groupId];
+    if (!menteeId) {
+      setError('Chọn mentee làm nhóm trưởng.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.setProfileActivityGroupLeader(selectedActivity.id, groupId, {
+        mentee_id: menteeId,
+      });
+      await loadActivities();
+      setLeaderPickerVisible((prev) => {
+        const next = { ...prev };
+        delete next[groupId];
+        return next;
+      });
+      setMessage('Đã chọn nhóm trưởng.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1248,49 +1320,101 @@ export default function ProfileActivities() {
             <div className="profile-activity-groups">
               {(selectedActivity.groups || []).map((group) => {
               const groupPending = group.approval_status === 'pending_l1_approval';
+              const isFinalized = Boolean(group.finalized_at);
+              const showFinalizeSuccess = Boolean(finalizeSuccessByGroup[group.group_id]);
+              const showLeaderPicker =
+                !group.is_auto_solo &&
+                isFinalized &&
+                !group.leader_mentee_id &&
+                !showFinalizeSuccess &&
+                Boolean(leaderPickerVisible[group.group_id]);
               return (
                 <div key={group.group_id} className="panel-card">
-                  <p>
-                    <strong>{group.group_name}</strong> ({(group.mentee_ids || []).length} thành viên)
-                    {groupPending && (
-                      <span className="profile-activity-approval-badge is-pending">
-                        Chờ L1 duyệt
-                      </span>
-                    )}
-                  </p>
-                  <div className="action-cell">
-                    {canReview && groupPending && (
-                      <>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          onClick={() => handleApproveGroupAction(selectedActivity.id, group.group_id)}
-                          disabled={saving}
-                        >
-                          Duyệt nhóm
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          onClick={() => handleRejectGroupAction(selectedActivity.id, group.group_id)}
-                          disabled={saving}
-                        >
-                          Từ chối
-                        </button>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm"
-                      onClick={() => handleFinalizeGroup(group.group_id)}
-                      disabled={saving || groupPending || group.is_auto_solo}
-                    >
-                      Chốt nhóm
-                    </button>
-                    {group.is_auto_solo && (
-                      <span className="muted">Cá nhân — không cần chốt nhóm</span>
+                  <div className="group-head">
+                    <div className="group-head-title">
+                      <strong>{group.group_name}</strong> ({(group.mentee_ids || []).length} thành viên)
+                      {groupPending && (
+                        <span className="profile-activity-approval-badge is-pending">
+                          {' '}
+                          Chờ L1 duyệt
+                        </span>
+                      )}
+                      {group.is_auto_solo && (
+                        <span className="muted"> — Cá nhân, không cần chốt nhóm</span>
+                      )}
+                    </div>
+                    {!isFinalized && !group.is_auto_solo && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => handleFinalizeGroup(group.group_id)}
+                        disabled={saving || groupPending}
+                      >
+                        Chốt nhóm
+                      </button>
                     )}
                   </div>
+                  {showFinalizeSuccess && (
+                    <p className="form-success group-finalize-success">Đã tạo nhóm thành công</p>
+                  )}
+                  {(group.mentee_ids || []).length > 0 && (
+                    <ol className="profile-activity-group-member-list">
+                      {(group.mentee_ids || []).map((menteeId) => (
+                        <li key={menteeId}>
+                          {getMenteeDisplayName(menteeId)}
+                          {group.leader_mentee_id === menteeId ? ' (nhóm trưởng)' : ''}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                  {canReview && groupPending && (
+                    <div className="action-cell">
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => handleApproveGroupAction(selectedActivity.id, group.group_id)}
+                        disabled={saving}
+                      >
+                        Duyệt nhóm
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => handleRejectGroupAction(selectedActivity.id, group.group_id)}
+                        disabled={saving}
+                      >
+                        Từ chối
+                      </button>
+                    </div>
+                  )}
+                  {showLeaderPicker && (
+                    <div className="action-cell profile-activity-group-leader-picker">
+                      <select
+                        value={leaderTargets[group.group_id] || ''}
+                        onChange={(e) =>
+                          setLeaderTargets((prev) => ({
+                            ...prev,
+                            [group.group_id]: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Chọn nhóm trưởng...</option>
+                        {(group.mentee_ids || []).map((menteeId) => (
+                          <option key={menteeId} value={menteeId}>
+                            {getMenteeDisplayName(menteeId)}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => handleSetGroupLeader(group.group_id)}
+                        disabled={saving || !(leaderTargets[group.group_id] || '')}
+                      >
+                        Chọn nhóm trưởng
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
