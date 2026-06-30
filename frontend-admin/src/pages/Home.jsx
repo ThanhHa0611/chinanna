@@ -41,6 +41,9 @@ function reminderAtIsoFromDateInput(dateStr) {
 }
 
 function inboxItemHasFile(item) {
+  if (item?.has_file === false) {
+    return false;
+  }
   const docId = (item?.doc_id || '').trim();
   if (!docId) {
     return false;

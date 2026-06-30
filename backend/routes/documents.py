@@ -148,7 +148,8 @@ def register_personal_declaration_link():
 
     users.update_one({"_id": ObjectId(user["_id"])}, {"$set": {"personal_declaration": record}})
     fresh = users.find_one({"_id": ObjectId(user["_id"])}) or user
-    mark_apply_document_unread(fresh, "personal-declaration")
+    fresh = mark_apply_document_unread(fresh, "personal-declaration")
+    notify_mentors_mentee_document_upload(fresh, "personal-declaration")
     prune_apply_missing_reminder(ObjectId(user["_id"]), "personal-declaration")
     saved = fresh.get("personal_declaration") or record
     return jsonify(serialize_personal_declaration_response(saved))
@@ -198,7 +199,8 @@ def create_personal_declaration():
     updated = save_personal_declaration_record(user["_id"], record)
     if updated:
         saved = updated.get("personal_declaration") or record
-        mark_apply_document_unread(updated, "personal-declaration")
+        updated = mark_apply_document_unread(updated, "personal-declaration")
+        notify_mentors_mentee_document_upload(updated, "personal-declaration")
         prune_apply_missing_reminder(ObjectId(user["_id"]), "personal-declaration")
         return jsonify(serialize_personal_declaration_response(saved)), 201
 
@@ -633,8 +635,8 @@ def update_language_scores():
     updated = users.find_one({"_id": ObjectId(user["_id"])})
     language_record = (updated.get("apply_documents") or {}).get("language") or {}
     language_record["language_scores"] = scores
-    mark_apply_document_unread(updated, "language")
-    fresh = users.find_one({"_id": ObjectId(user["_id"])}) or updated
+    fresh = mark_apply_document_unread(updated, "language")
+    notify_mentors_mentee_document_request(fresh, "language", "cập nhật điểm")
     language_record = (fresh.get("apply_documents") or {}).get("language") or {}
     language_record["language_scores"] = scores
     sync_apply_missing_reminder(ObjectId(user["_id"]))
@@ -676,7 +678,8 @@ def set_language_mentor_handles():
 
     if mentor_handles:
         updated_user = users.find_one({"_id": ObjectId(user["_id"])}) or user
-        mark_apply_document_unread(updated_user, "language")
+        updated_user = mark_apply_document_unread(updated_user, "language")
+        notify_mentors_mentee_document_request(updated_user, "language", "mentor làm")
         log_mentee_document_event(
             user,
             "language_mentor_handles",
@@ -750,8 +753,13 @@ def set_apply_document_mentee_request(doc_id: str):
 
     updated = users.find_one({"_id": ObjectId(user["_id"])}) or user
     if mentor_handles or needs_mentor_edit:
-        mark_apply_document_unread(updated, doc_id)
-        updated = users.find_one({"_id": ObjectId(user["_id"])}) or updated
+        updated = mark_apply_document_unread(updated, doc_id)
+        has_existing_file = bool(existing.get("stored_name")) and doc_id not in NO_FILE_UPLOAD_DOC_IDS
+        if has_existing_file:
+            notify_mentors_mentee_document_upload(updated, doc_id)
+        else:
+            request_note = "mentor làm" if mentor_handles else "cần sửa"
+            notify_mentors_mentee_document_request(updated, doc_id, request_note)
 
     labels = []
     if mentor_handles:
@@ -909,7 +917,10 @@ def submit_language_score_update():
     )
 
     updated = users.find_one({"_id": ObjectId(user["_id"])})
-    notify_mentors_mentee_document_upload(updated or user, "language")
+    if existing.get("stored_name"):
+        notify_mentors_mentee_document_upload(updated or user, "language")
+    else:
+        notify_mentors_mentee_document_request(updated or user, "language", "cập nhật điểm")
     sync_apply_missing_reminder(ObjectId(user["_id"]))
     updated = users.find_one({"_id": ObjectId(user["_id"])}) or updated
     language_record = (updated.get("apply_documents") or {}).get("language") or {}

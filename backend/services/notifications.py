@@ -73,6 +73,7 @@ def notify_mentors_mentee_document_upload(user: dict, doc_id: str):
         title=f"{mentee_name} upload {doc_label}",
         description=f"Mentee vừa nộp giấy tờ: {doc_label}",
         doc_id=doc_id,
+        has_file=doc_id not in NO_FILE_UPLOAD_DOC_IDS,
     )
     urls = inbox_urls(BACKEND_PUBLIC_URL, task)
     snooze_urls = inbox_snooze_urls(BACKEND_PUBLIC_URL, task)
@@ -89,6 +90,57 @@ def notify_mentors_mentee_document_upload(user: dict, doc_id: str):
                 document_label=doc_label,
                 mentee_page_url=mentee_page,
                 view_url=urls["view"] if doc_id not in NO_FILE_UPLOAD_DOC_IDS else "",
+                confirm_url=urls["confirm"],
+                snooze_urls=snooze_urls,
+            )
+    except Exception:
+        pass
+
+
+def notify_mentors_mentee_document_request(user: dict, doc_id: str, request_note: str = ""):
+    """Notify mentors that a mentee flagged a document for mentor attention
+    (e.g. "mentor làm hộ" / "cần sửa" / score update) without an actual file
+    to preview. Unlike notify_mentors_mentee_document_upload, this never
+    promises a viewable file in the inbox task."""
+    mentor_name = (user.get("mentor") or "").strip()
+    if not mentor_name:
+        return
+
+    from inbox_tasks import create_mentor_inbox_task, inbox_snooze_urls, inbox_urls
+
+    doc_label = APPLY_DOC_LABELS.get(doc_id, doc_id)
+    mentee_name = user.get("full_name") or user.get("username") or user.get("email", "")
+    mentee_page = os.getenv("MENTOR_MENTEES_URL", "http://localhost:5174/mentees").strip()
+    mentee_id = str(user.get("_id", ""))
+    note_suffix = f" ({request_note})" if request_note else ""
+
+    task = create_mentor_inbox_task(
+        mentor_inbox,
+        mentor_name=mentor_name,
+        mentee_id=mentee_id,
+        mentee_name=mentee_name,
+        mentee_email=user.get("email", ""),
+        action="document_request",
+        title=f"{mentee_name} yêu cầu xử lí {doc_label}{note_suffix}",
+        description=f"Mentee cần mentor xử lí giấy tờ: {doc_label}{note_suffix}",
+        doc_id=doc_id,
+        has_file=False,
+    )
+    urls = inbox_urls(BACKEND_PUBLIC_URL, task)
+    snooze_urls = inbox_snooze_urls(BACKEND_PUBLIC_URL, task)
+
+    try:
+        from email_notify import send_mentee_document_upload_email
+
+        for email in mentor_branch_notify_emails(mentor_name):
+            send_mentee_document_upload_email(
+                to_email=email,
+                mentee_name=mentee_name,
+                mentee_email=user.get("email", ""),
+                mentor_name=mentor_name,
+                document_label=f"{doc_label}{note_suffix}",
+                mentee_page_url=mentee_page,
+                view_url="",
                 confirm_url=urls["confirm"],
                 snooze_urls=snooze_urls,
             )

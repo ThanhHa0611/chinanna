@@ -630,7 +630,12 @@ def save_apply_document_upload(user: dict, doc_id: str, uploaded, *, uploaded_by
     return record, updated_user
 
 
-def mark_apply_document_unread(user: dict, doc_id: str):
+def mark_apply_document_unread(user: dict, doc_id: str) -> dict:
+    """Flip a document's mentor_unread flag. Does NOT send any mentor
+    notification — callers must explicitly call notify_mentors_mentee_document_upload
+    (real file ready to view) or notify_mentors_mentee_document_request (no file,
+    e.g. mentor_handles / needs_mentor_edit / score-only updates) right after,
+    using whichever is appropriate for that event."""
     from bson import ObjectId
 
     set_fields = {f"apply_documents.{doc_id}.mentor_unread": True}
@@ -648,7 +653,7 @@ def mark_apply_document_unread(user: dict, doc_id: str):
         },
     )
     fresh = users.find_one({"_id": ObjectId(user["_id"])}) or user
-    notify_mentors_mentee_document_upload(fresh, doc_id)
+    return fresh
 
 
 def skill_keys_for_language(lang: str) -> tuple[str, ...]:

@@ -19,7 +19,7 @@ SECTION_DEFINITIONS: list[dict] = [
     {
         "key": "documents",
         "label": "1. Giấy tờ apply",
-        "actions": {"document_upload"},
+        "actions": {"document_upload", "document_request"},
     },
     {
         "key": "apply_progress",
@@ -45,6 +45,7 @@ SECTION_DEFINITIONS: list[dict] = [
 
 ACTION_SUMMARY_VERBS: dict[str, str] = {
     "document_upload": "đã nộp giấy tờ",
+    "document_request": "cần mentor xử lí giấy tờ",
     "apply_progress_request": "cập nhật tiến độ apply",
     "feedback": "gửi phản hồi",
     "hdnk_nckh_update": "cập nhật HDNK + NCKH",
@@ -127,7 +128,7 @@ def format_mentee_action_line(doc: dict) -> str:
     verb = ACTION_SUMMARY_VERBS.get(action)
     if verb:
         detail = doc.get("description") or doc.get("title") or ""
-        if action == "document_upload" and detail:
+        if action in ("document_upload", "document_request") and detail:
             return f"{mentee} {verb}: {detail}"
         return f"{mentee} {verb}"
     title = doc.get("title") or doc.get("description") or "Có cập nhật mới"
@@ -258,6 +259,7 @@ def serialize_inbox_task(doc: dict, *, base_url: str = "") -> dict:
         "description": doc.get("description", ""),
         "summary_line": format_task_summary_line(doc),
         "doc_id": doc.get("doc_id", ""),
+        "has_file": doc.get("has_file", True),
         "status": doc.get("status", "pending"),
         "display_state": display_state,
         "processed_at": doc["processed_at"].isoformat() if doc.get("processed_at") else "",
@@ -317,6 +319,7 @@ def create_mentor_inbox_task(
     title: str,
     description: str,
     doc_id: str = "",
+    has_file: bool = True,
     reminder_hours: int = DEFAULT_REMINDER_HOURS,
 ) -> dict:
     now = _now()
@@ -330,6 +333,7 @@ def create_mentor_inbox_task(
         "title": title,
         "description": description,
         "doc_id": doc_id or "",
+        "has_file": has_file,
         "status": "pending",
         "created_at": now,
         "processed_at": None,
