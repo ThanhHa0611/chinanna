@@ -365,6 +365,7 @@ function MenteeProfile() {
   const [preferredSchoolsMessage, setPreferredSchoolsMessage] = useState('');
   const [preferredSchoolsError, setPreferredSchoolsError] = useState('');
   const [applyProgressUnread, setApplyProgressUnread] = useState(false);
+  const [profileActivitiesUnreadCount, setProfileActivitiesUnreadCount] = useState(0);
 
   useEffect(() => {
     setFullName(user?.full_name || '');
@@ -470,6 +471,15 @@ function MenteeProfile() {
       })
       .catch(() => {});
   }, [user]);
+
+  useEffect(() => {
+    api
+      .getProfileActivities()
+      .then((data) => {
+        setProfileActivitiesUnreadCount(data.unviewed_count ?? 0);
+      })
+      .catch(() => {});
+  }, [user?.id]);
 
   useEffect(() => {
     if (activeSection !== 'apply-progress' || !applyProgressUnread) return;
@@ -1877,7 +1887,13 @@ function MenteeProfile() {
     }
 
     if (sectionId === 'profile-activities') {
-      return <ProfileActivitiesSection user={user} />;
+      return (
+        <ProfileActivitiesSection
+          user={user}
+          unviewedCount={profileActivitiesUnreadCount}
+          onUnviewedCountChange={setProfileActivitiesUnreadCount}
+        />
+      );
     }
 
     if (sectionId !== 'feedback') {
@@ -2069,6 +2085,14 @@ function MenteeProfile() {
         </span>
       );
     }
+    if (item.id === 'profile-activities' && profileActivitiesUnreadCount > 0) {
+      return (
+        <span className="profile-nav-notify profile-nav-notify-activities">
+          <span className="profile-nav-notify-dot profile-nav-notify-dot-activities" aria-hidden="true" />
+          Có {profileActivitiesUnreadCount} hoạt động mới
+        </span>
+      );
+    }
     return null;
   };
 
@@ -2150,6 +2174,15 @@ function MenteeProfile() {
                 <span className="profile-nav-notify">
                   <span className="profile-nav-notify-dot" aria-hidden="true" />
                   Bạn có thông báo mới
+                </span>
+              )}
+              {item.id === 'profile-activities' && profileActivitiesUnreadCount > 0 && (
+                <span className="profile-nav-notify profile-nav-notify-activities">
+                  <span
+                    className="profile-nav-notify-dot profile-nav-notify-dot-activities"
+                    aria-hidden="true"
+                  />
+                  Có {profileActivitiesUnreadCount} hoạt động mới
                 </span>
               )}
             </button>

@@ -6,6 +6,7 @@ import {
   feedLineText,
   formatImportanceStars,
   getDeadlineBadge,
+  participationModeDisplayLabel,
 } from '../utils/profileActivities';
 
 function isActivityViewed(item) {
@@ -15,6 +16,7 @@ function isActivityViewed(item) {
 function FeedLine({ item, onLinkClick }) {
   const text = feedLineText(item);
   const link = feedLineLink(item);
+  const participationLabel = participationModeDisplayLabel(item);
 
   return (
     <div className="profile-activity-feed-text">
@@ -27,12 +29,12 @@ function FeedLine({ item, onLinkClick }) {
         )}
         {text}
       </div>
-      {(item.target_audience || item.participation_mode_label) && (
+      {(item.target_audience || participationLabel) && (
         <div className="profile-activity-feed-meta muted">
           {item.target_audience && <span>Đối tượng: {item.target_audience}</span>}
-          {item.target_audience && item.participation_mode_label && ' · '}
-          {item.participation_mode_label && (
-            <span>Hình thức: {item.participation_mode_label}</span>
+          {item.target_audience && participationLabel && ' · '}
+          {participationLabel && (
+            <span>Hình thức: {participationLabel}</span>
           )}
         </div>
       )}
@@ -64,10 +66,9 @@ function DayBlock({ day, renderItem }) {
   );
 }
 
-export default function ProfileActivitiesSection({ user }) {
+export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUnviewedCountChange }) {
   const [currentDay, setCurrentDay] = useState(null);
   const [otherDays, setOtherDays] = useState([]);
-  const [unviewedCount, setUnviewedCount] = useState(0);
   const [expanded, setExpanded] = useState(true);
   const [showOther, setShowOther] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -78,7 +79,7 @@ export default function ProfileActivitiesSection({ user }) {
     const data = await api.getProfileActivities();
     setCurrentDay(data.current_day || null);
     setOtherDays(data.other_days || []);
-    setUnviewedCount(data.unviewed_count ?? 0);
+    onUnviewedCountChange?.(data.unviewed_count ?? 0);
   };
 
   useEffect(() => {
@@ -91,7 +92,7 @@ export default function ProfileActivitiesSection({ user }) {
   const markViewed = async (itemId) => {
     try {
       await api.markProfileActivityRead(itemId);
-      setUnviewedCount((count) => Math.max(0, count - 1));
+      onUnviewedCountChange?.((count) => Math.max(0, count - 1));
       setCurrentDay((day) =>
         day
           ? {
@@ -306,11 +307,6 @@ export default function ProfileActivitiesSection({ user }) {
           </p>
         ) : (
           <div className="profile-activities-days">
-            {unviewedCount > 0 && (
-              <div className="profile-activities-new-banner" role="status">
-                Có {unviewedCount} hoạt động mới
-              </div>
-            )}
             <DayBlock day={currentDay} renderItem={renderItem} />
             {otherDayCount > 0 && (
               <div className="profile-activities-other">
