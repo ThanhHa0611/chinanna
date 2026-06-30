@@ -23,8 +23,18 @@ from werkzeug.utils import secure_filename
 
 from config import *
 from database import *
+from auth.login_tracking import (
+    apply_location_fields,
+    get_login_context,
+    get_request_login_location,
+    notify_login_security_event,
+    upsert_pending_login_request,
+)
 
 def user_response(user: dict) -> dict:
+    from services.admins import is_thanh_ha_mentee
+    from services.apply_documents import apply_degree_level_label, term3_2027_language_semester_label
+
     role = user.get("role") or ROLE_MENTEE
     payload = {
         "id": str(user["_id"]),
@@ -196,6 +206,8 @@ def sync_parent_account(mentee: dict, parent_email: str) -> None:
         return
 
     try:
+        from auth.security import hash_password
+
         users.insert_one(
             {
                 "username": parent_username,

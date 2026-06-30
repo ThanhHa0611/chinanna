@@ -49,6 +49,8 @@ def decode_token(token: str) -> dict | None:
 
 
 def require_system_super_admin(admin: dict | None):
+    from services.admins import admin_is_approved, is_super_admin
+
     if not admin:
         return (jsonify({"detail": "Chưa đăng nhập"}), 401)
     if not is_super_admin(admin):
@@ -84,6 +86,8 @@ def get_authenticated_user():
         return None, (jsonify({"detail": "Người dùng không tồn tại"}), 401)
 
     role = user.get("role") or ROLE_MENTEE
+    from auth.users import mentee_is_approved, registration_block_message
+
     if role == ROLE_MENTEE and not mentee_is_approved(user):
         detail, _flag = registration_block_message(user)
         return None, (jsonify({"detail": detail}), 403)
