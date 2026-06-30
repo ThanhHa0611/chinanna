@@ -351,6 +351,53 @@ def apply_degree_level_label(value: str) -> str:
     return APPLY_DEGREE_LEVEL_LABELS.get(normalize_apply_degree_level(value), "")
 
 
+def apply_degree_level_short_label(value: str) -> str:
+    label = apply_degree_level_label(value)
+    if not label:
+        return ""
+    return re.sub(r"\s*\([^)]*\)", "", label).strip()
+
+
+def mentee_apply_language_summary(user: dict) -> str:
+    language_doc = (user.get("apply_documents") or {}).get("language") or {}
+    scores = language_doc.get("language_scores") or {}
+    certificate_name = str(scores.get("certificate_name") or "").strip()
+    english = scores.get("english") or {}
+    chinese = scores.get("chinese") or {}
+    overall = str(english.get("overall") or chinese.get("overall") or "").strip()
+    if certificate_name and overall:
+        return f"{certificate_name} {overall}"
+    return certificate_name or overall
+
+
+def mentee_keeptrack_profile_summary_parts(user: dict) -> dict[str, str]:
+    empty = "—"
+    system = apply_degree_level_short_label(user.get("apply_degree_level", ""))
+    major = mentor_apply_direction_label(user.get("mentor_apply_direction", ""))
+    if not major:
+        major = str(user.get("apply_direction") or "").strip()
+    research = research_direction_label(user.get("research_direction", ""))
+    language = mentee_apply_language_summary(user)
+    return {
+        "apply_system": system or empty,
+        "apply_major": major or empty,
+        "research_direction": research or empty,
+        "apply_language": language or empty,
+    }
+
+
+def mentee_keeptrack_profile_summary_line(user: dict) -> str:
+    parts = mentee_keeptrack_profile_summary_parts(user)
+    return " - ".join(
+        [
+            parts["apply_system"],
+            parts["apply_major"],
+            parts["research_direction"],
+            parts["apply_language"],
+        ]
+    )
+
+
 def normalize_term3_2027_language_semester(value: str) -> str:
     normalized = (value or "").strip().lower()
     return normalized if normalized in TERM3_2027_LANGUAGE_VALUES else ""

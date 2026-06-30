@@ -9,7 +9,11 @@ from bson import ObjectId
 
 from config import ROLE_PARENT
 from database import profile_activities, users
-from services.apply_documents import mentor_apply_direction_label
+from services.apply_documents import (
+    mentee_keeptrack_profile_summary_line,
+    mentee_keeptrack_profile_summary_parts,
+    mentor_apply_direction_label,
+)
 from services.hdnk_nckh import get_hdnk_nckh_entries_raw, normalize_hdnk_nckh_entry
 from services.notifications import notify_mentee_mentor_activity, notify_mentors_mentee_activity
 
@@ -844,12 +848,19 @@ def serialize_pending_keeptrack_review(activity: dict, state: dict, mentee: dict
         return None
     submitted = pending.get("submitted_keeptrack") or {}
     mentee_id = state.get("mentee_id", "")
+    profile_parts = mentee_keeptrack_profile_summary_parts(mentee)
     return {
         "review_id": pending.get("review_id") or f"{activity['_id']}:{mentee_id}",
         "activity_id": str(activity["_id"]),
         "activity_name": compose_activity_name(activity),
         "mentee_id": mentee_id,
         "mentee_name": mentee.get("full_name") or mentee.get("username") or mentee.get("email", ""),
+        "mentee_email": mentee.get("email", ""),
+        "mentee_profile_summary": mentee_keeptrack_profile_summary_line(mentee),
+        "mentee_apply_system": profile_parts["apply_system"],
+        "mentee_apply_major": profile_parts["apply_major"],
+        "mentee_research_direction": profile_parts["research_direction"],
+        "mentee_apply_language": profile_parts["apply_language"],
         "submitted_at": pending.get("submitted_at").isoformat() if pending.get("submitted_at") else "",
         "start_date": submitted.get("start_date") or "",
         "progress_status": submitted.get("progress_status") or "",
@@ -1033,6 +1044,7 @@ def serialize_group_members_for_mentee(group: dict) -> list[dict]:
     member_ids = [str(item) for item in (group.get("mentee_ids") or []) if str(item)]
     if not member_ids:
         return []
+    leader_id = str(group.get("leader_mentee_id") or "").strip()
     object_ids = [ObjectId(item) for item in member_ids if ObjectId.is_valid(item)]
     users_by_id = {
         str(user["_id"]): user
@@ -1048,6 +1060,7 @@ def serialize_group_members_for_mentee(group: dict) -> list[dict]:
                 "mentee_id": member_id,
                 "full_name": user.get("full_name") or user.get("username") or user.get("email", ""),
                 "zalo_phone": user.get("zalo_phone") or "",
+                "is_leader": member_id == leader_id,
             }
         )
     return members
@@ -1562,6 +1575,7 @@ def _create_auto_solo_group(activity: dict, mentee_id: str) -> dict:
         "mentee_ids": [mentee_id],
         "notification_sent_at": None,
         "finalized_at": None,
+        "leader_mentee_id": "",
         "approval_status": PROFILE_ACTIVITY_APPROVAL_APPROVED,
         "submitted_by_admin_id": "system",
         "submitted_at": now,
@@ -1633,6 +1647,7 @@ def _group_payload(group: dict, *, approval_status: str | None = None) -> dict:
         "mentee_ids": [str(item) for item in (group.get("mentee_ids") or []) if str(item)],
         "notification_sent_at": group.get("notification_sent_at"),
         "finalized_at": group.get("finalized_at"),
+        "leader_mentee_id": str(group.get("leader_mentee_id") or "").strip(),
         "approval_status": status,
         "submitted_by_admin_id": group.get("submitted_by_admin_id", ""),
         "submitted_at": group.get("submitted_at"),
@@ -2101,3 +2116,32 @@ def finalize_group_and_sync_hdnk(activity: dict, group_id: str, admin_name: str 
         {"$set": {"groups": activity.get("groups", []), "updated_at": now}},
     )
     return activity
+
+
+class ProfileActivityGroupLeaderError(ValueError):
+    pass
+
+
+def set_group_leader(activity: dict, group_id: str, mentee_id: str) -> dict:
+    group = _find_group(activity, group_id)
+    if not group:
+        raise ProfileActivityGroupLeaderError("Nhóm không tồn tại.")
+    if not group_is_approved(group):
+        raise ProfileActivityGroupLeaderError("Nhóm đang chờ mentor cấp 1 duyệt.")
+    if _is_auto_solo_group(group):
+        raise ProfileActivityGroupLeaderError("Hình thức cá nhân không cần chọn nhóm trưởng.")
+    if not group.get("finalized_at"):
+        raise ProfileActivityGroupLeaderError("Cần chốt nhóm trước khi chọn nhóm trưởng.")
+
+    mentee_id = str(mentee_id or "").strip()
+    member_ids = [str(item) for item in (group.get("mentee_ids") or [])]
+    if mentee_id not in member_ids:
+        raise ProfileActivityGroupLeaderError("Mentee không thuộc nhóm này.")
+
+    now = datetime.now(timezone.utc)
+    group["leader_mentee_id"] = mentee_id
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"groups": activity.get("groups", []), "updated_at": now}},
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
