@@ -3398,6 +3398,108 @@ html.device-phone .daily-summary-status {
   word-break: break-word;
 }
 
+.profile-activity-name-preview {
+  margin: 0 0 0.75rem;
+  font-size: 0.92rem;
+  color: var(--muted, #6b7280);
+  word-break: break-word;
+}
+
+.importance-stars {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.importance-star {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: #d1d5db;
+  cursor: pointer;
+}
+
+.importance-star.is-active {
+  color: #f59e0b;
+}
+
+.importance-stars-display {
+  color: #f59e0b;
+  font-size: 0.85rem;
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+}
+
+.profile-activity-approval-badge {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.profile-activity-approval-badge.is-approved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.profile-activity-approval-badge.is-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.profile-activity-approval-badge.is-rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.profile-activity-pending-queue {
+  margin-bottom: 1rem;
+}
+
+.profile-activity-pending-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profile-activity-pending-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.profile-activity-pending-line {
+  flex: 1;
+  min-width: 200px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.profile-activity-management-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.profile-activity-l2-note {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
 .profile-activity-management {
   margin-top: 1rem;
   display: flex;

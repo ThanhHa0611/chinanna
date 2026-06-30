@@ -1,13 +1,48 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api';
-import { format_activity_feed_line, getDeadlineBadge } from '../utils/profileActivities';
+import {
+  feedLineLink,
+  feedLineText,
+  formatImportanceStars,
+  getDeadlineBadge,
+} from '../utils/profileActivities';
+
+function FeedLine({ item, onLinkClick }) {
+  const text = feedLineText(item);
+  const link = feedLineLink(item);
+
+  return (
+    <span className="profile-activity-feed-text">
+      {item.highlight_star ? '⭐ ' : ''}
+      {item.importance > 0 && (
+        <span className="importance-stars-display" title="Mức độ quan trọng">
+          {formatImportanceStars(item.importance)}{' '}
+        </span>
+      )}
+      {text}
+      {link && (
+        <>
+          {' '}
+          <a
+            href={link}
+            target="_blank"
+            rel="noreferrer"
+            className="profile-activity-inline-link"
+            onClick={onLinkClick}
+          >
+            {link}
+          </a>
+        </>
+      )}
+    </span>
+  );
+}
 
 export default function ProfileActivitiesSection({ user }) {
   const [days, setDays] = useState([]);
   const [hiddenDays, setHiddenDays] = useState([]);
   const [expanded, setExpanded] = useState(true);
   const [showOld, setShowOld] = useState(false);
-  const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -33,13 +68,12 @@ export default function ProfileActivitiesSection({ user }) {
     [days, hiddenDays, showOld],
   );
 
-  const openDetail = async (itemId) => {
+  const markRead = async (itemId) => {
     try {
-      const data = await api.getProfileActivityDetail(itemId);
-      setDetail(data);
+      await api.markProfileActivityRead(itemId);
       await refresh();
-    } catch (err) {
-      setError(err.message);
+    } catch {
+      // best effort
     }
   };
 
@@ -64,10 +98,6 @@ export default function ProfileActivitiesSection({ user }) {
   const respondGroup = async (itemId, status) => {
     try {
       await api.respondProfileActivityGroup(itemId, { status });
-      if (detail?.id === itemId) {
-        const data = await api.getProfileActivityDetail(itemId);
-        setDetail(data);
-      }
       await refresh();
     } catch (err) {
       setError(err.message);
@@ -82,38 +112,53 @@ export default function ProfileActivitiesSection({ user }) {
     );
   };
 
-  const renderItem = (item) => {
-    const line = format_activity_feed_line(item, user);
-    return (
-      <div
-        key={item.id}
-        className={`profile-activity-line ${item.read ? 'is-read' : 'is-unread'}`}
-      >
-        <div className="profile-activity-line-main">
-          <span className="profile-activity-dot">•</span>
-          <button
-            type="button"
-            className="profile-activity-link-btn"
-            onClick={() => openDetail(item.id)}
-          >
-            {item.highlight_star ? '⭐ ' : ''}
-            {line}
-            {renderDeadlineBadge(item)}
-          </button>
-        </div>
-        <div className="profile-activity-line-actions">
-          {!item.registered && (
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => registerActivity(item.id)}>
-              Báo danh
-            </button>
-          )}
-          <button type="button" className="btn btn-outline btn-sm" onClick={() => hideActivity(item.id)}>
-            Ẩn
-          </button>
+  const renderItem = (item) => (
+    <div
+      key={item.id}
+      className={`profile-activity-line ${item.read ? 'is-read' : 'is-unread'}`}
+    >
+      <div className="profile-activity-line-main">
+        <span className="profile-activity-dot">•</span>
+        <div className="profile-activity-line-content">
+          <FeedLine
+            item={item}
+            onLinkClick={() => {
+              if (!item.read) markRead(item.id);
+            }}
+          />
+          {renderDeadlineBadge(item)}
         </div>
       </div>
-    );
-  };
+      <div className="profile-activity-line-actions">
+        {item.group_response_status === 'pending' && (
+          <>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => respondGroup(item.id, 'confirmed')}
+            >
+              Xác nhận nhóm
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => respondGroup(item.id, 'rejected')}
+            >
+              Từ chối nhóm
+            </button>
+          </>
+        )}
+        {!item.registered && (
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => registerActivity(item.id)}>
+            Báo danh
+          </button>
+        )}
+        <button type="button" className="btn btn-outline btn-sm" onClick={() => hideActivity(item.id)}>
+          Ẩn
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -135,79 +180,29 @@ export default function ProfileActivitiesSection({ user }) {
           <p className="muted">Có {totalItems} hoạt động.</p>
         ) : (
           <div className="profile-activities-days">
-          {days.map((day) => (
-            <div key={day.date_key} className="profile-activities-day">
-              <h4>Ngày {day.date_label}</h4>
-              <div className="profile-activities-list">{(day.items || []).map(renderItem)}</div>
-            </div>
-          ))}
-          {hiddenDays.length > 0 && (
-            <div className="profile-activities-old">
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowOld((v) => !v)}>
-                {showOld ? 'Ẩn hoạt động cũ' : `Xem ${hiddenDays.length} ngày cũ hơn`}
-              </button>
-              {showOld &&
-                hiddenDays.map((day) => (
-                  <div key={day.date_key} className="profile-activities-day">
-                    <h4>Ngày {day.date_label}</h4>
-                    <div className="profile-activities-list">{(day.items || []).map(renderItem)}</div>
-                  </div>
-                ))}
-            </div>
-          )}
+            {days.map((day) => (
+              <div key={day.date_key} className="profile-activities-day">
+                <h4>Ngày {day.date_label}</h4>
+                <div className="profile-activities-list">{(day.items || []).map(renderItem)}</div>
+              </div>
+            ))}
+            {hiddenDays.length > 0 && (
+              <div className="profile-activities-old">
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowOld((v) => !v)}>
+                  {showOld ? 'Ẩn hoạt động cũ' : `Xem ${hiddenDays.length} ngày cũ hơn`}
+                </button>
+                {showOld &&
+                  hiddenDays.map((day) => (
+                    <div key={day.date_key} className="profile-activities-day">
+                      <h4>Ngày {day.date_label}</h4>
+                      <div className="profile-activities-list">{(day.items || []).map(renderItem)}</div>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
       </div>
-
-      {detail && (
-        <div className="modal-backdrop" onClick={() => setDetail(null)} role="presentation">
-          <div className="modal-card profile-activity-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>{detail.activity_name}</h3>
-            <p><strong>Loại:</strong> {detail.activity_type || 'Khác'}</p>
-            {detail.organizer && <p><strong>Đơn vị:</strong> {detail.organizer}</p>}
-            {detail.content && <p><strong>Nội dung:</strong> {detail.content}</p>}
-            {detail.target_audience && <p><strong>Đối tượng:</strong> {detail.target_audience}</p>}
-            {detail.deadline && (
-              <p>
-                <strong>Deadline:</strong> {detail.deadline}
-                {renderDeadlineBadge(detail)}
-              </p>
-            )}
-            {detail.link && (
-              <p>
-                <strong>Link:</strong>{' '}
-                <a href={detail.link} target="_blank" rel="noreferrer">
-                  Mở liên kết
-                </a>
-              </p>
-            )}
-            {detail.attachment_url && (
-              <p>
-                <strong>Đính kèm:</strong>{' '}
-                <a href={detail.attachment_url} target="_blank" rel="noreferrer">
-                  Xem file
-                </a>
-              </p>
-            )}
-            {detail.description && <p><strong>Mô tả:</strong> {detail.description}</p>}
-            {detail.group_response_status === 'pending' && (
-              <div className="action-cell">
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => respondGroup(detail.id, 'confirmed')}>
-                  Xác nhận nhóm
-                </button>
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => respondGroup(detail.id, 'rejected')}>
-                  Từ chối nhóm
-                </button>
-              </div>
-            )}
-            <div className="modal-actions">
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setDetail(null)}>
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

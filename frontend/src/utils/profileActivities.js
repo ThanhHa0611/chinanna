@@ -44,21 +44,44 @@ export function getDeadlineBadge(deadlineStr, badgeFromApi = null) {
   return null;
 }
 
-export function format_activity_feed_line(activity, mentee) {
-  const pieces = [];
-  const name = (activity?.activity_name || '').trim() || 'Hoạt động hồ sơ';
-  pieces.push(name);
-  if (activity?.organizer) {
-    pieces.push(`của ${activity.organizer}`);
+export function compose_activity_name(data) {
+  const activityType = (data?.activity_type || '').trim() || 'Khác';
+  const organizer = (data?.organizer || '').trim();
+  const content = (data?.content || '').trim();
+  const target = (data?.target_audience || '').trim();
+  const deadline = (data?.deadline || '').trim();
+
+  let line = activityType;
+  if (organizer) line = `${line} của ${organizer}`;
+  if (content) line = `${line}, về ${content}`;
+  if (target) line = `${line} cho ${target}`;
+  if (deadline) line = `${line}, dl ${deadline}`;
+  return line.trim() || 'Hoạt động hồ sơ';
+}
+
+export function format_activity_feed_line(activity) {
+  let line = compose_activity_name(activity);
+  const stored = (activity?.activity_name || '').trim();
+  if (stored && (line === 'Khác' || line === 'Hoạt động hồ sơ') && stored.length > line.length) {
+    line = stored;
   }
-  if (activity?.content) {
-    pieces.push(`về ${activity.content}`);
+  if (!line) line = 'Hoạt động hồ sơ';
+  const link = (activity?.link || '').trim();
+  if (link) {
+    line = `${line} ${link}`;
   }
-  if (activity?.target_audience) {
-    pieces.push(`dành cho ${activity.target_audience}`);
-  }
-  if (activity?.deadline) {
-    pieces.push(`deadline ${activity.deadline}`);
-  }
-  return pieces.join(', ');
+  return line;
+}
+
+export function feedLineText(activity) {
+  return compose_activity_name(activity);
+}
+
+export function feedLineLink(activity) {
+  return (activity?.link || '').trim();
+}
+
+export function formatImportanceStars(importance) {
+  const value = Math.max(1, Math.min(5, parseInt(importance, 10) || 3));
+  return '★'.repeat(value) + '☆'.repeat(5 - value);
 }

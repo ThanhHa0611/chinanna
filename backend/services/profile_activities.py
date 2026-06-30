@@ -23,6 +23,16 @@ PROFILE_ACTIVITY_TYPES = (
     "Khác",
 )
 
+PROFILE_ACTIVITY_APPROVAL_APPROVED = "approved"
+PROFILE_ACTIVITY_APPROVAL_PENDING = "pending_l1_approval"
+PROFILE_ACTIVITY_APPROVAL_REJECTED = "rejected"
+PROFILE_ACTIVITY_APPROVAL_STATUSES = (
+    PROFILE_ACTIVITY_APPROVAL_APPROVED,
+    PROFILE_ACTIVITY_APPROVAL_PENDING,
+    PROFILE_ACTIVITY_APPROVAL_REJECTED,
+)
+DEFAULT_PROFILE_ACTIVITY_IMPORTANCE = 3
+
 PROFILE_ACTIVITY_MAJOR_OPTIONS = (
     "Kinh tế & Logistics",
     "Truyền thông",
@@ -318,6 +328,56 @@ def _extract_majors(text: str) -> list[str]:
     return majors
 
 
+def compose_activity_name(data: dict) -> str:
+    activity_type = (data.get("activity_type") or "").strip() or "Khác"
+    organizer = (data.get("organizer") or "").strip()
+    content = (data.get("content") or "").strip()
+    target = (data.get("target_audience") or "").strip()
+    deadline = (data.get("deadline") or "").strip()
+
+    line = activity_type
+    if organizer:
+        line = f"{line} của {organizer}"
+    if content:
+        line = f"{line}, về {content}"
+    if target:
+        line = f"{line} cho {target}"
+    if deadline:
+        line = f"{line}, dl {deadline}"
+    return line.strip() or "Hoạt động hồ sơ"
+
+
+def _normalize_importance(raw) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = DEFAULT_PROFILE_ACTIVITY_IMPORTANCE
+    return max(1, min(5, value))
+
+
+def _normalize_approval_status(raw: str | None) -> str:
+    value = (raw or "").strip()
+    if value in PROFILE_ACTIVITY_APPROVAL_STATUSES:
+        return value
+    return PROFILE_ACTIVITY_APPROVAL_APPROVED
+
+
+def activity_visible_to_mentee(doc: dict) -> bool:
+    status = doc.get("approval_status")
+    if not status:
+        return True
+    return status == PROFILE_ACTIVITY_APPROVAL_APPROVED
+
+
+def resolve_initial_approval_status(admin: dict) -> str:
+    from services.admins import is_super_admin
+    from services.apply_progress import admin_is_level1_mentor
+
+    if is_super_admin(admin) or admin_is_level1_mentor(admin):
+        return PROFILE_ACTIVITY_APPROVAL_APPROVED
+    return PROFILE_ACTIVITY_APPROVAL_PENDING
+
+
 def parse_profile_activity_from_description(description: str) -> dict:
     text = (description or "").strip()
     deadline = _find_regex_group(
@@ -331,12 +391,7 @@ def parse_profile_activity_from_description(description: str) -> dict:
     target = _find_regex_group(r"(?:dành cho|đối tượng)[:\s]+([^\n.;]+)", text)
     content = _find_regex_group(r"(?:về|chủ đề|nội dung)[:\s]+([^\n.;]+)", text)
     majors = _extract_majors(text)
-    parsed_name = _extract_name(text)
-    full_title = _first_description_line(text)
-    if full_title and len(full_title) > len(parsed_name):
-        parsed_name = full_title[:500].strip(" .,:;-")
-    return {
-        "activity_name": parsed_name,
+    parsed = {
         "activity_type": _extract_type(text),
         "deadline": _normalize_date_text(deadline),
         "organizer": organizer,
@@ -344,6 +399,8 @@ def parse_profile_activity_from_description(description: str) -> dict:
         "content": content,
         "suitable_majors": majors,
     }
+    parsed["activity_name"] = compose_activity_name(parsed)
+    return parsed
 
 
 def sanitize_profile_activity_input(data: dict, *, parsed_fallback: dict | None = None) -> dict:
@@ -362,10 +419,9 @@ def sanitize_profile_activity_input(data: dict, *, parsed_fallback: dict | None 
     activity_type = (data.get("activity_type") or parsed_fallback.get("activity_type") or "Khác").strip()
     if activity_type not in PROFILE_ACTIVITY_TYPES:
         activity_type = "Khác"
-    return {
+    cleaned = {
         "link": str(data.get("link") or "").strip(),
         "description": str(data.get("description") or "").strip(),
-        "activity_name": str(data.get("activity_name") or parsed_fallback.get("activity_name") or "").strip(),
         "activity_type": activity_type,
         "deadline": _normalize_date_text(str(data.get("deadline") or parsed_fallback.get("deadline") or "")),
         "organizer": str(data.get("organizer") or parsed_fallback.get("organizer") or "").strip(),
@@ -376,7 +432,12 @@ def sanitize_profile_activity_input(data: dict, *, parsed_fallback: dict | None 
         "attachment_url": str(data.get("attachment_url") or "").strip(),
         "suitable_majors": cleaned_majors,
         "suitable_majors_other": other,
+        "importance": _normalize_importance(
+            data.get("importance", parsed_fallback.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE))
+        ),
     }
+    cleaned["activity_name"] = compose_activity_name(cleaned)
+    return cleaned
 
 
 def _get_or_create_state(doc: dict, mentee_id: str) -> dict:
@@ -434,18 +495,15 @@ def _matches_other_major(activity: dict, mentee: dict) -> bool:
 
 
 def format_activity_feed_line(activity: dict, mentee: dict | None = None) -> str:
-    line = (activity.get("activity_name") or "").strip() or "Hoạt động hồ sơ"
-    details = []
-    if activity.get("organizer"):
-        details.append(f"của {activity['organizer']}")
-    if activity.get("content"):
-        details.append(f"về {activity['content']}")
-    if activity.get("target_audience"):
-        details.append(f"dành cho {activity['target_audience']}")
-    if activity.get("deadline"):
-        details.append(f"deadline {activity['deadline']}")
-    if details:
-        line = f"{line}, {', '.join(details)}"
+    line = compose_activity_name(activity)
+    stored = (activity.get("activity_name") or "").strip()
+    if stored and line in {"Khác", "Hoạt động hồ sơ"} and len(stored) > len(line):
+        line = stored
+    if not line:
+        line = "Hoạt động hồ sơ"
+    link = (activity.get("link") or "").strip()
+    if link:
+        line = f"{line} {link}"
     return line
 
 
@@ -493,6 +551,7 @@ def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidd
         "group_response_status": state.get("group_response_status", "pending"),
         "group_response_note": state.get("group_response_note", ""),
         "highlight_star": activity_matches_mentee_major(doc, mentee),
+        "importance": _normalize_importance(doc.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE)),
         "registration_count": registration_count,
         "deadline_badge": get_deadline_badge(doc.get("deadline", "")),
     }
@@ -520,29 +579,83 @@ def serialize_admin_profile_activity(doc: dict) -> dict:
         "updated_at": doc.get("updated_at").isoformat() if doc.get("updated_at") else "",
         "registration_count": len(registrations),
         "groups": doc.get("groups", []),
+        "importance": _normalize_importance(doc.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE)),
+        "approval_status": _normalize_approval_status(doc.get("approval_status")),
+        "created_by_admin_id": doc.get("created_by_admin_id", ""),
+        "approved_at": doc.get("approved_at").isoformat() if doc.get("approved_at") else "",
+        "approved_by_admin_id": doc.get("approved_by_admin_id", ""),
+        "rejected_at": doc.get("rejected_at").isoformat() if doc.get("rejected_at") else "",
+        "rejected_by_admin_id": doc.get("rejected_by_admin_id", ""),
         "deadline_badge": get_deadline_badge(doc.get("deadline", "")),
     }
 
 
 def create_profile_activity(admin: dict, payload: dict) -> dict:
     now = datetime.now(timezone.utc)
+    approval_status = resolve_initial_approval_status(admin)
     doc = {
         **payload,
         "mentor_name": (admin.get("mentor_name") or "").strip(),
         "created_by_admin_id": str(admin["_id"]),
+        "approval_status": approval_status,
         "created_at": now,
         "updated_at": now,
         "mentee_states": [],
         "groups": [],
     }
+    if approval_status == PROFILE_ACTIVITY_APPROVAL_APPROVED:
+        doc["approved_at"] = now
+        doc["approved_by_admin_id"] = str(admin["_id"])
     result = profile_activities.insert_one(doc)
     return profile_activities.find_one({"_id": result.inserted_id}) or doc
+
+
+def approve_profile_activity(activity: dict, admin: dict) -> dict:
+    now = datetime.now(timezone.utc)
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "approval_status": PROFILE_ACTIVITY_APPROVAL_APPROVED,
+                "approved_at": now,
+                "approved_by_admin_id": str(admin["_id"]),
+                "rejected_at": None,
+                "rejected_by_admin_id": "",
+                "updated_at": now,
+            }
+        },
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def reject_profile_activity(activity: dict, admin: dict) -> dict:
+    now = datetime.now(timezone.utc)
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "approval_status": PROFILE_ACTIVITY_APPROVAL_REJECTED,
+                "rejected_at": now,
+                "rejected_by_admin_id": str(admin["_id"]),
+                "updated_at": now,
+            }
+        },
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
 
 
 def _sorted_activities_for_mentee(mentee: dict) -> list[dict]:
     query = {
         "created_at": {"$exists": True},
-        "$or": [{"mentor_name": {"$exists": False}}, {"mentor_name": mentee.get("mentor", "")}],
+        "$and": [
+            {"$or": [{"mentor_name": {"$exists": False}}, {"mentor_name": mentee.get("mentor", "")}]},
+            {
+                "$or": [
+                    {"approval_status": {"$exists": False}},
+                    {"approval_status": PROFILE_ACTIVITY_APPROVAL_APPROVED},
+                ]
+            },
+        ],
     }
     cursor = profile_activities.find(query).sort("created_at", -1)
     return list(cursor)

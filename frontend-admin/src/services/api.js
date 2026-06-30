@@ -355,6 +355,12 @@ export const api = {
       method: 'POST',
     }),
 
+  approveProfileActivity: (activityId) =>
+    request(`/api/admin/profile-activities/${activityId}/approve`, { method: 'POST' }),
+
+  rejectProfileActivity: (activityId) =>
+    request(`/api/admin/profile-activities/${activityId}/reject`, { method: 'POST' }),
+
   getMenteeRegistrations: () => request('/api/admin/mentee-registrations'),
 
   reviewMenteeRegistration: (id, body) =>

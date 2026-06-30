@@ -8,6 +8,7 @@ from auth.security import get_authenticated_user, require_mentee_account
 from database import profile_activities, with_db
 from extensions import app
 from services.profile_activities import (
+    activity_visible_to_mentee,
     list_profile_activities_for_mentee,
     mark_activity_read,
     register_for_activity,
@@ -75,6 +76,8 @@ def mentee_get_profile_activity(activity_id: str):
     activity, error = _find_activity_or_404(activity_id)
     if error:
         return error
+    if not activity_visible_to_mentee(activity):
+        return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     mark_activity_read(activity, user)
     refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
     payload = serialize_profile_activity_for_feed(refreshed, user, include_hidden=True)
@@ -94,6 +97,8 @@ def mentee_mark_profile_activity_read(activity_id: str):
     activity, error = _find_activity_or_404(activity_id)
     if error:
         return error
+    if not activity_visible_to_mentee(activity):
+        return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     mark_activity_read(activity, user)
     return jsonify({"message": "Đã đánh dấu đã đọc"})
 
@@ -111,6 +116,8 @@ def mentee_hide_profile_activity(activity_id: str):
     activity, error = _find_activity_or_404(activity_id)
     if error:
         return error
+    if not activity_visible_to_mentee(activity):
+        return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     data = request.get_json(silent=True) or {}
     hidden = bool(data.get("hidden", True))
     set_activity_hidden(activity, user, hidden)
@@ -130,6 +137,8 @@ def mentee_register_profile_activity(activity_id: str):
     activity, error = _find_activity_or_404(activity_id)
     if error:
         return error
+    if not activity_visible_to_mentee(activity):
+        return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     register_for_activity(activity, user)
     return jsonify({"message": "Đã báo danh"})
 
@@ -147,6 +156,8 @@ def mentee_profile_activity_group_response(activity_id: str):
     activity, error = _find_activity_or_404(activity_id)
     if error:
         return error
+    if not activity_visible_to_mentee(activity):
+        return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     data = request.get_json(silent=True) or {}
     status = (data.get("status") or "").strip().lower()
     if status not in {"confirmed", "rejected"}:

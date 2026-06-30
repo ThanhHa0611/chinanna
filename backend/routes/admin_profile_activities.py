@@ -9,16 +9,20 @@ from database import profile_activities, users, with_db
 from extensions import app
 from services.admins import admin_display_name, admin_is_approved
 from services.apply_documents import mentor_apply_direction_label
+from services.apply_progress import admin_is_level1_mentor
 from services.profile_activities import (
+    approve_profile_activity,
     create_profile_activity,
     finalize_group_and_sync_hdnk,
     notify_group_assignment,
     parse_profile_activity_from_description,
+    reject_profile_activity,
     sanitize_profile_activity_input,
     serialize_admin_profile_activity,
     update_group_response,
     _upsert_group,
 )
+from services.admins import is_super_admin
 
 
 def _get_activity_or_404(activity_id: str):
@@ -94,9 +98,12 @@ def admin_create_profile_activity():
     parsed = parse_profile_activity_from_description(str(data.get("description") or ""))
     payload = sanitize_profile_activity_input(data, parsed_fallback=parsed)
     if not payload.get("activity_name"):
-        return jsonify({"detail": "Tên hoạt động là bắt buộc"}), 400
+        return jsonify({"detail": "Không thể tạo tên hoạt động — vui lòng điền loại hoạt động"}), 400
     created = create_profile_activity(admin, payload)
-    return jsonify(serialize_admin_profile_activity(created)), 201
+    response = serialize_admin_profile_activity(created)
+    if created.get("approval_status") == "pending_l1_approval":
+        response["message"] = "Hoạt động đã gửi, chờ mentor cấp 1 duyệt trước khi hiển thị cho mentee."
+    return jsonify(response), 201
 
 
 @app.get("/api/admin/profile-activities")
@@ -110,6 +117,48 @@ def admin_list_profile_activities():
 
     cursor = profile_activities.find(_admin_activity_query(admin)).sort("created_at", -1)
     return jsonify([serialize_admin_profile_activity(doc) for doc in cursor])
+
+
+def _can_review_profile_activity(admin: dict) -> bool:
+    return bool(is_super_admin(admin) or admin_is_level1_mentor(admin))
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/approve")
+@with_db
+def admin_approve_profile_activity(activity_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới được duyệt hoạt động."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    if activity.get("approval_status") == "approved":
+        return jsonify(serialize_admin_profile_activity(activity))
+    updated = approve_profile_activity(activity, admin)
+    return jsonify(serialize_admin_profile_activity(updated))
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/reject")
+@with_db
+def admin_reject_profile_activity(activity_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới được từ chối hoạt động."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    updated = reject_profile_activity(activity, admin)
+    return jsonify(serialize_admin_profile_activity(updated))
 
 
 @app.get("/api/admin/profile-activities/<activity_id>/registrations")

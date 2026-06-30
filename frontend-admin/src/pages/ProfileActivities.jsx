@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { format_activity_feed_line, getDeadlineBadge } from '../utils/profileActivities';
+import { isLevel1MentorAccount } from '../utils/mentorDisplay';
+import {
+  APPROVAL_STATUS_LABELS,
+  compose_activity_name,
+  feedLineLink,
+  feedLineText,
+  formatImportanceStars,
+  getDeadlineBadge,
+} from '../utils/profileActivities';
 
 const ACTIVITY_TYPES = ['Cuộc thi', 'NCKH', 'HĐNK', 'Hội thảo', 'Chương trình hè', 'Dự án', 'Khác'];
 const MAJORS = [
@@ -19,7 +28,6 @@ function emptyForm() {
   return {
     link: '',
     description: '',
-    activity_name: '',
     activity_type: 'Khác',
     deadline: '',
     organizer: '',
@@ -28,10 +36,55 @@ function emptyForm() {
     attachment_url: '',
     suitable_majors: [],
     suitable_majors_other: '',
+    importance: 3,
   };
 }
 
+function StarRating({ value, onChange }) {
+  return (
+    <div className="importance-stars" role="group" aria-label="Mức độ quan trọng">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          className={`importance-star${n <= value ? ' is-active' : ''}`}
+          onClick={() => onChange(n)}
+          aria-label={`${n} sao`}
+          aria-pressed={n <= value}
+        >
+          ★
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FeedLinePreview({ activity }) {
+  const text = feedLineText(activity);
+  const link = feedLineLink(activity);
+  return (
+    <span className="profile-activity-feed-preview-line">
+      {text}
+      {link && (
+        <>
+          {' '}
+          <a href={link} target="_blank" rel="noreferrer">
+            {link}
+          </a>
+        </>
+      )}
+    </span>
+  );
+}
+
+function approvalBadgeClass(status) {
+  if (status === 'pending_l1_approval') return 'is-pending';
+  if (status === 'rejected') return 'is-rejected';
+  return 'is-approved';
+}
+
 export default function ProfileActivities() {
+  const { admin } = useAuth();
   const [form, setForm] = useState(emptyForm());
   const [activities, setActivities] = useState([]);
   const [selectedId, setSelectedId] = useState('');
@@ -43,22 +96,26 @@ export default function ProfileActivities() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
+  const canReview = Boolean(admin?.is_super_admin || isLevel1MentorAccount(admin));
+  const isL2 = Boolean(admin && !canReview);
+
   const selectedActivity = useMemo(
     () => activities.find((item) => item.id === selectedId) || null,
     [activities, selectedId],
   );
 
-  const feedPreview = useMemo(
-    () =>
-      format_activity_feed_line({
-        activity_name: form.activity_name,
-        organizer: form.organizer,
-        content: form.content,
-        target_audience: form.target_audience,
-        deadline: form.deadline,
-      }),
-    [form.activity_name, form.organizer, form.content, form.target_audience, form.deadline],
+  const pendingActivities = useMemo(
+    () => activities.filter((item) => item.approval_status === 'pending_l1_approval'),
+    [activities],
   );
+
+  const composedName = useMemo(() => compose_activity_name(form), [
+    form.activity_type,
+    form.organizer,
+    form.content,
+    form.target_audience,
+    form.deadline,
+  ]);
 
   const loadActivities = async () => {
     const data = await api.getProfileActivities();
@@ -111,21 +168,17 @@ export default function ProfileActivities() {
     setMessage('');
     try {
       const parsed = await api.parseProfileActivity({ description: form.description });
-      setForm((prev) => {
-        const mentorName = prev.activity_name.trim();
-        const parsedName = (parsed.activity_name || '').trim();
-        const preferredName =
-          mentorName && mentorName.length >= parsedName.length ? mentorName : parsedName;
-        return {
-          ...prev,
-          ...parsed,
-          activity_name: preferredName,
-          activity_type: parsed.activity_type || prev.activity_type,
-          suitable_majors: parsed.suitable_majors || [],
-          suitable_majors_other: parsed.suitable_majors_other || '',
-        };
-      });
-      setMessage('Đã phân tích mô tả. Bạn kiểm tra lại rồi đăng.');
+      setForm((prev) => ({
+        ...prev,
+        activity_type: parsed.activity_type || prev.activity_type,
+        deadline: parsed.deadline || prev.deadline,
+        organizer: parsed.organizer || prev.organizer,
+        target_audience: parsed.target_audience || prev.target_audience,
+        content: parsed.content || prev.content,
+        suitable_majors: parsed.suitable_majors || [],
+        suitable_majors_other: parsed.suitable_majors_other || '',
+      }));
+      setMessage('Đã phân tích mô tả. Kiểm tra các trường và xem trước dòng feed.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -138,10 +191,44 @@ export default function ProfileActivities() {
     setError('');
     setMessage('');
     try {
-      await api.createProfileActivity(form);
+      const result = await api.createProfileActivity(form);
       setForm(emptyForm());
       await loadActivities();
-      setMessage('Đã đăng hoạt động mới.');
+      if (result?.message) {
+        setMessage(result.message);
+      } else if (isL2) {
+        setMessage('Hoạt động đã gửi, chờ mentor cấp 1 duyệt trước khi hiển thị cho mentee.');
+      } else {
+        setMessage('Đã đăng hoạt động mới.');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleApprove = async (activityId) => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.approveProfileActivity(activityId);
+      await loadActivities();
+      setMessage('Đã duyệt hoạt động — mentee sẽ thấy trên feed.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReject = async (activityId) => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.rejectProfileActivity(activityId);
+      await loadActivities();
+      setMessage('Đã từ chối hoạt động.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -217,6 +304,16 @@ export default function ProfileActivities() {
     );
   };
 
+  const renderApprovalBadge = (activity) => {
+    const status = activity?.approval_status || 'approved';
+    const label = APPROVAL_STATUS_LABELS[status] || status;
+    return (
+      <span className={`profile-activity-approval-badge ${approvalBadgeClass(status)}`}>
+        {label}
+      </span>
+    );
+  };
+
   if (loading) return <p className="loader">Đang tải...</p>;
 
   return (
@@ -229,6 +326,43 @@ export default function ProfileActivities() {
       {error && <p className="form-error">{error}</p>}
       {message && <p className="form-success">{message}</p>}
 
+      {canReview && pendingActivities.length > 0 && (
+        <div className="panel-card profile-activity-pending-queue">
+          <h3>Chờ duyệt ({pendingActivities.length})</h3>
+          <ul className="profile-activity-pending-list">
+            {pendingActivities.map((item) => (
+              <li key={item.id} className="profile-activity-pending-item">
+                <div className="profile-activity-pending-line">
+                  <span className="importance-stars-display" title="Mức độ quan trọng">
+                    {formatImportanceStars(item.importance)}
+                  </span>
+                  <FeedLinePreview activity={item} />
+                  {renderDeadlineBadge(item)}
+                </div>
+                <div className="action-cell">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => handleApprove(item.id)}
+                    disabled={saving}
+                  >
+                    Duyệt
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => handleReject(item.id)}
+                    disabled={saving}
+                  >
+                    Từ chối
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="panel-card">
         <h3>Tạo hoạt động</h3>
         <div className="auth-form profile-activity-form">
@@ -237,7 +371,7 @@ export default function ProfileActivities() {
             <input value={form.link} onChange={(e) => updateForm('link', e.target.value)} />
           </label>
           <label>
-            Mô tả gốc
+            Mô tả gốc (dùng parse — không hiển thị trên feed)
             <textarea
               rows={4}
               value={form.description}
@@ -249,17 +383,6 @@ export default function ProfileActivities() {
               Parse tự động
             </button>
           </div>
-          <label>
-            Tên hoạt động
-            <span className="field-hint">
-              Tên đầy đủ hiển thị trên feed mentee — dòng chính khi mentee xem hồ sơ
-            </span>
-            <input
-              value={form.activity_name}
-              onChange={(e) => updateForm('activity_name', e.target.value)}
-              placeholder="Ví dụ: HARVARD UNIVERSITY FREE ONLINE COURSES 2026..."
-            />
-          </label>
           <label>
             Loại hoạt động
             <span className="field-hint">Tự nhận diện khi parse — có thể chỉnh lại trước khi đăng</span>
@@ -294,6 +417,10 @@ export default function ProfileActivities() {
             <input value={form.content} onChange={(e) => updateForm('content', e.target.value)} />
           </label>
           <label>
+            Mức độ quan trọng
+            <StarRating value={form.importance} onChange={(n) => updateForm('importance', n)} />
+          </label>
+          <label>
             File đính kèm (URL)
             <input
               value={form.attachment_url}
@@ -326,14 +453,21 @@ export default function ProfileActivities() {
             )}
           </div>
           <div className="profile-activity-feed-preview">
-            <p className="profile-activity-feed-preview-label">Xem trước</p>
+            <p className="profile-activity-feed-preview-label">Tên hoạt động (tự động)</p>
             <p className="muted profile-activity-feed-preview-hint">
-              Dòng hiển thị trên feed mentee (cập nhật theo các trường bên trên)
+              Dòng compact hiển thị trên feed mentee — cập nhật theo các trường bên trên
             </p>
-            <p className="profile-activity-feed-preview-line">{feedPreview}</p>
+            <p className="profile-activity-name-preview">{composedName}</p>
+            <p className="profile-activity-feed-preview-label">Xem trước feed</p>
+            <FeedLinePreview activity={form} />
           </div>
+          {isL2 && (
+            <p className="muted profile-activity-l2-note">
+              Hoạt động của mentor cấp 2 cần được mentor cấp 1 duyệt trước khi mentee thấy.
+            </p>
+          )}
           <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={saving}>
-            Đăng hoạt động
+            {isL2 ? 'Gửi duyệt' : 'Đăng hoạt động'}
           </button>
         </div>
       </div>
@@ -346,8 +480,8 @@ export default function ProfileActivities() {
             <option value="">-- Chọn --</option>
             {activities.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.activity_name} ({item.registration_count || 0} báo danh)
-                {item.deadline ? ` · ${item.deadline}` : ''}
+                {compose_activity_name(item)} ({item.registration_count || 0} báo danh)
+                {item.approval_status === 'pending_l1_approval' ? ' · chờ duyệt' : ''}
               </option>
             ))}
           </select>
@@ -355,17 +489,37 @@ export default function ProfileActivities() {
 
         {selectedActivity && (
           <div className="profile-activity-management">
-            <p>
-              <strong>{selectedActivity.activity_name}</strong> · {selectedActivity.registration_count || 0} báo
-              danh
-              {selectedActivity.deadline && (
-                <>
-                  {' '}
-                  · Deadline {selectedActivity.deadline}
-                  {renderDeadlineBadge(selectedActivity)}
-                </>
-              )}
-            </p>
+            <div className="profile-activity-management-summary">
+              <span className="importance-stars-display" title="Mức độ quan trọng">
+                {formatImportanceStars(selectedActivity.importance)}
+              </span>
+              {renderApprovalBadge(selectedActivity)}
+              <FeedLinePreview activity={selectedActivity} />
+              {renderDeadlineBadge(selectedActivity)}
+              <span className="muted">
+                · {selectedActivity.registration_count || 0} báo danh
+              </span>
+            </div>
+            {canReview && selectedActivity.approval_status === 'pending_l1_approval' && (
+              <div className="action-cell">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => handleApprove(selectedActivity.id)}
+                  disabled={saving}
+                >
+                  Duyệt
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => handleReject(selectedActivity.id)}
+                  disabled={saving}
+                >
+                  Từ chối
+                </button>
+              </div>
+            )}
             {(selectedActivity.suitable_majors || []).length > 0 && (
               <p className="muted">
                 Ngành phù hợp: {(selectedActivity.suitable_majors || []).join(', ')}
