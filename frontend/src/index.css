@@ -2353,6 +2353,30 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
   flex: 1;
 }
 
+.profile-activity-line-content {
+  flex: 1;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.profile-activity-feed-text {
+  color: inherit;
+}
+
+.profile-activity-inline-link {
+  color: var(--primary, #2563eb);
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.importance-stars-display {
+  color: #f59e0b;
+  font-size: 0.85rem;
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+}
+
 .profile-activity-dot {
   color: var(--primary);
 }
