@@ -45,12 +45,130 @@ _LEGACY_MAJOR_MAP = {
 }
 
 _TYPE_KEYWORDS = [
-    ("Cuộc thi", ("cuộc thi", "competition", "contest", "thi ")),
-    ("NCKH", ("nckh", "nghiên cứu", "research", "paper", "journal")),
-    ("Hội thảo", ("hội thảo", "seminar", "workshop", "webinar")),
-    ("Chương trình hè", ("chương trình hè", "summer school", "summer camp")),
-    ("Dự án", ("dự án", "project", "startup", "hackathon")),
-    ("HĐNK", ("hoạt động ngoại khóa", "hđnk", "clb", "câu lạc bộ", "volunteer")),
+    (
+        "Cuộc thi",
+        (
+            "cuộc thi",
+            "competition",
+            "contest",
+            "olympiad",
+            "olympic",
+            "hackathon",
+            "challenge",
+            "tài năng",
+            "tai nang",
+            " giải ",
+            "award",
+            "prize",
+            "vòng loại",
+            "vong loai",
+        ),
+    ),
+    (
+        "NCKH",
+        (
+            "nckh",
+            "nghiên cứu",
+            "nghien cuu",
+            "research",
+            "paper",
+            "journal",
+            "thesis",
+            "dissertation",
+            "publication",
+            "bài báo",
+            "bai bao",
+            "science fair",
+            "lab ",
+            "laboratory",
+        ),
+    ),
+    (
+        "Hội thảo",
+        (
+            "hội thảo",
+            "hoi thao",
+            "seminar",
+            "workshop",
+            "webinar",
+            "conference",
+            "hội nghị",
+            "hoi nghi",
+            "symposium",
+            "forum",
+            "diễn đàn",
+            "dien dan",
+            "talk series",
+            "lecture series",
+            "masterclass",
+        ),
+    ),
+    (
+        "Chương trình hè",
+        (
+            "chương trình hè",
+            "chuong trinh he",
+            "summer school",
+            "summer camp",
+            "summer program",
+            "summer institute",
+            "pre-college",
+            "precollege",
+            "trao đổi hè",
+            "trao doi he",
+            "exchange program",
+            "internship program",
+            "online course",
+            "online courses",
+            "free online",
+            "free course",
+            "mooc",
+            "edx",
+            "coursera",
+            "khóa học online",
+            "khoa hoc online",
+            "khóa học trực tuyến",
+            "khoa hoc truc tuyen",
+            "khóa học miễn phí",
+            "khoa hoc mien phi",
+            "open course",
+            "learning program",
+        ),
+    ),
+    (
+        "Dự án",
+        (
+            "dự án",
+            "du an",
+            "project",
+            "startup",
+            "incubator",
+            "accelerator",
+            "hackathon",
+            "fellowship program",
+            "capstone",
+        ),
+    ),
+    (
+        "HĐNK",
+        (
+            "hoạt động ngoại khóa",
+            "hoat dong ngoai khoa",
+            "hđnk",
+            "hdnk",
+            "clb",
+            "câu lạc bộ",
+            "cau lac bo",
+            "volunteer",
+            "tình nguyện",
+            "tinh nguyen",
+            "extracurricular",
+            "ngoại khóa",
+            "ngoai khoa",
+            "community service",
+            "leadership program",
+        ),
+    ),
 ]
 
 _MAJOR_KEYWORDS = {
@@ -128,15 +246,28 @@ def _extract_name(description: str) -> str:
     if not lines:
         return ""
     first = lines[0]
-    first = re.sub(r"^(thông tin|hoạt động|event)[:\-]\s*", "", first, flags=re.IGNORECASE)
-    return first[:160].strip(" .,:;-")
+    first = re.sub(r"^(thông tin|hoạt động|event|title|tên)[:\-]\s*", "", first, flags=re.IGNORECASE)
+    return first[:500].strip(" .,:;-")
+
+
+def _first_description_line(description: str) -> str:
+    for line in (description or "").splitlines():
+        cleaned = line.strip(" -*•\t")
+        if cleaned:
+            return cleaned
+    return ""
 
 
 def _extract_type(text: str) -> str:
     lowered = (text or "").lower()
+    scores: dict[str, int] = {label: 0 for label in PROFILE_ACTIVITY_TYPES if label != "Khác"}
     for label, keywords in _TYPE_KEYWORDS:
-        if any(keyword in lowered for keyword in keywords):
-            return label
+        for keyword in keywords:
+            if keyword in lowered:
+                scores[label] += 1
+    best_label, best_score = max(scores.items(), key=lambda item: item[1], default=("Khác", 0))
+    if best_score > 0:
+        return best_label
     return "Khác"
 
 
@@ -200,8 +331,12 @@ def parse_profile_activity_from_description(description: str) -> dict:
     target = _find_regex_group(r"(?:dành cho|đối tượng)[:\s]+([^\n.;]+)", text)
     content = _find_regex_group(r"(?:về|chủ đề|nội dung)[:\s]+([^\n.;]+)", text)
     majors = _extract_majors(text)
+    parsed_name = _extract_name(text)
+    full_title = _first_description_line(text)
+    if full_title and len(full_title) > len(parsed_name):
+        parsed_name = full_title[:500].strip(" .,:;-")
     return {
-        "activity_name": _extract_name(text),
+        "activity_name": parsed_name,
         "activity_type": _extract_type(text),
         "deadline": _normalize_date_text(deadline),
         "organizer": organizer,

@@ -43,3 +43,22 @@ export function getDeadlineBadge(deadlineStr, badgeFromApi = null) {
   if (daysLeft <= 7) return { label: 'Còn 7 ngày', variant: 'warning' };
   return null;
 }
+
+export function format_activity_feed_line(activity) {
+  const pieces = [];
+  const name = (activity?.activity_name || '').trim() || 'Hoạt động hồ sơ';
+  pieces.push(name);
+  if (activity?.organizer) {
+    pieces.push(`của ${activity.organizer}`);
+  }
+  if (activity?.content) {
+    pieces.push(`về ${activity.content}`);
+  }
+  if (activity?.target_audience) {
+    pieces.push(`dành cho ${activity.target_audience}`);
+  }
+  if (activity?.deadline) {
+    pieces.push(`deadline ${activity.deadline}`);
+  }
+  return pieces.join(', ');
+}

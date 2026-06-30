@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api';
-import { getDeadlineBadge } from '../utils/profileActivities';
+import { format_activity_feed_line, getDeadlineBadge } from '../utils/profileActivities';
 
 const ACTIVITY_TYPES = ['Cuộc thi', 'NCKH', 'HĐNK', 'Hội thảo', 'Chương trình hè', 'Dự án', 'Khác'];
 const MAJORS = [
@@ -46,6 +46,18 @@ export default function ProfileActivities() {
   const selectedActivity = useMemo(
     () => activities.find((item) => item.id === selectedId) || null,
     [activities, selectedId],
+  );
+
+  const feedPreview = useMemo(
+    () =>
+      format_activity_feed_line({
+        activity_name: form.activity_name,
+        organizer: form.organizer,
+        content: form.content,
+        target_audience: form.target_audience,
+        deadline: form.deadline,
+      }),
+    [form.activity_name, form.organizer, form.content, form.target_audience, form.deadline],
   );
 
   const loadActivities = async () => {
@@ -99,12 +111,20 @@ export default function ProfileActivities() {
     setMessage('');
     try {
       const parsed = await api.parseProfileActivity({ description: form.description });
-      setForm((prev) => ({
-        ...prev,
-        ...parsed,
-        suitable_majors: parsed.suitable_majors || [],
-        suitable_majors_other: parsed.suitable_majors_other || '',
-      }));
+      setForm((prev) => {
+        const mentorName = prev.activity_name.trim();
+        const parsedName = (parsed.activity_name || '').trim();
+        const preferredName =
+          mentorName && mentorName.length >= parsedName.length ? mentorName : parsedName;
+        return {
+          ...prev,
+          ...parsed,
+          activity_name: preferredName,
+          activity_type: parsed.activity_type || prev.activity_type,
+          suitable_majors: parsed.suitable_majors || [],
+          suitable_majors_other: parsed.suitable_majors_other || '',
+        };
+      });
       setMessage('Đã phân tích mô tả. Bạn kiểm tra lại rồi đăng.');
     } catch (err) {
       setError(err.message);
@@ -231,13 +251,18 @@ export default function ProfileActivities() {
           </div>
           <label>
             Tên hoạt động
+            <span className="field-hint">
+              Tên đầy đủ hiển thị trên feed mentee — dòng chính khi mentee xem hồ sơ
+            </span>
             <input
               value={form.activity_name}
               onChange={(e) => updateForm('activity_name', e.target.value)}
+              placeholder="Ví dụ: HARVARD UNIVERSITY FREE ONLINE COURSES 2026..."
             />
           </label>
           <label>
             Loại hoạt động
+            <span className="field-hint">Tự nhận diện khi parse — có thể chỉnh lại trước khi đăng</span>
             <select
               value={form.activity_type}
               onChange={(e) => updateForm('activity_type', e.target.value)}
@@ -299,6 +324,13 @@ export default function ProfileActivities() {
                 />
               </label>
             )}
+          </div>
+          <div className="profile-activity-feed-preview">
+            <p className="profile-activity-feed-preview-label">Xem trước</p>
+            <p className="muted profile-activity-feed-preview-hint">
+              Dòng hiển thị trên feed mentee (cập nhật theo các trường bên trên)
+            </p>
+            <p className="profile-activity-feed-preview-line">{feedPreview}</p>
           </div>
           <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={saving}>
             Đăng hoạt động
