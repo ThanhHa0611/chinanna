@@ -19,6 +19,10 @@ export default function AccessRequests() {
   const [processingId, setProcessingId] = useState(null);
   const [revokeTarget, setRevokeTarget] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedWarningKeys, setSelectedWarningKeys] = useState([]);
+  const [bulkApproving, setBulkApproving] = useState(false);
+
+  const warningRowKey = (req) => `${req.request_type}-${req.id}`;
 
   const registrationRequests = useMemo(
     () => requests.filter((item) => REGISTRATION_TYPES.has(item.request_type)),
@@ -42,6 +46,8 @@ export default function AccessRequests() {
     'full_name',
     'old_ip',
     'new_ip',
+    'old_location_label',
+    'new_location_label',
     'old_device_label',
     'new_device_label',
   ];
@@ -62,6 +68,14 @@ export default function AccessRequests() {
     [warningRequests, searchQuery],
   );
 
+  const allWarningsSelected =
+    filteredWarnings.length > 0 &&
+    filteredWarnings.every((req) => selectedWarningKeys.includes(warningRowKey(req)));
+
+  const selectedWarningCount = filteredWarnings.filter((req) =>
+    selectedWarningKeys.includes(warningRowKey(req)),
+  ).length;
+
   const filteredTeam = useMemo(
     () =>
       team.filter((item) =>
@@ -81,6 +95,7 @@ export default function AccessRequests() {
       .then((results) => {
         setRequests(results[0] || []);
         setTeam(isSuperAdmin ? results[1] || [] : []);
+        setSelectedWarningKeys([]);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -109,6 +124,53 @@ export default function AccessRequests() {
       setError(err.message);
     } finally {
       setProcessingId(null);
+    }
+  };
+
+  const toggleWarningSelection = (key) => {
+    setSelectedWarningKeys((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key],
+    );
+  };
+
+  const toggleSelectAllWarnings = () => {
+    if (allWarningsSelected) {
+      const visibleKeys = new Set(filteredWarnings.map(warningRowKey));
+      setSelectedWarningKeys((prev) => prev.filter((key) => !visibleKeys.has(key)));
+      return;
+    }
+    const nextKeys = new Set(selectedWarningKeys);
+    filteredWarnings.forEach((req) => nextKeys.add(warningRowKey(req)));
+    setSelectedWarningKeys([...nextKeys]);
+  };
+
+  const handleBulkApproveWarnings = async () => {
+    const selected = filteredWarnings.filter((req) =>
+      selectedWarningKeys.includes(warningRowKey(req)),
+    );
+    if (selected.length === 0) {
+      setError('Chọn ít nhất một cảnh báo để duyệt.');
+      return;
+    }
+
+    setBulkApproving(true);
+    setMessage('');
+    setError('');
+    try {
+      const items = selected.map((req) => ({
+        request_id: req.id,
+        user_id: req.user_id,
+        request_type: req.request_type,
+        status: 'approved',
+      }));
+      const result = await api.bulkReviewAccessRequests(items);
+      setMessage(result.message);
+      setSelectedWarningKeys([]);
+      loadData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBulkApproving(false);
     }
   };
 
@@ -261,33 +323,67 @@ export default function AccessRequests() {
                 : 'Không tìm thấy kết quả phù hợp.'}
             </p>
           ) : (
-            <div className="table-wrap">
+            <>
+              <div className="access-warnings-toolbar">
+                <label className="checkbox-label access-warnings-select-all">
+                  <input
+                    type="checkbox"
+                    checked={allWarningsSelected}
+                    onChange={toggleSelectAllWarnings}
+                  />
+                  Chọn tất cả
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={bulkApproving || selectedWarningCount === 0}
+                  onClick={handleBulkApproveWarnings}
+                >
+                  {bulkApproving
+                    ? 'Đang duyệt...'
+                    : `Đồng ý đã chọn (${selectedWarningCount})`}
+                </button>
+              </div>
+              <div className="table-wrap">
               <table className="access-warnings-table">
                 <thead>
                   <tr>
+                    <th className="access-warnings-check-col" aria-label="Chọn" />
                     <th>Tên</th>
                     <th>Thiết bị cũ</th>
                     <th>Thiết bị mới</th>
                     <th>IP cũ</th>
                     <th>IP mới</th>
+                    <th>Vị trí cũ</th>
+                    <th>Vị trí mới</th>
                     <th>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredWarnings.map((req) => {
-                    const rowKey = `${req.request_type}-${req.id}`;
+                    const rowKey = warningRowKey(req);
                     return (
                       <tr key={rowKey}>
+                        <td className="access-warnings-check-col">
+                          <input
+                            type="checkbox"
+                            checked={selectedWarningKeys.includes(rowKey)}
+                            onChange={() => toggleWarningSelection(rowKey)}
+                            aria-label={`Chọn ${req.mentee_name || req.full_name || 'cảnh báo'}`}
+                          />
+                        </td>
                         <td>{req.mentee_name || req.full_name || '—'}</td>
                         <td>{req.old_device_label || '—'}</td>
                         <td>{req.new_device_label || '—'}</td>
                         <td>{req.old_ip || '—'}</td>
                         <td>{req.new_ip || '—'}</td>
+                        <td>{req.old_location_label || '—'}</td>
+                        <td>{req.new_location_label || '—'}</td>
                         <td className="action-cell">
                           <button
                             type="button"
                             className="btn btn-primary btn-sm"
-                            disabled={processingId === rowKey}
+                            disabled={processingId === rowKey || bulkApproving}
                             onClick={() => handleReview(req, 'approved')}
                           >
                             Đồng ý
@@ -295,7 +391,7 @@ export default function AccessRequests() {
                           <button
                             type="button"
                             className="btn btn-outline btn-sm"
-                            disabled={processingId === rowKey}
+                            disabled={processingId === rowKey || bulkApproving}
                             onClick={() => handleReview(req, 'rejected')}
                           >
                             Từ chối
@@ -307,6 +403,7 @@ export default function AccessRequests() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       ) : (

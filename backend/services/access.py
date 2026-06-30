@@ -441,6 +441,59 @@ def apply_mentee_login_ip_review(admin: dict, user_id: str, request_id: str, dat
     )
 
 
+def apply_bulk_access_review(admin: dict, items: list):
+    if not items:
+        return jsonify({"detail": "Danh sách trống"}), 400
+
+    succeeded = 0
+    failed = 0
+    errors: list[str] = []
+    last_status = ADMIN_STATUS_APPROVED
+
+    for item in items:
+        if not isinstance(item, dict):
+            failed += 1
+            continue
+
+        request_id = (item.get("request_id") or item.get("id") or "").strip()
+        user_id = (item.get("user_id") or "").strip()
+        request_type = (item.get("request_type") or "").strip().lower()
+        status = (item.get("status") or "").strip().lower()
+        last_status = status or last_status
+
+        if request_type != "mentee_login_ip":
+            failed += 1
+            errors.append("Loại yêu cầu không hợp lệ")
+            continue
+        if not request_id or not user_id:
+            failed += 1
+            errors.append("Thiếu mã yêu cầu hoặc tài khoản")
+            continue
+
+        response = apply_mentee_login_ip_review(
+            admin,
+            user_id,
+            request_id,
+            {"status": status},
+        )
+        if response.status_code == 200:
+            succeeded += 1
+        else:
+            failed += 1
+            payload = response.get_json(silent=True) or {}
+            errors.append(payload.get("detail") or "Không xử lý được yêu cầu")
+
+    if succeeded == 0:
+        detail = errors[0] if errors else "Không xử lý được yêu cầu nào"
+        return jsonify({"detail": detail, "succeeded": 0, "failed": failed}), 400
+
+    verb = "duyệt" if last_status == ADMIN_STATUS_APPROVED else "từ chối"
+    message = f"Đã {verb} {succeeded}/{len(items)} cảnh báo"
+    if failed:
+        message += f" ({failed} lỗi)"
+    return jsonify({"message": message, "succeeded": succeeded, "failed": failed})
+
+
 def apply_mentee_registration_review(admin: dict, mentee_id: str, data: dict):
     from bson import ObjectId
     from bson.errors import InvalidId

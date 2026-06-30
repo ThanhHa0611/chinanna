@@ -252,6 +252,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  bulkReviewAccessRequests: (items) =>
+    request('/api/admin/access-requests/bulk-review', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    }),
+
   parseProfileActivity: (body) =>
     request('/api/admin/profile-activities/parse', {
       method: 'POST',

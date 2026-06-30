@@ -2761,6 +2761,23 @@ td.apply-progress-tone-black .apply-progress-select {
   vertical-align: middle;
 }
 
+.access-warnings-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.access-warnings-select-all {
+  margin: 0;
+}
+
+.access-warnings-check-col {
+  width: 2.5rem;
+  text-align: center;
+}
+
 .access-warnings-alert {
   border-color: #fcd34d;
 }
@@ -3350,4 +3367,31 @@ html.device-phone .daily-summary-status {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 0.75rem;
+}
+
+.profile-activity-deadline-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.profile-activity-deadline-badge.is-expired {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.profile-activity-deadline-badge.is-warning {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.profile-activity-deadline-badge.is-urgent {
+  background: #fee2e2;
+  color: #b91c1c;
 }

@@ -167,6 +167,24 @@ def admin_revoke_team_access(admin_id):
     return jsonify({"message": f"Đã thu hồi quyền admin của {target.get('email')}"})
 
 
+@app.post("/api/admin/access-requests/bulk-review")
+@with_db
+def admin_bulk_review_access():
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    if not isinstance(items, list):
+        return jsonify({"detail": "Danh sách yêu cầu không hợp lệ"}), 400
+
+    return apply_bulk_access_review(admin, items)
+
+
 @app.patch("/api/admin/access-requests/<request_id>")
 @with_db
 def admin_review_access(request_id):
