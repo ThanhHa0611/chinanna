@@ -185,6 +185,23 @@ export const api = {
       method: 'POST',
     }),
 
+  async fetchInboxFileFromViewUrl(viewUrl) {
+    if (!viewUrl) {
+      throw new Error('Không có file để xem');
+    }
+    const fileUrl = viewUrl.replace('/view?', '/file?');
+    const response = await fetch(fileUrl);
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(text.includes('Không') ? 'Không mở được file' : 'Không mở được file');
+    }
+    const blob = await response.blob();
+    return {
+      url: URL.createObjectURL(blob),
+      mimeType: blob.type || response.headers.get('Content-Type') || '',
+    };
+  },
+
   async fetchMenteeDocumentPreview(menteeId, docId) {
     const token = localStorage.getItem('admin_token');
     const response = await fetch(

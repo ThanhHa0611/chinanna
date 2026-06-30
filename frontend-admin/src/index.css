@@ -3170,9 +3170,35 @@ html.device-phone .home-inbox-actions .btn {
 }
 
 .daily-summary-reminder-field input {
-  width: 4.5rem;
-  padding: 0.2rem 0.35rem;
+  padding: 0.35rem 0.45rem;
   font-size: 0.78rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: inherit;
+}
+
+.daily-summary-reminder-field input[type='date'] {
+  min-width: 9.5rem;
+}
+
+.daily-summary-btn {
+  white-space: nowrap;
+}
+
+.daily-summary-btn-done {
+  background: linear-gradient(135deg, #059669, #276749);
+  color: var(--white);
+  border: 0;
+}
+
+.daily-summary-btn-done:hover:not(:disabled) {
+  background: linear-gradient(135deg, #047857, #22543d);
+}
+
+.daily-summary-viewer-desc {
+  margin: 0.35rem 0 0;
+  font-size: 0.88rem;
+  white-space: pre-wrap;
 }
 
 .daily-summary-status {

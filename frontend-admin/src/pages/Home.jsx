@@ -28,6 +28,27 @@ function term3LanguageShortDisplay(mentee) {
   return term3LanguageSemesterLabel(mentee?.term3_2027_language_semester) || '—';
 }
 
+const NO_FILE_INBOX_DOC_IDS = new Set(['personal-declaration']);
+
+function formatDateInputInVn(date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(date);
+}
+
+function vnTomorrowDateInputValue() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return formatDateInputInVn(tomorrow);
+}
+
+function reminderAtIsoFromDateInput(dateStr) {
+  return `${dateStr}T00:00:00+07:00`;
+}
+
+function inboxItemHasFile(item) {
+  const docId = (item?.doc_id || '').trim();
+  return Boolean(docId && !NO_FILE_INBOX_DOC_IDS.has(docId));
+}
+
 export default function Home() {
   const { admin } = useAuth();
   const [stats, setStats] = useState(null);
@@ -49,6 +70,7 @@ export default function Home() {
   const [collapsedSections, setCollapsedSections] = useState({});
   const [archiveView, setArchiveView] = useState(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
+  const [inboxViewer, setInboxViewer] = useState(null);
 
   const canSeeProcessor = Boolean(admin?.is_super_admin || isLevel1MentorAccount(admin));
 
@@ -182,15 +204,41 @@ export default function Home() {
 
   const closeArchiveView = () => setArchiveView(null);
 
+  const closeInboxViewer = () => {
+    if (inboxViewer?.url) URL.revokeObjectURL(inboxViewer.url);
+    setInboxViewer(null);
+  };
+
   const handleViewInbox = async (item) => {
     setInboxSavingId(item.id);
+    setError('');
+    let previewUrl = '';
     try {
-      if (item.view_url) {
-        window.open(item.view_url, '_blank', 'noopener,noreferrer');
+      if (inboxItemHasFile(item)) {
+        const preview =
+          item.mentee_id && item.doc_id
+            ? await api.fetchMenteeDocumentPreview(item.mentee_id, item.doc_id)
+            : await api.fetchInboxFileFromViewUrl(item.view_url);
+        previewUrl = preview.url;
+        setInboxViewer({
+          title: item.title || item.action_line || item.summary_line || 'Xem nội dung',
+          description: item.description || '',
+          url: preview.url,
+          mimeType: preview.mimeType,
+        });
+      } else {
+        setInboxViewer({
+          title: item.title || item.action_line || item.summary_line || 'Xem nội dung',
+          description: item.description || '',
+          url: '',
+          mimeType: '',
+        });
       }
       await api.viewInboxTask(item.id);
       await refreshInbox();
     } catch (err) {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setInboxViewer(null);
       setError(err.message);
     } finally {
       setInboxSavingId('');
@@ -209,14 +257,13 @@ export default function Home() {
     }
   };
 
-  const handleUpdateReminder = async (taskId, mode = 'datetime') => {
+  const handleUpdateReminder = async (taskId) => {
     setInboxSavingId(taskId);
     try {
-      const payload =
-        mode === 'datetime' && reminderDrafts[taskId]
-          ? { reminder_at: new Date(reminderDrafts[taskId]).toISOString() }
-          : { hours: Number(reminderDrafts[`${taskId}-hours`] || 24) };
-      await api.updateInboxReminder(taskId, payload);
+      const dateStr = reminderDrafts[taskId] || vnTomorrowDateInputValue();
+      await api.updateInboxReminder(taskId, {
+        reminder_at: reminderAtIsoFromDateInput(dateStr),
+      });
       await refreshInbox();
     } catch (err) {
       setError(err.message);
@@ -233,7 +280,7 @@ export default function Home() {
     const statusLine =
       item.status_line ||
       (isDone ? 'Đã xử lí' : isViewed ? 'Đã xem · chưa xử lí' : 'Chưa xem');
-    const reminderHours = reminderDrafts[`${item.id}-hours`] ?? 24;
+    const reminderDate = reminderDrafts[item.id] ?? vnTomorrowDateInputValue();
 
     return (
       <div key={item.id} className={`daily-summary-row ${stateClass}`}>
@@ -247,7 +294,7 @@ export default function Home() {
           <div className="daily-summary-actions-inline">
             <button
               type="button"
-              className="daily-summary-link"
+              className="btn btn-outline btn-sm daily-summary-btn"
               disabled={inboxSavingId === item.id}
               onClick={() => handleViewInbox(item)}
             >
@@ -255,34 +302,33 @@ export default function Home() {
             </button>
             <button
               type="button"
-              className="daily-summary-link confirm-link"
+              className="btn btn-sm daily-summary-btn daily-summary-btn-done"
               disabled={inboxSavingId === item.id}
               onClick={() => handleConfirmInbox(item.id)}
             >
               Đã xử lí
             </button>
             <label className="daily-summary-reminder-field">
-              Nhắc sau (giờ)
+              Hẹn xử lí (ngày)
               <input
-                type="number"
-                min="1"
-                max="720"
-                value={reminderHours}
+                type="date"
+                value={reminderDate}
+                min={formatDateInputInVn(new Date())}
                 onChange={(e) =>
                   setReminderDrafts((prev) => ({
                     ...prev,
-                    [`${item.id}-hours`]: e.target.value,
+                    [item.id]: e.target.value,
                   }))
                 }
               />
             </label>
             <button
               type="button"
-              className="daily-summary-link muted-link"
+              className="btn btn-primary btn-sm daily-summary-btn"
               disabled={inboxSavingId === item.id}
-              onClick={() => handleUpdateReminder(item.id, 'hours')}
+              onClick={() => handleUpdateReminder(item.id)}
             >
-              Lưu nhắc
+              Lưu nhắc hẹn
             </button>
           </div>
         )}
@@ -405,6 +451,46 @@ export default function Home() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {inboxViewer && (
+        <div className="modal-backdrop" onClick={closeInboxViewer} role="presentation">
+          <div
+            className="modal-card doc-viewer-modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="doc-viewer-head">
+              <div>
+                <h3>{inboxViewer.title}</h3>
+                {inboxViewer.description && (
+                  <p className="muted daily-summary-viewer-desc">{inboxViewer.description}</p>
+                )}
+              </div>
+              <button type="button" className="btn btn-outline btn-sm" onClick={closeInboxViewer}>
+                Đóng
+              </button>
+            </div>
+            {inboxViewer.url && (
+              <div className="doc-viewer-body">
+                {inboxViewer.mimeType.startsWith('image/') ? (
+                  <img
+                    src={inboxViewer.url}
+                    alt={inboxViewer.title}
+                    className="doc-viewer-image"
+                  />
+                ) : (
+                  <iframe
+                    title={inboxViewer.title}
+                    src={inboxViewer.url}
+                    className="doc-viewer-frame"
+                  />
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
