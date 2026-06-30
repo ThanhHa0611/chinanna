@@ -38,6 +38,43 @@ from services.inbox import *
 from services.notifications import *
 from services.utils import *
 
+def extract_apply_progress_fields(row: dict | None) -> dict[str, str]:
+    source = row or {}
+    return {field: str(source.get(field) or "").strip() for field in APPLY_PROGRESS_FIELDS}
+
+
+def mask_apply_progress_value(field: str, value: str, viewer: str) -> str:
+    cleaned = (value or "").strip()
+    if field == "progress" and cleaned == APPLY_PROGRESS_PROGRESS_L2_ONLY:
+        if viewer in {"mentee", "parent"}:
+            return ""
+    return cleaned
+
+
+def validate_apply_progress_field_values(fields: dict, viewer: str) -> str | None:
+    scholarship = (fields.get("scholarship_type") or "").strip()
+    progress = (fields.get("progress") or "").strip()
+    if scholarship and scholarship not in APPLY_PROGRESS_SCHOLARSHIP_TYPES:
+        return f"Loại hb không hợp lệ: {scholarship}"
+    allowed_progress = set(apply_progress_progress_options_for_viewer(viewer))
+    if progress and progress not in allowed_progress:
+        if (
+            viewer == "mentor_l2"
+            and progress == APPLY_PROGRESS_PROGRESS_L1_ONLY
+        ):
+            pass
+        else:
+            return f"Tiến độ không hợp lệ: {progress}"
+    return None
+
+
+def get_mentor_l2_activity_raw(user: dict) -> list[dict]:
+    stored = user.get("mentor_l2_activity")
+    if not isinstance(stored, list):
+        return []
+    return [item for item in stored if isinstance(item, dict)]
+
+
 def apply_progress_fields_equal(left: dict | None, right: dict | None) -> bool:
     return extract_apply_progress_fields(left) == extract_apply_progress_fields(right)
 

@@ -96,6 +96,42 @@ def format_hdnk_reminder_date(value) -> str:
     return parsed.strftime("%Y-%m-%d")
 
 
+def serialize_hdnk_nckh_entry(entry: dict, for_mentee: bool = False) -> dict:
+    payload = {
+        "entry_id": entry.get("entry_id") or "",
+        "start_date": entry.get("start_date") or "",
+        "category": entry.get("category") or "",
+        "participation_type": entry.get("participation_type") or "",
+        "zalo_group_name": entry.get("zalo_group_name") or "",
+        "progress": entry.get("progress") or "",
+        "has_award": bool(entry.get("has_award")),
+        "award_level": entry.get("award_level") or "",
+    }
+    if for_mentee:
+        return payload
+    payload["mentor_note"] = entry.get("mentor_note") or ""
+    payload["reminder_due_at"] = format_hdnk_reminder_date(entry.get("reminder_due_at"))
+    return payload
+
+
+def serialize_hdnk_nckh_payload(user: dict, for_mentee: bool = False) -> dict:
+    from services.admins import is_thanh_ha_mentee
+
+    user = ensure_hdnk_nckh_reminder_sync(user)
+    mentee_updated = user.get("hdnk_nckh_mentee_updated_at")
+    entries_raw = get_hdnk_nckh_entries_raw(user)
+    return {
+        "enabled": is_thanh_ha_mentee(user),
+        "entries": [serialize_hdnk_nckh_entry(entry, for_mentee=for_mentee) for entry in entries_raw],
+        "mentee_updated_at": mentee_updated.isoformat() if hasattr(mentee_updated, "isoformat") else "",
+        "l1_unread": bool(user.get("hdnk_nckh_l1_unread")),
+        "reminder_unread": bool(user.get("hdnk_nckh_reminder_unread")),
+        "participation_type_options": list(HDNK_NCKH_PARTICIPATION_TYPES),
+        "progress_options": list(HDNK_NCKH_PROGRESS_OPTIONS),
+        "award_level_options": list(HDNK_NCKH_AWARD_LEVELS),
+    }
+
+
 def hdnk_nckh_mentee_snapshot(entry: dict) -> dict:
     return serialize_hdnk_nckh_entry(entry, for_mentee=True)
 
@@ -142,6 +178,8 @@ def validate_hdnk_nckh_entries(entries: list[dict]) -> str | None:
 
 
 def ensure_hdnk_nckh_reminder_sync(user: dict) -> dict:
+    from services.admins import is_thanh_ha_mentee
+
     if not is_thanh_ha_mentee(user):
         return user
 
