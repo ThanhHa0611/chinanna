@@ -40,6 +40,7 @@ def create_app():
     import routes.admin_feedback  # noqa: F401
     import routes.admin_inbox  # noqa: F401
     import routes.admin_mentees  # noqa: F401
+    import routes.admin_profile_activities  # noqa: F401
     import routes.admin_stats  # noqa: F401
     import routes.auth  # noqa: F401
     import routes.documents  # noqa: F401
@@ -49,6 +50,7 @@ def create_app():
     import routes.l1_email_actions  # noqa: F401
     import routes.misc  # noqa: F401
     import routes.parent  # noqa: F401
+    import routes.profile_activities  # noqa: F401
     import routes.superadmin  # noqa: F401
 
     return app

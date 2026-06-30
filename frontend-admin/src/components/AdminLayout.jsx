@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'Trang chủ', end: true },
   { to: '/access-requests', label: 'Cấp quyền' },
   { to: '/mentees', label: 'Mentee' },
+  { to: '/profile-activities', label: 'Hoạt động hồ sơ' },
   { to: '/feedback', label: 'Phản hồi' },
   { to: '/account', label: 'Tài khoản' },
 ];

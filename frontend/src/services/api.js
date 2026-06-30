@@ -221,6 +221,30 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  getProfileActivities: () => request('/api/profile-activities'),
+
+  getProfileActivityDetail: (activityId) => request(`/api/profile-activities/${activityId}`),
+
+  markProfileActivityRead: (activityId) =>
+    request(`/api/profile-activities/${activityId}/read`, { method: 'POST' }),
+
+  hideProfileActivity: (activityId, body) =>
+    request(`/api/profile-activities/${activityId}/hide`, {
+      method: 'POST',
+      body: JSON.stringify(body || {}),
+    }),
+
+  registerProfileActivity: (activityId) =>
+    request(`/api/profile-activities/${activityId}/register`, {
+      method: 'POST',
+    }),
+
+  respondProfileActivityGroup: (activityId, body) =>
+    request(`/api/profile-activities/${activityId}/group-response`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   openApplyDocumentFile: async (docId) => {
     const token = localStorage.getItem('token');
     const response = await fetch(`${API_BASE}/api/documents/apply/${docId}/file`, {

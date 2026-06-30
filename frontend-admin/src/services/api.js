@@ -252,6 +252,39 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  parseProfileActivity: (body) =>
+    request('/api/admin/profile-activities/parse', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  createProfileActivity: (body) =>
+    request('/api/admin/profile-activities', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  getProfileActivities: () => request('/api/admin/profile-activities'),
+
+  getProfileActivityRegistrations: (activityId) =>
+    request(`/api/admin/profile-activities/${activityId}/registrations`),
+
+  upsertProfileActivityGroup: (activityId, body) =>
+    request(`/api/admin/profile-activities/${activityId}/groups`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  notifyProfileActivityGroup: (activityId, groupId) =>
+    request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/notify`, {
+      method: 'POST',
+    }),
+
+  finalizeProfileActivityGroup: (activityId, groupId) =>
+    request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/finalize`, {
+      method: 'POST',
+    }),
+
   getMenteeRegistrations: () => request('/api/admin/mentee-registrations'),
 
   reviewMenteeRegistration: (id, body) =>

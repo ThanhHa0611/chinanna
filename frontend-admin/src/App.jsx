@@ -10,6 +10,7 @@ import FeedbackPage from './pages/FeedbackPage';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Mentees from './pages/Mentees';
+import ProfileActivities from './pages/ProfileActivities';
 import Register from './pages/Register';
 import './index.css';
 import './device-phone.css';
@@ -40,6 +41,7 @@ export default function App() {
               <Route path="/access-requests" element={<AccessRequests />} />
               <Route path="/mentees" element={<Mentees />} />
               <Route path="/feedback" element={<FeedbackPage />} />
+              <Route path="/profile-activities" element={<ProfileActivities />} />
               <Route path="/account" element={<Account />} />
               <Route path="/history" element={<ActivityHistory />} />
             </Route>
