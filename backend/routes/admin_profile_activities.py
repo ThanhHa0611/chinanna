@@ -16,12 +16,15 @@ from services.profile_activities import (
     approve_pending_group,
     approve_pending_mentor_reject,
     approve_profile_activity,
+    bulk_view_individual_keeptrack_reviews,
     create_profile_activity,
     finalize_group_and_sync_hdnk,
     group_is_approved,
+    list_pending_individual_keeptrack_reviews,
     move_mentee_to_group,
     notify_group_assignment,
     parse_profile_activity_from_description,
+    reject_individual_keeptrack_review,
     reject_pending_group,
     reject_pending_mentor_reject,
     reject_profile_activity,
@@ -33,6 +36,7 @@ from services.profile_activities import (
     suggest_group_name,
     update_activity_keeptrack,
     upsert_activity_group,
+    view_individual_keeptrack_review,
 )
 
 
@@ -383,7 +387,10 @@ def admin_finalize_activity_group(activity_id: str, group_id: str):
         return jsonify({"detail": "Nhóm không tồn tại"}), 404
     if not group_is_approved(group):
         return jsonify({"detail": "Nhóm đang chờ mentor cấp 1 duyệt."}), 400
-    finalize_group_and_sync_hdnk(activity, group_id, admin_display_name(admin))
+    try:
+        finalize_group_and_sync_hdnk(activity, group_id, admin_display_name(admin))
+    except ProfileActivityKeeptrackError as exc:
+        return jsonify({"detail": str(exc)}), 400
     return jsonify({"message": "Đã chốt nhóm và đồng bộ HDNK + NCKH"})
 
 
@@ -472,7 +479,7 @@ def admin_update_activity_keeptrack(activity_id: str, mentee_id: str):
         return jsonify({"detail": "Mentee không tồn tại"}), 404
     data = request.get_json(silent=True) or {}
     try:
-        update_activity_keeptrack(activity, mentee_id, data)
+        update_activity_keeptrack(activity, mentee_id, data, from_mentor=True)
     except ProfileActivityKeeptrackError as exc:
         return jsonify({"detail": str(exc)}), 400
     refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
@@ -486,3 +493,72 @@ def admin_update_activity_keeptrack(activity_id: str, mentee_id: str):
             "registration": serialize_admin_registration(refreshed, state, mentee),
         }
     )
+
+
+@app.get("/api/admin/profile-activities/keeptrack-reviews")
+@with_db
+def admin_list_keeptrack_reviews():
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    items = list_pending_individual_keeptrack_reviews(admin)
+    return jsonify({"items": items, "total_pending_count": len(items)})
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/keeptrack-reviews/view")
+@with_db
+def admin_view_keeptrack_review(activity_id: str, mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    try:
+        view_individual_keeptrack_review(activity, mentee_id, admin)
+    except ProfileActivityKeeptrackError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify({"message": "Đã xem cập nhật tiến độ"})
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/keeptrack-reviews/reject")
+@with_db
+def admin_reject_keeptrack_review(activity_id: str, mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    try:
+        reject_individual_keeptrack_review(activity, mentee_id, admin, data.get("note", ""))
+    except ProfileActivityKeeptrackError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify({"message": "Đã từ chối và hoàn tác tiến độ mentee"})
+
+
+@app.post("/api/admin/profile-activities/keeptrack-reviews/view-bulk")
+@with_db
+def admin_bulk_view_keeptrack_reviews():
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    if not isinstance(items, list) or not items:
+        return jsonify({"detail": "Thiếu danh sách cập nhật tiến độ."}), 400
+    updated = bulk_view_individual_keeptrack_reviews(items, admin)
+    return jsonify({"message": f"Đã đánh dấu đã xem {updated} cập nhật.", "updated_count": updated})

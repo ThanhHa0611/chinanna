@@ -108,6 +108,8 @@ export default function ProfileActivities() {
   const [createFormCollapsed, setCreateFormCollapsed] = useState(false);
   const [moveTargets, setMoveTargets] = useState({});
   const [addToGroupTargets, setAddToGroupTargets] = useState({});
+  const [keeptrackReviews, setKeeptrackReviews] = useState([]);
+  const [selectedKeeptrackReviews, setSelectedKeeptrackReviews] = useState([]);
 
   const canReview = Boolean(admin?.is_super_admin || isLevel1MentorAccount(admin));
   const isL2 = Boolean(admin && !canReview);
@@ -160,8 +162,13 @@ export default function ProfileActivities() {
     setRegistrations(data.items || []);
   };
 
+  const loadKeeptrackReviews = async () => {
+    const data = await api.getProfileActivityKeeptrackReviews();
+    setKeeptrackReviews(data.items || []);
+  };
+
   useEffect(() => {
-    Promise.all([loadActivities()])
+    Promise.all([loadActivities(), loadKeeptrackReviews()])
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
@@ -521,6 +528,90 @@ export default function ProfileActivities() {
     }
   };
 
+  const keeptrackReviewKey = (item) => `${item.activity_id}:${item.mentee_id}`;
+
+  const toggleKeeptrackReview = (item) => {
+    const key = keeptrackReviewKey(item);
+    setSelectedKeeptrackReviews((prev) =>
+      prev.includes(key) ? prev.filter((row) => row !== key) : [...prev, key],
+    );
+  };
+
+  const toggleAllKeeptrackReviews = () => {
+    if (selectedKeeptrackReviews.length === keeptrackReviews.length) {
+      setSelectedKeeptrackReviews([]);
+      return;
+    }
+    setSelectedKeeptrackReviews(keeptrackReviews.map((item) => keeptrackReviewKey(item)));
+  };
+
+  const handleViewKeeptrackReview = async (item) => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.viewProfileActivityKeeptrackReview(item.activity_id, item.mentee_id);
+      await Promise.all([loadKeeptrackReviews(), loadActivities()]);
+      if (item.activity_id === selectedId) {
+        await loadRegistrations(item.activity_id);
+      }
+      setSelectedKeeptrackReviews((prev) =>
+        prev.filter((row) => row !== keeptrackReviewKey(item)),
+      );
+      setMessage('Đã đánh dấu đã xem cập nhật tiến độ.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRejectKeeptrackReview = async (item) => {
+    const note = window.prompt('Ghi chú từ chối (tuỳ chọn):', '') ?? '';
+    if (note === null) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api.rejectProfileActivityKeeptrackReview(item.activity_id, item.mentee_id, { note });
+      await Promise.all([loadKeeptrackReviews(), loadActivities()]);
+      if (item.activity_id === selectedId) {
+        await loadRegistrations(item.activity_id);
+      }
+      setSelectedKeeptrackReviews((prev) =>
+        prev.filter((row) => row !== keeptrackReviewKey(item)),
+      );
+      setMessage('Đã từ chối và hoàn tác tiến độ mentee.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBulkViewKeeptrackReviews = async () => {
+    const items = keeptrackReviews
+      .filter((item) => selectedKeeptrackReviews.includes(keeptrackReviewKey(item)))
+      .map((item) => ({ activity_id: item.activity_id, mentee_id: item.mentee_id }));
+    if (!items.length) {
+      setError('Chọn ít nhất một cập nhật tiến độ.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const result = await api.bulkViewProfileActivityKeeptrackReviews(items);
+      await Promise.all([loadKeeptrackReviews(), loadActivities()]);
+      if (selectedId) {
+        await loadRegistrations(selectedId);
+      }
+      setSelectedKeeptrackReviews([]);
+      setMessage(result?.message || 'Đã đánh dấu đã xem hàng loạt.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const renderDeadlineBadge = (activity) => {
     const badge = getDeadlineBadge(activity?.deadline, activity?.deadline_badge);
     if (!badge) return null;
@@ -550,6 +641,83 @@ export default function ProfileActivities() {
 
       {error && <p className="form-error">{error}</p>}
       {message && <p className="form-success">{message}</p>}
+
+      {keeptrackReviews.length > 0 && (
+        <div className="panel-card profile-activity-pending-queue">
+          <div className="profile-activity-pending-queue-head">
+            <h3>Tiến độ cá nhân chờ xem ({keeptrackReviews.length})</h3>
+            <div className="action-cell">
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleBulkViewKeeptrackReviews}
+                disabled={saving || selectedKeeptrackReviews.length === 0}
+              >
+                Đã xem hàng loạt ({selectedKeeptrackReviews.length})
+              </button>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={
+                        keeptrackReviews.length > 0 &&
+                        selectedKeeptrackReviews.length === keeptrackReviews.length
+                      }
+                      onChange={toggleAllKeeptrackReviews}
+                      aria-label="Chọn tất cả"
+                    />
+                  </th>
+                  <th>Mentee</th>
+                  <th>Hoạt động</th>
+                  <th>Tiến độ</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {keeptrackReviews.map((item) => (
+                  <tr key={keeptrackReviewKey(item)}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedKeeptrackReviews.includes(keeptrackReviewKey(item))}
+                        onChange={() => toggleKeeptrackReview(item)}
+                      />
+                    </td>
+                    <td>{item.mentee_name}</td>
+                    <td>{item.activity_name}</td>
+                    <td>{item.progress_summary || item.progress_label || '—'}</td>
+                    <td>
+                      <div className="action-cell">
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => handleRejectKeeptrackReview(item)}
+                          disabled={saving}
+                        >
+                          Từ chối
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleViewKeeptrackReview(item)}
+                          disabled={saving}
+                        >
+                          Đã xem
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {canReview && pendingGroupActions.length > 0 && (
         <div className="panel-card profile-activity-pending-queue">
@@ -1020,10 +1188,13 @@ export default function ProfileActivities() {
                       type="button"
                       className="btn btn-primary btn-sm"
                       onClick={() => handleFinalizeGroup(group.group_id)}
-                      disabled={saving || groupPending}
+                      disabled={saving || groupPending || group.is_auto_solo}
                     >
                       Chốt nhóm
                     </button>
+                    {group.is_auto_solo && (
+                      <span className="muted">Cá nhân — không cần chốt nhóm</span>
+                    )}
                   </div>
                 </div>
               );

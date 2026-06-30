@@ -411,6 +411,27 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  getProfileActivityKeeptrackReviews: () =>
+    request('/api/admin/profile-activities/keeptrack-reviews'),
+
+  viewProfileActivityKeeptrackReview: (activityId, menteeId) =>
+    request(
+      `/api/admin/profile-activities/${activityId}/registrations/${menteeId}/keeptrack-reviews/view`,
+      { method: 'POST' },
+    ),
+
+  rejectProfileActivityKeeptrackReview: (activityId, menteeId, body = {}) =>
+    request(
+      `/api/admin/profile-activities/${activityId}/registrations/${menteeId}/keeptrack-reviews/reject`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  bulkViewProfileActivityKeeptrackReviews: (items) =>
+    request('/api/admin/profile-activities/keeptrack-reviews/view-bulk', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    }),
+
   getMenteeRegistrations: () => request('/api/admin/mentee-registrations'),
 
   reviewMenteeRegistration: (id, body) =>

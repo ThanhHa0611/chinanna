@@ -34,7 +34,7 @@ SECTION_DEFINITIONS: list[dict] = [
     {
         "key": "hdnk_nckh",
         "label": "4. Keep track HDNK + NCKH",
-        "actions": {"hdnk_nckh_update"},
+        "actions": {"hdnk_nckh_update", "profile_activity_keeptrack"},
     },
     {
         "key": "other",
@@ -48,6 +48,7 @@ ACTION_SUMMARY_VERBS: dict[str, str] = {
     "apply_progress_request": "cập nhật tiến độ apply",
     "feedback": "gửi phản hồi",
     "hdnk_nckh_update": "cập nhật HDNK + NCKH",
+    "profile_activity_keeptrack": "cập nhật tiến độ hoạt động hồ sơ",
     "preferred_schools": "cập nhật trường ưa thích",
     "profile_update": "cập nhật hồ sơ",
 }
