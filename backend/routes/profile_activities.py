@@ -10,9 +10,8 @@ from services.profile_activities import (
     ProfileActivityKeeptrackError,
     ProfileActivityRegistrationError,
     activity_visible_to_mentee,
+    build_mentee_activities_response,
     complete_activity_keeptrack,
-    group_mentee_feed_by_day,
-    list_profile_activities_for_mentee,
     mark_activity_read,
     register_for_activity,
     request_keeptrack_abandon,
@@ -43,8 +42,7 @@ def mentee_list_profile_activities():
     if error_response:
         return error_response
 
-    items = list_profile_activities_for_mentee(user)
-    return jsonify(group_mentee_feed_by_day(items, max_other_days=10))
+    return jsonify(build_mentee_activities_response(user, max_other_days=10))
 
 
 @app.get("/api/profile-activities/<activity_id>")

@@ -553,11 +553,14 @@ def _normalize_keeptrack(raw: dict | None) -> dict:
     progress_status = (source.get("progress_status") or "").strip()
     if progress_status not in {KEEPTRACK_PROGRESS_IN_PROGRESS, KEEPTRACK_PROGRESS_COMPLETED}:
         progress_status = ""
+    active_flag = bool(source.get("active"))
+    if active_flag and not progress_status:
+        progress_status = KEEPTRACK_PROGRESS_IN_PROGRESS
     has_award = bool(source.get("has_award"))
     award_level = (source.get("award_level") or "").strip()
     if not has_award or award_level not in {"giải 1", "giải 2", "giải 3", "khác"}:
         award_level = ""
-    active = bool(source.get("active")) and progress_status == KEEPTRACK_PROGRESS_IN_PROGRESS
+    active = active_flag and progress_status == KEEPTRACK_PROGRESS_IN_PROGRESS
     return {
         "active": active,
         "start_date": (source.get("start_date") or "").strip(),
@@ -599,6 +602,23 @@ def _serialize_keeptrack_for_feed(activity: dict, state: dict) -> dict | None:
             or "Mentor từ chối yêu cầu từ bỏ — tiếp tục theo dõi hoạt động."
         )
     return payload
+
+
+def _mentee_excluded_from_feed(state: dict) -> bool:
+    """In-progress or completed keeptrack items belong in Panel A / HDNK, not the notification feed."""
+    keeptrack_raw = state.get("keeptrack")
+    if keeptrack_raw:
+        keeptrack = _normalize_keeptrack(keeptrack_raw)
+        if keeptrack["active"]:
+            return True
+        if keeptrack["progress_status"] == KEEPTRACK_PROGRESS_COMPLETED:
+            return True
+        if keeptrack.get("hdnk_entry_id"):
+            return True
+    abandon_pending = state.get("keeptrack_abandon_pending") or {}
+    if abandon_pending.get("status") == "pending":
+        return True
+    return False
 
 
 def _snapshot_keeptrack(raw: dict | None) -> dict:
@@ -969,6 +989,8 @@ def complete_activity_keeptrack(activity: dict, mentee_id: str, payload: dict) -
         raise ProfileActivityKeeptrackError("Bạn chưa báo danh hoạt động này.")
     keeptrack = _normalize_keeptrack(state.get("keeptrack"))
     if not keeptrack["active"]:
+        if keeptrack["progress_status"] == KEEPTRACK_PROGRESS_COMPLETED:
+            return profile_activities.find_one({"_id": activity["_id"]}) or activity
         raise ProfileActivityKeeptrackError("Hoạt động không còn trong trạng thái đang tiến hành.")
     abandon_pending = state.get("keeptrack_abandon_pending") or {}
     if abandon_pending.get("status") == "pending":
@@ -1682,10 +1704,18 @@ def activity_matches_mentee_major(activity: dict, mentee: dict) -> bool:
     return False
 
 
-def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidden: bool = False) -> dict:
+def serialize_profile_activity_for_feed(
+    doc: dict,
+    mentee: dict,
+    *,
+    include_hidden: bool = False,
+    exclude_from_feed: bool = False,
+) -> dict:
     mentee_id = str(mentee["_id"])
     state = _get_or_create_state(doc, mentee_id)
     if state.get("hidden") and not include_hidden:
+        return {}
+    if exclude_from_feed and _mentee_excluded_from_feed(state):
         return {}
     registration_count = sum(1 for item in doc.get("mentee_states", []) if item.get("registered_at"))
     group_response_status = state.get("group_response_status")
@@ -1852,10 +1882,33 @@ def _sorted_activities_for_mentee(mentee: dict) -> list[dict]:
 def list_profile_activities_for_mentee(mentee: dict) -> list[dict]:
     items: list[dict] = []
     for doc in _sorted_activities_for_mentee(mentee):
-        payload = serialize_profile_activity_for_feed(doc, mentee)
+        payload = serialize_profile_activity_for_feed(doc, mentee, exclude_from_feed=True)
         if payload:
             items.append(payload)
     return items
+
+
+def list_active_keeptrack_for_mentee(mentee: dict) -> list[dict]:
+    mentee_id = str(mentee["_id"])
+    items: list[dict] = []
+    for doc in _sorted_activities_for_mentee(mentee):
+        state = _get_or_create_state(doc, mentee_id)
+        keeptrack = _normalize_keeptrack(state.get("keeptrack"))
+        abandon_pending = state.get("keeptrack_abandon_pending") or {}
+        in_panel = keeptrack["active"] or abandon_pending.get("status") == "pending"
+        if not in_panel:
+            continue
+        payload = serialize_profile_activity_for_feed(doc, mentee, include_hidden=True)
+        if payload:
+            items.append(payload)
+    return items
+
+
+def build_mentee_activities_response(mentee: dict, *, max_other_days: int = 10) -> dict:
+    feed_items = list_profile_activities_for_mentee(mentee)
+    grouped = group_mentee_feed_by_day(feed_items, max_other_days=max_other_days)
+    grouped["active_keeptrack"] = list_active_keeptrack_for_mentee(mentee)
+    return grouped
 
 
 def group_mentee_feed_by_day(items: list[dict], *, max_other_days: int = 10) -> dict:

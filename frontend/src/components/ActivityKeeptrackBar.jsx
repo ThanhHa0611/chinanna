@@ -31,13 +31,18 @@ export default function ActivityKeeptrackBar({
     setShowPrizeStep(true);
   };
 
-  const handleConfirmComplete = () => {
+  const handleConfirmComplete = async () => {
+    if (isDisabled || saving) return;
     if (hasAward && !awardLevel) return;
-    onComplete?.({
-      has_award: hasAward,
-      award_level: hasAward ? awardLevel : '',
-    });
-    resetPrizeStep();
+    try {
+      await onComplete?.({
+        has_award: hasAward,
+        award_level: hasAward ? awardLevel : '',
+      });
+      resetPrizeStep();
+    } catch {
+      // parent shows error; keep prize step open for retry
+    }
   };
 
   const handleAbandon = () => {

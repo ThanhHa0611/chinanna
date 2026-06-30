@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import ActivityKeeptrackBar from './ActivityKeeptrackBar';
 import {
@@ -9,6 +9,9 @@ import {
   getDeadlineBadge,
   participationModeDisplayLabel,
 } from '../utils/profileActivities';
+
+const COMPLETE_TOAST_MESSAGE = 'Giỏi quá, cố gắng lên nha ❤️';
+const COMPLETE_TOAST_MS = 3000;
 
 function isActivityViewed(item) {
   return Boolean(item?.viewed ?? item?.read);
@@ -70,20 +73,27 @@ function DayBlock({ day, renderItem }) {
 export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUnviewedCountChange }) {
   const [currentDay, setCurrentDay] = useState(null);
   const [otherDays, setOtherDays] = useState([]);
+  const [activeKeeptrack, setActiveKeeptrack] = useState([]);
   const [expanded, setExpanded] = useState(true);
   const [showOther, setShowOther] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [successToast, setSuccessToast] = useState('');
   const [registerChoice, setRegisterChoice] = useState({});
   const [keeptrackSaving, setKeeptrackSaving] = useState({});
   const [expandedGroupViews, setExpandedGroupViews] = useState({});
   const [keeptrackExpanded, setKeeptrackExpanded] = useState(true);
 
-  const refresh = async () => {
-    const data = await api.getProfileActivities();
+  const applyActivitiesData = (data) => {
     setCurrentDay(data.current_day || null);
     setOtherDays(data.other_days || []);
+    setActiveKeeptrack(data.active_keeptrack || []);
     onUnviewedCountChange?.(data.unviewed_count ?? 0);
+  };
+
+  const refresh = async () => {
+    const data = await api.getProfileActivities();
+    applyActivitiesData(data);
     setError('');
   };
 
@@ -95,15 +105,14 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
       .getProfileActivities()
       .then((data) => {
         if (cancelled) return;
-        setCurrentDay(data.current_day || null);
-        setOtherDays(data.other_days || []);
-        onUnviewedCountChange?.(data.unviewed_count ?? 0);
+        applyActivitiesData(data);
       })
       .catch((err) => {
         if (cancelled) return;
         setError(err.message || 'Không tải được hoạt động.');
         setCurrentDay(null);
         setOtherDays([]);
+        setActiveKeeptrack([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -112,6 +121,12 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
       cancelled = true;
     };
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!successToast) return undefined;
+    const timer = window.setTimeout(() => setSuccessToast(''), COMPLETE_TOAST_MS);
+    return () => window.clearTimeout(timer);
+  }, [successToast]);
 
   const markViewed = async (itemId) => {
     try {
@@ -202,39 +217,37 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
     }
   };
 
-  const patchActivityInFeed = (itemId, activityPatch) => {
-    const patchItem = (item) => (item.id === itemId ? { ...item, ...activityPatch } : item);
-    setCurrentDay((day) =>
-      day ? { ...day, items: (day.items || []).map(patchItem) } : day,
-    );
-    setOtherDays((days) =>
-      days.map((day) => ({ ...day, items: (day.items || []).map(patchItem) })),
+  const patchKeeptrackItem = (itemId, activityPatch) => {
+    setActiveKeeptrack((items) =>
+      items
+        .map((item) => (item.id === itemId ? { ...item, ...activityPatch } : item))
+        .filter((item) => item.keeptrack?.active),
     );
   };
 
   const completeKeeptrack = async (itemId, body) => {
+    if (keeptrackSaving[itemId]) return;
     setKeeptrackSaving((prev) => ({ ...prev, [itemId]: true }));
+    setError('');
     try {
-      const result = await api.completeProfileActivityKeeptrack(itemId, body);
-      if (result?.activity) {
-        patchActivityInFeed(itemId, result.activity);
-      } else {
-        await refresh();
-      }
-      setError('');
+      await api.completeProfileActivityKeeptrack(itemId, body);
+      setActiveKeeptrack((items) => items.filter((item) => item.id !== itemId));
+      setSuccessToast(COMPLETE_TOAST_MESSAGE);
     } catch (err) {
       setError(err.message);
+      throw err;
     } finally {
       setKeeptrackSaving((prev) => ({ ...prev, [itemId]: false }));
     }
   };
 
   const abandonKeeptrack = async (itemId, body) => {
+    if (keeptrackSaving[itemId]) return;
     setKeeptrackSaving((prev) => ({ ...prev, [itemId]: true }));
     try {
       const result = await api.abandonProfileActivityKeeptrack(itemId, body);
       if (result?.activity) {
-        patchActivityInFeed(itemId, result.activity);
+        patchKeeptrackItem(itemId, result.activity);
       } else {
         await refresh();
       }
@@ -283,17 +296,10 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
       item.participation_choice === 'individual' &&
       item.group_response_status === 'confirmed'
     ) {
-      if (item.keeptrack?.active) {
-        return (
-          <span className="muted">Đã báo danh (Cá nhân) — tiến độ đang theo dõi</span>
-        );
-      }
       return <span className="muted">Đã báo danh (Cá nhân)</span>;
     }
-    if (item.registered && item.group_response_status === 'confirmed' && item.keeptrack?.active) {
-      return (
-        <span className="muted">Đã xác nhận nhóm — tiến độ đang theo dõi</span>
-      );
+    if (item.registered && item.group_response_status === 'confirmed') {
+      return <span className="muted">Đã xác nhận nhóm</span>;
     }
     if (item.registered && item.participation_choice_label) {
       return <span className="muted">Đã báo danh ({item.participation_choice_label})</span>;
@@ -424,16 +430,8 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
 
   const otherDayCount = otherDays.length;
   const otherItemCount = otherDays.reduce((sum, day) => sum + (day.items || []).length, 0);
-  const totalCount = (currentDay?.items?.length || 0) + otherItemCount;
+  const feedItemCount = (currentDay?.items?.length || 0) + otherItemCount;
   const primaryDateLabel = currentDay?.date_label;
-
-  const activeKeeptrackItems = useMemo(() => {
-    const allItems = [
-      ...(currentDay?.items || []),
-      ...otherDays.flatMap((day) => day.items || []),
-    ];
-    return allItems.filter((item) => item.keeptrack?.active);
-  }, [currentDay, otherDays]);
 
   return (
     <>
@@ -442,17 +440,62 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
         Theo dõi và đăng ký các hoạt động hỗ trợ làm đẹp hồ sơ apply.
       </p>
 
-      <div className="profile-card">
+      {successToast && (
+        <div className="profile-activities-success-toast" role="status" aria-live="polite">
+          {successToast}
+        </div>
+      )}
+
+      {!loading && activeKeeptrack.length > 0 && (
+        <div className="profile-card profile-activities-keeptrack-panel">
+          <div className="profile-activities-keeptrack-head">
+            <h4>🍀 Đang tiến hành ({activeKeeptrack.length})</h4>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => setKeeptrackExpanded((value) => !value)}
+              aria-expanded={keeptrackExpanded}
+            >
+              {keeptrackExpanded ? 'Thu gọn' : 'Mở rộng'}
+            </button>
+          </div>
+          {keeptrackExpanded ? (
+            <div className="profile-activities-keeptrack-list">
+              {activeKeeptrack.map((item) => (
+                <div key={item.id} className="profile-activities-keeptrack-item">
+                  <p className="profile-activities-keeptrack-item-label muted">
+                    {feedLineText(item)}
+                  </p>
+                  <ActivityKeeptrackBar
+                    keeptrack={item.keeptrack}
+                    hideHead
+                    saving={Boolean(keeptrackSaving[item.id])}
+                    onComplete={(body) => completeKeeptrack(item.id, body)}
+                    onAbandon={(body) => abandonKeeptrack(item.id, body)}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="profile-activities-keeptrack-collapsed muted">
+              {activeKeeptrack.length} hoạt động đang theo dõi tiến độ — bấm Mở rộng để xem
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="profile-card profile-activities-feed-panel">
         <div className="profile-activities-head">
+          <h3 className="profile-activities-feed-title">Thông báo hoạt động</h3>
           {!loading && (
             <p className="profile-activities-head-summary muted">
               {primaryDateLabel && (
                 <>
                   <strong>Ngày {primaryDateLabel}</strong>
-                  {!expanded && totalCount > 0 && (
+                  {!expanded && feedItemCount > 0 && (
                     <>
                       {' · '}
-                      Có {totalCount} hoạt động
+                      Có {feedItemCount} hoạt động
                       {unviewedCount > 0 ? ` (${unviewedCount} mới)` : ''}
                     </>
                   )}
@@ -460,7 +503,7 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
               )}
               {!primaryDateLabel && !expanded && (
                 <>
-                  Có {totalCount} hoạt động
+                  Có {feedItemCount} hoạt động
                   {unviewedCount > 0 ? ` (${unviewedCount} mới)` : ''}.
                 </>
               )}
@@ -475,45 +518,6 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
           <p className="profile-note">Đang tải hoạt động...</p>
         ) : !expanded ? null : (
           <div className="profile-activities-days">
-            {activeKeeptrackItems.length > 0 && (
-              <div className="profile-activities-keeptrack-panel">
-                <div className="profile-activities-keeptrack-head">
-                  <h4>
-                    🍀 Đang tiến hành ({activeKeeptrackItems.length})
-                  </h4>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={() => setKeeptrackExpanded((value) => !value)}
-                    aria-expanded={keeptrackExpanded}
-                  >
-                    {keeptrackExpanded ? 'Thu gọn' : 'Mở rộng'}
-                  </button>
-                </div>
-                {keeptrackExpanded ? (
-                  <div className="profile-activities-keeptrack-list">
-                    {activeKeeptrackItems.map((item) => (
-                      <div key={item.id} className="profile-activities-keeptrack-item">
-                        <p className="profile-activities-keeptrack-item-label muted">
-                          {feedLineText(item)}
-                        </p>
-                        <ActivityKeeptrackBar
-                          keeptrack={item.keeptrack}
-                          hideHead
-                          saving={Boolean(keeptrackSaving[item.id])}
-                          onComplete={(body) => completeKeeptrack(item.id, body)}
-                          onAbandon={(body) => abandonKeeptrack(item.id, body)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="profile-activities-keeptrack-collapsed muted">
-                    {activeKeeptrackItems.length} hoạt động đang theo dõi tiến độ — bấm Mở rộng để xem
-                  </p>
-                )}
-              </div>
-            )}
             <DayBlock day={currentDay} renderItem={renderItem} />
             {!loading && !error && !currentDay?.items?.length && !otherItemCount && (
               <p className="muted">Chưa có hoạt động nào.</p>

@@ -2374,6 +2374,41 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
   background: #fffbeb;
 }
 
+.profile-activities-feed-panel {
+  margin-top: 0;
+}
+
+.profile-activities-feed-title {
+  margin: 0;
+  font-size: 1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-activities-success-toast {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid #86efac;
+  background: #ecfdf5;
+  color: #166534;
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-align: center;
+  animation: profile-activities-toast-in 0.25s ease-out;
+}
+
+@keyframes profile-activities-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .profile-activities-keeptrack-head {
   display: flex;
   align-items: center;
