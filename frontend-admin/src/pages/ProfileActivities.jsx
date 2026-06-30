@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { isLevel1MentorAccount } from '../utils/mentorDisplay';
@@ -91,6 +91,99 @@ function approvalBadgeClass(status) {
   if (status === 'pending_l1_approval') return 'is-pending';
   if (status === 'rejected') return 'is-rejected';
   return 'is-approved';
+}
+
+function activityPickerLabel(item) {
+  const name = compose_activity_name(item);
+  const registrations = item.registration_count || 0;
+  let label = `${name} (${registrations} báo danh)`;
+  if (item.approval_status === 'pending_l1_approval') {
+    label += ' · chờ duyệt';
+  }
+  return label;
+}
+
+function ActivityPickerDropdown({ activities, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const selected = activities.find((item) => item.id === value) || null;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleClickOutside = (event) => {
+      if (!rootRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  const renderPendingBadge = (item) => {
+    const count = item.pending_action_count || 0;
+    if (count <= 0) return null;
+    return (
+      <span className="notify-circle-badge" title="Có hành động chờ duyệt">
+        {count}
+      </span>
+    );
+  };
+
+  return (
+    <div ref={rootRef} className={`activity-picker${open ? ' is-open' : ''}`}>
+      <button
+        type="button"
+        className="activity-picker-trigger"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        {selected ? (
+          <span className="activity-picker-trigger-content">
+            <span className="activity-picker-option-text">{activityPickerLabel(selected)}</span>
+            {renderPendingBadge(selected)}
+          </span>
+        ) : (
+          <span className="activity-picker-placeholder">-- Chọn --</span>
+        )}
+        <span className="activity-picker-caret" aria-hidden>
+          ▾
+        </span>
+      </button>
+      {open && (
+        <div className="activity-picker-menu" role="listbox" aria-label="Chọn hoạt động">
+          <button
+            type="button"
+            role="option"
+            aria-selected={!value}
+            className={`activity-picker-option${!value ? ' active' : ''}`}
+            onClick={() => {
+              onChange('');
+              setOpen(false);
+            }}
+          >
+            <span>-- Chọn --</span>
+          </button>
+          {activities.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="option"
+              aria-selected={value === item.id}
+              className={`activity-picker-option${value === item.id ? ' active' : ''}`}
+              onClick={() => {
+                onChange(item.id);
+                setOpen(false);
+              }}
+            >
+              <span className="activity-picker-option-text">{activityPickerLabel(item)}</span>
+              {renderPendingBadge(item)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ProfileActivities() {
@@ -688,7 +781,14 @@ export default function ProfileActivities() {
                         onChange={() => toggleKeeptrackReview(item)}
                       />
                     </td>
-                    <td>{item.mentee_name}</td>
+                    <td>
+                      <div>{item.mentee_name || item.mentee_email || '—'}</div>
+                      {item.mentee_profile_summary && (
+                        <div className="profile-activity-keeptrack-mentee-summary">
+                          {item.mentee_profile_summary}
+                        </div>
+                      )}
+                    </td>
                     <td>{item.activity_name}</td>
                     <td>{item.progress_summary || item.progress_label || '—'}</td>
                     <td>
@@ -954,16 +1054,11 @@ export default function ProfileActivities() {
         <h3>Quản lý hoạt động</h3>
         <label>
           Chọn hoạt động
-          <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
-            <option value="">-- Chọn --</option>
-            {activities.map((item) => (
-              <option key={item.id} value={item.id}>
-                {compose_activity_name(item)} ({item.registration_count || 0} báo danh)
-                {(item.pending_action_count || 0) > 0 ? ` (${item.pending_action_count})` : ''}
-                {item.approval_status === 'pending_l1_approval' ? ' · chờ duyệt' : ''}
-              </option>
-            ))}
-          </select>
+          <ActivityPickerDropdown
+            activities={activities}
+            value={selectedId}
+            onChange={setSelectedId}
+          />
         </label>
 
         {selectedActivity && (

@@ -91,7 +91,7 @@ export default function AdminLayout() {
                 )}
                 {item.to === '/profile-activities' && profileActivitiesPendingCount > 0 && (
                   <span
-                    className="sidebar-notify-badge sidebar-notify-badge-activities"
+                    className="sidebar-notify-badge notify-circle-badge sidebar-notify-badge-activities"
                     title="Có yêu cầu cần duyệt / xử lí"
                   >
                     {profileActivitiesPendingCount}
