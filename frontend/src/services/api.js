@@ -240,9 +240,10 @@ export const api = {
       body: JSON.stringify(body || {}),
     }),
 
-  registerProfileActivity: (activityId) =>
+  registerProfileActivity: (activityId, body = {}) =>
     request(`/api/profile-activities/${activityId}/register`, {
       method: 'POST',
+      body: JSON.stringify(body),
     }),
 
   respondProfileActivityGroup: (activityId, body) =>

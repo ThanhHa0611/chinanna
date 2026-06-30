@@ -93,3 +93,15 @@ export function formatImportanceStars(importance) {
   const value = Math.max(1, Math.min(5, parseInt(importance, 10) || 3));
   return '★'.repeat(value) + '☆'.repeat(5 - value);
 }
+
+export const PARTICIPATION_MODE_LABELS = {
+  individual: 'Cá nhân',
+  group: 'Nhóm',
+  both: 'Cá nhân hay nhóm đều được',
+  unknown: 'Không rõ',
+};
+
+export const MENTEE_PARTICIPATION_CHOICES = [
+  { value: 'individual', label: 'Cá nhân' },
+  { value: 'group', label: 'Nhóm' },
+];

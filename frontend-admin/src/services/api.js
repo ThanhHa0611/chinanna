@@ -345,6 +345,27 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  suggestProfileActivityGroupName: (activityId) =>
+    request(`/api/admin/profile-activities/${activityId}/groups/suggest-name`),
+
+  addMenteeToProfileActivityGroup: (activityId, groupId, body) =>
+    request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/add-mentee`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  removeMenteeFromProfileActivityGroup: (activityId, groupId, body) =>
+    request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/remove-mentee`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  moveProfileActivityMenteeGroup: (activityId, menteeId, body) =>
+    request(`/api/admin/profile-activities/${activityId}/registrations/${menteeId}/move-group`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   notifyProfileActivityGroup: (activityId, groupId) =>
     request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/notify`, {
       method: 'POST',

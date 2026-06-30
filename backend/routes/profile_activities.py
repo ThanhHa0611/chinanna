@@ -1,5 +1,3 @@
-from datetime import datetime, timedelta, timezone
-
 from bson import ObjectId
 from bson.errors import InvalidId
 from flask import jsonify, request
@@ -8,7 +6,9 @@ from auth.security import get_authenticated_user, require_mentee_account
 from database import profile_activities, with_db
 from extensions import app
 from services.profile_activities import (
+    ProfileActivityRegistrationError,
     activity_visible_to_mentee,
+    group_mentee_feed_by_day,
     list_profile_activities_for_mentee,
     mark_activity_read,
     register_for_activity,
@@ -29,25 +29,6 @@ def _find_activity_or_404(activity_id: str):
     return activity, None
 
 
-def _group_feed_by_day(items: list[dict], max_days: int = 10) -> tuple[list[dict], list[dict]]:
-    groups = {}
-    now = datetime.now(timezone.utc)
-    for item in items:
-        created = item.get("created_at", "")
-        try:
-            dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-        except Exception:
-            dt = now
-        date_key = dt.astimezone().strftime("%Y-%m-%d")
-        date_label = dt.astimezone().strftime("%d/%m/%Y")
-        if date_key not in groups:
-            groups[date_key] = {"date_key": date_key, "date_label": date_label, "items": []}
-        groups[date_key]["items"].append(item)
-    ordered = [groups[key] for key in sorted(groups.keys(), reverse=True)]
-    visible, hidden = ordered[:max_days], ordered[max_days:]
-    return visible, hidden
-
-
 @app.get("/api/profile-activities")
 @with_db
 def mentee_list_profile_activities():
@@ -59,8 +40,7 @@ def mentee_list_profile_activities():
         return error_response
 
     items = list_profile_activities_for_mentee(user)
-    visible, hidden = _group_feed_by_day(items, max_days=10)
-    return jsonify({"days": visible, "hidden_days": hidden, "max_history_days": 10})
+    return jsonify(group_mentee_feed_by_day(items, max_other_days=10))
 
 
 @app.get("/api/profile-activities/<activity_id>")
@@ -139,7 +119,12 @@ def mentee_register_profile_activity(activity_id: str):
         return error
     if not activity_visible_to_mentee(activity):
         return jsonify({"detail": "Hoạt động không tồn tại"}), 404
-    register_for_activity(activity, user)
+    data = request.get_json(silent=True) or {}
+    participation_choice = data.get("participation_choice")
+    try:
+        register_for_activity(activity, user, participation_choice=participation_choice)
+    except ProfileActivityRegistrationError as exc:
+        return jsonify({"detail": str(exc)}), 400
     return jsonify({"message": "Đã báo danh"})
 
 

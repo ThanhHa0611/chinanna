@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import {
+  MENTEE_PARTICIPATION_CHOICES,
   feedLineLink,
   feedLineText,
   formatImportanceStars,
   getDeadlineBadge,
 } from '../utils/profileActivities';
+
+function isActivityViewed(item) {
+  return Boolean(item?.viewed ?? item?.read);
+}
 
 function FeedLine({ item, onLinkClick }) {
   const text = feedLineText(item);
@@ -22,6 +27,15 @@ function FeedLine({ item, onLinkClick }) {
         )}
         {text}
       </div>
+      {(item.target_audience || item.participation_mode_label) && (
+        <div className="profile-activity-feed-meta muted">
+          {item.target_audience && <span>Đối tượng: {item.target_audience}</span>}
+          {item.target_audience && item.participation_mode_label && ' · '}
+          {item.participation_mode_label && (
+            <span>Hình thức: {item.participation_mode_label}</span>
+          )}
+        </div>
+      )}
       {link && (
         <div className="profile-activity-feed-link-line">
           Link:{' '}
@@ -40,18 +54,31 @@ function FeedLine({ item, onLinkClick }) {
   );
 }
 
+function DayBlock({ day, renderItem }) {
+  if (!day?.items?.length) return null;
+  return (
+    <div className="profile-activities-day">
+      <h4>Ngày {day.date_label}</h4>
+      <div className="profile-activities-list">{(day.items || []).map(renderItem)}</div>
+    </div>
+  );
+}
+
 export default function ProfileActivitiesSection({ user }) {
-  const [days, setDays] = useState([]);
-  const [hiddenDays, setHiddenDays] = useState([]);
+  const [currentDay, setCurrentDay] = useState(null);
+  const [otherDays, setOtherDays] = useState([]);
+  const [unviewedCount, setUnviewedCount] = useState(0);
   const [expanded, setExpanded] = useState(true);
-  const [showOld, setShowOld] = useState(false);
+  const [showOther, setShowOther] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [registerChoice, setRegisterChoice] = useState({});
 
   const refresh = async () => {
     const data = await api.getProfileActivities();
-    setDays(data.days || []);
-    setHiddenDays(data.hidden_days || []);
+    setCurrentDay(data.current_day || null);
+    setOtherDays(data.other_days || []);
+    setUnviewedCount(data.unviewed_count ?? 0);
   };
 
   useEffect(() => {
@@ -61,19 +88,28 @@ export default function ProfileActivitiesSection({ user }) {
       .finally(() => setLoading(false));
   }, [user?.id]);
 
-  const totalItems = useMemo(
-    () =>
-      [...days, ...(showOld ? hiddenDays : [])].reduce(
-        (sum, day) => sum + (day.items || []).length,
-        0,
-      ),
-    [days, hiddenDays, showOld],
-  );
-
-  const markRead = async (itemId) => {
+  const markViewed = async (itemId) => {
     try {
       await api.markProfileActivityRead(itemId);
-      await refresh();
+      setUnviewedCount((count) => Math.max(0, count - 1));
+      setCurrentDay((day) =>
+        day
+          ? {
+              ...day,
+              items: (day.items || []).map((item) =>
+                item.id === itemId ? { ...item, viewed: true, read: true } : item,
+              ),
+            }
+          : day,
+      );
+      setOtherDays((days) =>
+        days.map((day) => ({
+          ...day,
+          items: (day.items || []).map((item) =>
+            item.id === itemId ? { ...item, viewed: true, read: true } : item,
+          ),
+        })),
+      );
     } catch {
       // best effort
     }
@@ -90,11 +126,33 @@ export default function ProfileActivitiesSection({ user }) {
     }
   };
 
-  const registerActivity = async (itemId) => {
-    if (!window.confirm('Bạn có chắc muốn báo danh hoạt động này?')) return;
+  const registerActivity = async (item) => {
+    const needsChoice = item.needs_participation_choice;
+    const choice = registerChoice[item.id];
+
+    if (needsChoice && !choice) {
+      setError('Vui lòng chọn hình thức tham gia: Cá nhân hoặc Nhóm.');
+      return;
+    }
+
+    const choiceLabel =
+      MENTEE_PARTICIPATION_CHOICES.find((row) => row.value === choice)?.label || '';
+    const confirmText = needsChoice
+      ? `Bạn chọn tham gia ${choiceLabel}. Xác nhận báo danh hoạt động này?`
+      : 'Bạn có chắc muốn báo danh hoạt động này?';
+    if (!window.confirm(confirmText)) return;
 
     try {
-      await api.registerProfileActivity(itemId);
+      await api.registerProfileActivity(
+        item.id,
+        needsChoice ? { participation_choice: choice } : {},
+      );
+      setRegisterChoice((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      setError('');
       await refresh();
     } catch (err) {
       setError(err.message);
@@ -118,53 +176,112 @@ export default function ProfileActivitiesSection({ user }) {
     );
   };
 
-  const renderItem = (item) => (
-    <div
-      key={item.id}
-      className={`profile-activity-line ${item.read ? 'is-read' : 'is-unread'}`}
-    >
-      <div className="profile-activity-line-main">
-        <span className="profile-activity-dot">•</span>
-        <div className="profile-activity-line-content">
-          <FeedLine
-            item={item}
-            onLinkClick={() => {
-              if (!item.read) markRead(item.id);
-            }}
-          />
-          {renderDeadlineBadge(item)}
+  const renderRegistrationStatus = (item) => {
+    if (item.registered && item.awaiting_group_assignment) {
+      return <span className="muted">Đã báo danh — chờ mentor phân nhóm</span>;
+    }
+    if (item.registered && item.participation_choice_label) {
+      return <span className="muted">Đã báo danh ({item.participation_choice_label})</span>;
+    }
+    if (item.registered) {
+      return <span className="muted">Đã báo danh</span>;
+    }
+    return null;
+  };
+
+  const handleViewActivity = (item) => {
+    if (!isActivityViewed(item)) {
+      markViewed(item.id);
+    }
+  };
+
+  const renderItem = (item) => {
+    const viewed = isActivityViewed(item);
+    return (
+      <div
+        key={item.id}
+        className={`profile-activity-line ${viewed ? 'is-read' : 'is-unread'}`}
+      >
+        <div
+          className="profile-activity-line-main"
+          role="button"
+          tabIndex={0}
+          onClick={() => handleViewActivity(item)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              handleViewActivity(item);
+            }
+          }}
+        >
+          <span className="profile-activity-dot">•</span>
+          <div className="profile-activity-line-content">
+            <FeedLine
+              item={item}
+              onLinkClick={(event) => {
+                event.stopPropagation();
+                handleViewActivity(item);
+              }}
+            />
+            {renderDeadlineBadge(item)}
+            {renderRegistrationStatus(item)}
+          </div>
+        </div>
+        <div className="profile-activity-line-actions">
+          {item.group_assignment_pending && (
+            <>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => respondGroup(item.id, 'confirmed')}
+              >
+                Xác nhận nhóm
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => respondGroup(item.id, 'rejected')}
+              >
+                Từ chối nhóm
+              </button>
+            </>
+          )}
+          {!item.registered && item.needs_participation_choice && (
+            <div className="profile-activity-register-choice">
+              {MENTEE_PARTICIPATION_CHOICES.map((choice) => (
+                <label key={choice.value} className="checkbox-label">
+                  <input
+                    type="radio"
+                    name={`participation-${item.id}`}
+                    checked={registerChoice[item.id] === choice.value}
+                    onChange={() =>
+                      setRegisterChoice((prev) => ({ ...prev, [item.id]: choice.value }))
+                    }
+                  />
+                  {choice.label}
+                </label>
+              ))}
+            </div>
+          )}
+          {!item.registered && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => registerActivity(item)}
+            >
+              Báo danh
+            </button>
+          )}
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => hideActivity(item.id)}>
+            Ẩn
+          </button>
         </div>
       </div>
-      <div className="profile-activity-line-actions">
-        {item.group_assignment_pending && (
-          <>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={() => respondGroup(item.id, 'confirmed')}
-            >
-              Xác nhận nhóm
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={() => respondGroup(item.id, 'rejected')}
-            >
-              Từ chối nhóm
-            </button>
-          </>
-        )}
-        {!item.registered && (
-          <button type="button" className="btn btn-outline btn-sm" onClick={() => registerActivity(item.id)}>
-            Báo danh
-          </button>
-        )}
-        <button type="button" className="btn btn-outline btn-sm" onClick={() => hideActivity(item.id)}>
-          Ẩn
-        </button>
-      </div>
-    </div>
-  );
+    );
+  };
+
+  const otherDayCount = otherDays.length;
+  const otherItemCount = otherDays.reduce((sum, day) => sum + (day.items || []).length, 0);
 
   return (
     <>
@@ -183,28 +300,35 @@ export default function ProfileActivitiesSection({ user }) {
         {loading ? (
           <p className="profile-note">Đang tải hoạt động...</p>
         ) : !expanded ? (
-          <p className="muted">Có {totalItems} hoạt động.</p>
+          <p className="muted">
+            Có {(currentDay?.items?.length || 0) + otherItemCount} hoạt động
+            {unviewedCount > 0 ? ` (${unviewedCount} mới)` : ''}.
+          </p>
         ) : (
           <div className="profile-activities-days">
-            {days.map((day) => (
-              <div key={day.date_key} className="profile-activities-day">
-                <h4>Ngày {day.date_label}</h4>
-                <div className="profile-activities-list">{(day.items || []).map(renderItem)}</div>
+            {unviewedCount > 0 && (
+              <div className="profile-activities-new-banner" role="status">
+                Có {unviewedCount} hoạt động mới
               </div>
-            ))}
-            {hiddenDays.length > 0 && (
-              <div className="profile-activities-old">
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowOld((v) => !v)}>
-                  {showOld ? 'Ẩn hoạt động cũ' : `Xem ${hiddenDays.length} ngày cũ hơn`}
+            )}
+            <DayBlock day={currentDay} renderItem={renderItem} />
+            {otherDayCount > 0 && (
+              <div className="profile-activities-other">
+                <button
+                  type="button"
+                  className="profile-activities-other-toggle btn btn-outline btn-sm"
+                  onClick={() => setShowOther((value) => !value)}
+                  aria-expanded={showOther}
+                >
+                  {showOther ? 'Thu gọn Khác' : `Khác (${otherDayCount} ngày, ${otherItemCount} hoạt động)`}
                 </button>
-                {showOld &&
-                  hiddenDays.map((day) => (
-                    <div key={day.date_key} className="profile-activities-day">
-                      <h4>Ngày {day.date_label}</h4>
-                      <div className="profile-activities-list">{(day.items || []).map(renderItem)}</div>
-                    </div>
-                  ))}
+                {showOther && otherDays.map((day) => (
+                  <DayBlock key={day.date_key} day={day} renderItem={renderItem} />
+                ))}
               </div>
+            )}
+            {!currentDay?.items?.length && !otherItemCount && (
+              <p className="muted">Chưa có hoạt động nào.</p>
             )}
           </div>
         )}

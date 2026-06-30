@@ -33,6 +33,83 @@ PROFILE_ACTIVITY_APPROVAL_STATUSES = (
 )
 DEFAULT_PROFILE_ACTIVITY_IMPORTANCE = 3
 
+PARTICIPATION_MODES = ("individual", "group", "both", "unknown")
+DEFAULT_PARTICIPATION_MODE = "unknown"
+PARTICIPATION_MODE_LABELS = {
+    "individual": "Cá nhân",
+    "group": "Nhóm",
+    "both": "Cá nhân hay nhóm đều được",
+    "unknown": "Không rõ",
+}
+MENTEE_PARTICIPATION_CHOICES = ("individual", "group")
+
+_CONTENT_STOPWORDS = frozenset(
+    {
+        "về",
+        "ve",
+        "cho",
+        "của",
+        "cua",
+        "và",
+        "va",
+        "các",
+        "cac",
+        "the",
+        "một",
+        "mot",
+        "những",
+        "nhung",
+        "trong",
+        "với",
+        "voi",
+        "từ",
+        "tu",
+        "đến",
+        "den",
+        "là",
+        "la",
+        "của",
+        "cua",
+        "một",
+        "mot",
+        "this",
+        "that",
+        "with",
+        "from",
+        "for",
+        "and",
+        "or",
+        "các",
+        "cac",
+        "như",
+        "nhu",
+        "khi",
+        "được",
+        "duoc",
+        "có",
+        "co",
+        "không",
+        "khong",
+        "trên",
+        "tren",
+        "dưới",
+        "duoi",
+        "tại",
+        "tai",
+        "bằng",
+        "bang",
+        "theo",
+        "này",
+        "nay",
+        "đó",
+        "do",
+    }
+)
+
+
+class ProfileActivityRegistrationError(ValueError):
+    pass
+
 PROFILE_ACTIVITY_MAJOR_OPTIONS = (
     "Kinh tế & Logistics",
     "Truyền thông",
@@ -354,6 +431,61 @@ def compose_activity_name(data: dict) -> str:
     return line.strip() or "Hoạt động hồ sơ"
 
 
+def _normalize_participation_mode(raw) -> str:
+    value = str(raw or "").strip().lower()
+    if value in PARTICIPATION_MODES:
+        return value
+    return DEFAULT_PARTICIPATION_MODE
+
+
+def participation_mode_label(mode: str) -> str:
+    return PARTICIPATION_MODE_LABELS.get(_normalize_participation_mode(mode), PARTICIPATION_MODE_LABELS["unknown"])
+
+
+def _extract_content_keywords(content: str, *, max_words: int = 2) -> str:
+    text = _strip_leading_ve(content)
+    if not text:
+        return ""
+    tokens = re.findall(r"[\wÀ-ỹ]+", text, flags=re.UNICODE)
+    picked: list[str] = []
+    for token in tokens:
+        lowered = token.lower()
+        if lowered in _CONTENT_STOPWORDS or len(lowered) < 2:
+            continue
+        if token not in picked:
+            picked.append(token)
+        if len(picked) >= max_words:
+            break
+    return " ".join(picked)
+
+
+def suggest_group_name(activity: dict) -> str:
+    activity_type = (activity.get("activity_type") or "").strip() or "Khác"
+    organizer = (activity.get("organizer") or "").strip()
+    suffix = organizer or _extract_content_keywords(activity.get("content") or "")
+    group_count = len(activity.get("groups") or [])
+    n = group_count + 1
+    if suffix:
+        return f"{activity_type} {suffix} nhóm {n}"
+    return f"{activity_type} nhóm {n}"
+
+
+def _find_mentee_group(activity: dict, mentee_id: str) -> dict | None:
+    for group in activity.get("groups", []):
+        mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
+        if mentee_id in mentee_ids:
+            return group
+    return None
+
+
+def _mentee_awaiting_group_assignment(activity: dict, mentee_id: str, state: dict) -> bool:
+    if not state.get("registered_at"):
+        return False
+    if state.get("participation_choice") != "group":
+        return False
+    return _find_mentee_group(activity, mentee_id) is None
+
+
 def _normalize_importance(raw) -> int:
     try:
         value = int(raw)
@@ -450,6 +582,9 @@ def sanitize_profile_activity_input(data: dict, *, parsed_fallback: dict | None 
         "importance": _normalize_importance(
             data.get("importance", parsed_fallback.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE))
         ),
+        "participation_mode": _normalize_participation_mode(
+            data.get("participation_mode", parsed_fallback.get("participation_mode", DEFAULT_PARTICIPATION_MODE))
+        ),
     }
     cleaned["activity_name"] = compose_activity_name(cleaned)
     return cleaned
@@ -468,6 +603,7 @@ def _get_or_create_state(doc: dict, mentee_id: str) -> dict:
         "group_response_status": None,
         "group_response_note": "",
         "group_response_at": None,
+        "participation_choice": None,
     }
     states.append(state)
     return state
@@ -578,6 +714,9 @@ def serialize_admin_registration(activity: dict, state: dict, mentee: dict) -> d
         "pending_l1_group": _mentee_in_pending_group(activity, mentee_id),
         "pending_l1_reject": pending_reject.get("approval_status") == PROFILE_ACTIVITY_APPROVAL_PENDING,
         "mentor_reject_note": pending_reject.get("note", ""),
+        "participation_choice": state.get("participation_choice") or "",
+        "participation_choice_label": PARTICIPATION_MODE_LABELS.get(state.get("participation_choice") or "", ""),
+        "awaiting_group_assignment": _mentee_awaiting_group_assignment(activity, mentee_id, state),
     }
 
 
@@ -639,6 +778,7 @@ def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidd
         "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else "",
         "updated_at": doc.get("updated_at").isoformat() if doc.get("updated_at") else "",
         "read": bool(state.get("read_at")),
+        "viewed": bool(state.get("read_at")),
         "hidden": bool(state.get("hidden")),
         "registered": bool(state.get("registered_at")),
         "group_response_status": group_response_status,
@@ -648,6 +788,13 @@ def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidd
         "importance": _normalize_importance(doc.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE)),
         "registration_count": registration_count,
         "deadline_badge": get_deadline_badge(doc.get("deadline", "")),
+        "participation_mode": _normalize_participation_mode(doc.get("participation_mode")),
+        "participation_mode_label": participation_mode_label(doc.get("participation_mode")),
+        "participation_choice": state.get("participation_choice") or "",
+        "participation_choice_label": PARTICIPATION_MODE_LABELS.get(state.get("participation_choice") or "", ""),
+        "awaiting_group_assignment": _mentee_awaiting_group_assignment(doc, mentee_id, state),
+        "needs_participation_choice": _normalize_participation_mode(doc.get("participation_mode"))
+        in {"both", "unknown"},
     }
     payload["feed_line"] = format_activity_feed_line(payload, mentee)
     return payload
@@ -682,6 +829,8 @@ def serialize_admin_profile_activity(doc: dict) -> dict:
         "rejected_by_admin_id": doc.get("rejected_by_admin_id", ""),
         "deadline_badge": get_deadline_badge(doc.get("deadline", "")),
         "pending_l1_actions": list_pending_l1_group_actions(doc),
+        "participation_mode": _normalize_participation_mode(doc.get("participation_mode")),
+        "participation_mode_label": participation_mode_label(doc.get("participation_mode")),
     }
 
 
@@ -765,6 +914,37 @@ def list_profile_activities_for_mentee(mentee: dict) -> list[dict]:
     return items
 
 
+def group_mentee_feed_by_day(items: list[dict], *, max_other_days: int = 10) -> dict:
+    groups: dict[str, dict] = {}
+    now = datetime.now(VN_TZ)
+    for item in items:
+        created = item.get("created_at", "")
+        try:
+            dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.astimezone(VN_TZ)
+        except (TypeError, ValueError):
+            dt = now
+        date_key = dt.strftime("%Y-%m-%d")
+        date_label = dt.strftime("%d/%m/%Y")
+        if date_key not in groups:
+            groups[date_key] = {"date_key": date_key, "date_label": date_label, "items": []}
+        groups[date_key]["items"].append(item)
+
+    ordered = [groups[key] for key in sorted(groups.keys(), reverse=True)]
+    current_day = ordered[0] if ordered else None
+    other_days = ordered[1 : 1 + max_other_days]
+    unviewed_count = sum(1 for item in items if not item.get("viewed"))
+
+    return {
+        "current_day": current_day,
+        "other_days": other_days,
+        "unviewed_count": unviewed_count,
+        "max_other_days": max_other_days,
+    }
+
+
 def mark_activity_read(activity: dict, mentee: dict) -> dict:
     mentee_id = str(mentee["_id"])
     state = _get_or_create_state(activity, mentee_id)
@@ -787,15 +967,70 @@ def set_activity_hidden(activity: dict, mentee: dict, hidden: bool) -> dict:
     return activity
 
 
-def register_for_activity(activity: dict, mentee: dict) -> dict:
+def _create_auto_solo_group(activity: dict, mentee_id: str) -> dict:
+    now = datetime.now(timezone.utc)
+    group = {
+        "group_id": str(uuid.uuid4()),
+        "group_name": suggest_group_name(activity),
+        "mentee_ids": [mentee_id],
+        "notification_sent_at": None,
+        "finalized_at": None,
+        "approval_status": PROFILE_ACTIVITY_APPROVAL_APPROVED,
+        "submitted_by_admin_id": "system",
+        "submitted_at": now,
+        "approved_at": now,
+        "approved_by_admin_id": "system",
+        "is_auto_solo": True,
+    }
+    groups = activity.get("groups") or []
+    groups.append(group)
+    activity["groups"] = groups
+    return group
+
+
+def _resolve_registration_choice(activity: dict, participation_choice: str | None) -> str:
+    mode = _normalize_participation_mode(activity.get("participation_mode"))
+    if mode == "individual":
+        return "individual"
+    if mode == "group":
+        return "group"
+    choice = str(participation_choice or "").strip().lower()
+    if choice not in MENTEE_PARTICIPATION_CHOICES:
+        raise ProfileActivityRegistrationError(
+            "Vui lòng chọn hình thức tham gia: Cá nhân hoặc Nhóm."
+        )
+    return choice
+
+
+def register_for_activity(
+    activity: dict, mentee: dict, *, participation_choice: str | None = None
+) -> dict:
     mentee_id = str(mentee["_id"])
     state = _get_or_create_state(activity, mentee_id)
-    if not state.get("registered_at"):
-        state["registered_at"] = datetime.now(timezone.utc)
-        profile_activities.update_one(
-            {"_id": activity["_id"]},
-            {"$set": {"mentee_states": activity.get("mentee_states", []), "updated_at": datetime.now(timezone.utc)}},
-        )
+    if state.get("registered_at"):
+        return activity
+
+    effective_choice = _resolve_registration_choice(activity, participation_choice)
+    now = datetime.now(timezone.utc)
+    state["registered_at"] = now
+    state["participation_choice"] = effective_choice
+
+    if effective_choice == "individual":
+        _create_auto_solo_group(activity, mentee_id)
+        state["group_response_status"] = "confirmed"
+        state["group_response_note"] = ""
+        state["group_response_at"] = now
+
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "mentee_states": activity.get("mentee_states", []),
+                "groups": activity.get("groups", []),
+                "updated_at": now,
+            }
+        },
+    )
     return activity
 
 
@@ -813,6 +1048,85 @@ def _group_payload(group: dict, *, approval_status: str | None = None) -> dict:
         "approved_at": group.get("approved_at"),
         "approved_by_admin_id": group.get("approved_by_admin_id", ""),
     }
+
+
+def add_mentee_to_group(activity: dict, group_id: str, mentee_id: str, admin: dict) -> tuple[dict, bool]:
+    group = _find_group(activity, group_id)
+    if not group:
+        raise ValueError("Nhóm không tồn tại")
+    mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
+    if mentee_id not in mentee_ids:
+        mentee_ids.append(mentee_id)
+    return upsert_activity_group(
+        activity,
+        {"group_id": group_id, "group_name": group.get("group_name", ""), "mentee_ids": mentee_ids},
+        admin,
+    )
+
+
+def remove_mentee_from_group(
+    activity: dict, group_id: str, mentee_id: str, admin: dict
+) -> tuple[dict, bool]:
+    group = _find_group(activity, group_id)
+    if not group:
+        raise ValueError("Nhóm không tồn tại")
+    mentee_ids = [str(item) for item in (group.get("mentee_ids") or []) if str(item) != mentee_id]
+    return upsert_activity_group(
+        activity,
+        {"group_id": group_id, "group_name": group.get("group_name", ""), "mentee_ids": mentee_ids},
+        admin,
+    )
+
+
+def move_mentee_to_group(
+    activity: dict, mentee_id: str, target_group_id: str, admin: dict
+) -> tuple[dict, bool]:
+    target_group = _find_group(activity, target_group_id)
+    if not target_group:
+        raise ValueError("Nhóm đích không tồn tại")
+    source_group = _find_mentee_group(activity, mentee_id)
+    requires_l1 = admin_requires_l1_approval(admin)
+    now = datetime.now(timezone.utc)
+
+    if not requires_l1:
+        if source_group and source_group.get("group_id") != target_group_id:
+            source_ids = [
+                str(item)
+                for item in (source_group.get("mentee_ids") or [])
+                if str(item) != mentee_id
+            ]
+            source_group["mentee_ids"] = source_ids
+        target_ids = [str(item) for item in (target_group.get("mentee_ids") or [])]
+        if mentee_id not in target_ids:
+            target_ids.append(mentee_id)
+        target_group["mentee_ids"] = target_ids
+        profile_activities.update_one(
+            {"_id": activity["_id"]},
+            {"$set": {"groups": activity.get("groups", []), "updated_at": now}},
+        )
+        return target_group, False
+
+    target_ids = [str(item) for item in (target_group.get("mentee_ids") or [])]
+    if mentee_id not in target_ids:
+        target_ids.append(mentee_id)
+    pending_group = _group_payload(
+        {**target_group, "mentee_ids": target_ids},
+        approval_status=PROFILE_ACTIVITY_APPROVAL_PENDING,
+    )
+    pending_group["submitted_by_admin_id"] = str(admin["_id"])
+    pending_group["submitted_at"] = now
+    pending_group["notification_sent_at"] = None
+    pending_group["approved_at"] = None
+    pending_group["approved_by_admin_id"] = ""
+    pending_group["move_from_group_id"] = (source_group or {}).get("group_id", "")
+
+    groups = activity.get("groups") or []
+    for idx, group in enumerate(groups):
+        if group.get("group_id") == target_group_id:
+            groups[idx] = pending_group
+            break
+    activity["groups"] = groups
+    return pending_group, True
 
 
 def upsert_activity_group(activity: dict, payload: dict, admin: dict) -> tuple[dict, bool]:
@@ -860,6 +1174,16 @@ def approve_pending_group(activity: dict, group_id: str, admin: dict) -> dict:
     if not group:
         return activity
     now = datetime.now(timezone.utc)
+    move_from_group_id = (group.pop("move_from_group_id", None) or "").strip()
+    if move_from_group_id and move_from_group_id != group_id:
+        source_group = _find_group(activity, move_from_group_id)
+        if source_group:
+            new_member_ids = [str(item) for item in (group.get("mentee_ids") or [])]
+            source_group["mentee_ids"] = [
+                str(item)
+                for item in (source_group.get("mentee_ids") or [])
+                if str(item) not in new_member_ids
+            ]
     group["approval_status"] = PROFILE_ACTIVITY_APPROVAL_APPROVED
     group["approved_at"] = now
     group["approved_by_admin_id"] = str(admin["_id"])

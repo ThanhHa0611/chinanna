@@ -10,21 +10,26 @@ from extensions import app
 from services.admins import admin_display_name, admin_is_approved, is_super_admin
 from services.apply_progress import admin_is_level1_mentor
 from services.profile_activities import (
+    ProfileActivityRegistrationError,
+    add_mentee_to_group,
     approve_pending_group,
     approve_pending_mentor_reject,
     approve_profile_activity,
     create_profile_activity,
     finalize_group_and_sync_hdnk,
     group_is_approved,
+    move_mentee_to_group,
     notify_group_assignment,
     parse_profile_activity_from_description,
     reject_pending_group,
     reject_pending_mentor_reject,
     reject_profile_activity,
+    remove_mentee_from_group,
     sanitize_profile_activity_input,
     serialize_admin_profile_activity,
     serialize_admin_registration,
     submit_mentor_reject_registration,
+    suggest_group_name,
     upsert_activity_group,
 )
 
@@ -165,6 +170,21 @@ def admin_activity_registrations(activity_id: str):
     return jsonify({"items": registrations})
 
 
+@app.get("/api/admin/profile-activities/<activity_id>/groups/suggest-name")
+@with_db
+def admin_suggest_activity_group_name(activity_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    return jsonify({"suggested_name": suggest_group_name(activity)})
+
+
 @app.patch("/api/admin/profile-activities/<activity_id>/groups")
 @with_db
 def admin_upsert_activity_group(activity_id: str):
@@ -186,6 +206,96 @@ def admin_upsert_activity_group(activity_id: str):
     response = {"group": group, "groups": activity.get("groups", [])}
     if requires_l1:
         response["message"] = "Đã gửi phân nhóm, chờ mentor cấp 1 duyệt trước khi mentee thấy."
+    return jsonify(response)
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/groups/<group_id>/add-mentee")
+@with_db
+def admin_add_mentee_to_group(activity_id: str, group_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    mentee_id = str(data.get("mentee_id") or "").strip()
+    if not mentee_id:
+        return jsonify({"detail": "Thiếu mentee_id"}), 400
+    try:
+        group, requires_l1 = add_mentee_to_group(activity, group_id, mentee_id, admin)
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 404
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"groups": activity.get("groups", []), "updated_at": datetime.now(timezone.utc)}},
+    )
+    response = {"group": group, "groups": activity.get("groups", [])}
+    if requires_l1:
+        response["message"] = "Đã gửi thêm mentee vào nhóm, chờ mentor cấp 1 duyệt."
+    return jsonify(response)
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/groups/<group_id>/remove-mentee")
+@with_db
+def admin_remove_mentee_from_group(activity_id: str, group_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    mentee_id = str(data.get("mentee_id") or "").strip()
+    if not mentee_id:
+        return jsonify({"detail": "Thiếu mentee_id"}), 400
+    try:
+        group, requires_l1 = remove_mentee_from_group(activity, group_id, mentee_id, admin)
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 404
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"groups": activity.get("groups", []), "updated_at": datetime.now(timezone.utc)}},
+    )
+    response = {"group": group, "groups": activity.get("groups", [])}
+    if requires_l1:
+        response["message"] = "Đã gửi xóa mentee khỏi nhóm, chờ mentor cấp 1 duyệt."
+    return jsonify(response)
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/move-group")
+@with_db
+def admin_move_mentee_group(activity_id: str, mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    target_group_id = str(data.get("target_group_id") or "").strip()
+    if not target_group_id:
+        return jsonify({"detail": "Thiếu target_group_id"}), 400
+    try:
+        group, requires_l1 = move_mentee_to_group(activity, mentee_id, target_group_id, admin)
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 404
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"groups": activity.get("groups", []), "updated_at": datetime.now(timezone.utc)}},
+    )
+    response = {"group": group, "groups": activity.get("groups", [])}
+    if requires_l1:
+        response["message"] = "Đã gửi chuyển nhóm, chờ mentor cấp 1 duyệt."
     return jsonify(response)
 
 

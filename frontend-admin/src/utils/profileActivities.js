@@ -100,6 +100,22 @@ export const APPROVAL_STATUS_LABELS = {
   rejected: 'Đã từ chối',
 };
 
+export const PARTICIPATION_MODE_OPTIONS = [
+  { value: 'individual', label: 'Cá nhân' },
+  { value: 'group', label: 'Nhóm' },
+  { value: 'both', label: 'Cá nhân hay nhóm đều được' },
+  { value: 'unknown', label: 'Không rõ' },
+];
+
+export const PARTICIPATION_MODE_LABELS = Object.fromEntries(
+  PARTICIPATION_MODE_OPTIONS.map((item) => [item.value, item.label]),
+);
+
+export const MENTEE_PARTICIPATION_CHOICES = [
+  { value: 'individual', label: 'Cá nhân' },
+  { value: 'group', label: 'Nhóm' },
+];
+
 export const REGISTRATION_RESPONSE_LABELS = {
   pending_l1_approval: 'Chờ L1 duyệt',
   confirmed: 'Đã duyệt',
