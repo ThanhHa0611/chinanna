@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
-import ActivityKeeptrackBar from './ActivityKeeptrackBar';
 import {
   MENTEE_PARTICIPATION_CHOICES,
   feedLineLink,
@@ -75,7 +74,6 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [registerChoice, setRegisterChoice] = useState({});
-  const [keeptrackSaving, setKeeptrackSaving] = useState({});
 
   const refresh = async () => {
     const data = await api.getProfileActivities();
@@ -180,27 +178,6 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
     }
   };
 
-  const saveKeeptrack = async (itemId, body) => {
-    setKeeptrackSaving((prev) => ({ ...prev, [itemId]: true }));
-    try {
-      const result = await api.updateProfileActivityKeeptrack(itemId, body);
-      if (result?.activity) {
-        const patchItem = (item) => (item.id === itemId ? { ...item, ...result.activity } : item);
-        setCurrentDay((day) =>
-          day ? { ...day, items: (day.items || []).map(patchItem) } : day,
-        );
-        setOtherDays((days) =>
-          days.map((day) => ({ ...day, items: (day.items || []).map(patchItem) })),
-        );
-      }
-      setError('');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setKeeptrackSaving((prev) => ({ ...prev, [itemId]: false }));
-    }
-  };
-
   const renderDeadlineBadge = (item) => {
     const badge = getDeadlineBadge(item.deadline, item.deadline_badge);
     if (!badge) return null;
@@ -292,13 +269,6 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
             {renderDeadlineBadge(item)}
             {renderRegistrationStatus(item)}
             {renderGroupMembers(item)}
-            {item.keeptrack?.active && (
-              <ActivityKeeptrackBar
-                keeptrack={item.keeptrack}
-                saving={Boolean(keeptrackSaving[item.id])}
-                onSave={(body) => saveKeeptrack(item.id, body)}
-              />
-            )}
           </div>
         </div>
         <div className="profile-activity-line-actions">

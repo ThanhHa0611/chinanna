@@ -207,9 +207,20 @@ def admin_upsert_activity_group(activity_id: str):
         {"_id": activity["_id"]},
         {"$set": {"groups": activity.get("groups", []), "updated_at": datetime.now(timezone.utc)}},
     )
+    saved_group = None
+    if not requires_l1:
+        refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+        saved_group = next(
+            (row for row in refreshed.get("groups", []) if row.get("group_id") == group.get("group_id")),
+            None,
+        )
+        if saved_group and group_is_approved(saved_group) and not saved_group.get("notification_sent_at"):
+            notify_group_assignment(refreshed, saved_group)
     response = {"group": group, "groups": activity.get("groups", [])}
     if requires_l1:
         response["message"] = "Đã gửi phân nhóm, chờ mentor cấp 1 duyệt trước khi mentee thấy."
+    elif saved_group and group_is_approved(saved_group):
+        response["message"] = "Đã tạo nhóm — mentee sẽ nhận thông báo."
     return jsonify(response)
 
 
@@ -353,27 +364,6 @@ def admin_reject_activity_group(activity_id: str, group_id: str):
             "activity": serialize_admin_profile_activity(updated, admin=admin),
         }
     )
-
-
-@app.post("/api/admin/profile-activities/<activity_id>/groups/<group_id>/notify")
-@with_db
-def admin_notify_activity_group(activity_id: str, group_id: str):
-    admin, error_response = get_authenticated_admin()
-    if error_response:
-        return error_response
-    if not admin_is_approved(admin):
-        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
-
-    activity, error = _get_activity_or_404(activity_id)
-    if error:
-        return error
-    group = next((row for row in activity.get("groups", []) if row.get("group_id") == group_id), None)
-    if not group:
-        return jsonify({"detail": "Nhóm không tồn tại"}), 404
-    if not group_is_approved(group):
-        return jsonify({"detail": "Nhóm đang chờ mentor cấp 1 duyệt."}), 400
-    notify_group_assignment(activity, group)
-    return jsonify({"message": "Đã gửi thông báo nhóm"})
 
 
 @app.post("/api/admin/profile-activities/<activity_id>/groups/<group_id>/finalize")

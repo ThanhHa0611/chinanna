@@ -366,11 +366,6 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  notifyProfileActivityGroup: (activityId, groupId) =>
-    request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/notify`, {
-      method: 'POST',
-    }),
-
   finalizeProfileActivityGroup: (activityId, groupId) =>
     request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/finalize`, {
       method: 'POST',

@@ -319,7 +319,7 @@ export default function ProfileActivities() {
         result?.message ||
           (isL2
             ? 'Đã gửi phân nhóm, chờ mentor cấp 1 duyệt trước khi mentee thấy.'
-            : 'Đã tạo nhóm.'),
+            : 'Đã tạo nhóm — mentee sẽ nhận thông báo.'),
       );
     } catch (err) {
       setError(err.message);
