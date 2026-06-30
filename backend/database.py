@@ -3,7 +3,7 @@ import certifi
 from functools import wraps
 from flask import jsonify
 from pymongo import MongoClient
-from pymongo.errors import PyMongoError
+from pymongo.errors import OperationFailure, PyMongoError, ServerSelectionTimeoutError
 
 from config import DATABASE_NAME, MONGODB_URL
 
@@ -37,16 +37,28 @@ def ensure_db():
         password_reset_otps.create_index("expires_at", expireAfterSeconds=0)
         _db_initialized = True
 
+def _mongo_error_detail(exc: PyMongoError) -> str:
+    msg = str(exc).lower()
+    if isinstance(exc, OperationFailure) or "authentication failed" in msg or "bad auth" in msg:
+        return (
+            "Không thể xác thực MongoDB (sai username/password). "
+            "Kiểm tra MONGODB_URL trong backend/.env; mã hóa ký tự đặc biệt trong password (@ → %40, : → %3A, . → %2E)."
+        )
+    if isinstance(exc, ServerSelectionTimeoutError) or "timed out" in msg:
+        return "Không thể kết nối MongoDB (timeout). Kiểm tra Network Access trên MongoDB Atlas."
+    if "network" in msg or "connection refused" in msg or "getaddrinfo" in msg:
+        return "Không thể kết nối MongoDB (lỗi mạng). Kiểm tra internet và Network Access trên MongoDB Atlas."
+    return f"Không thể kết nối MongoDB ({type(exc).__name__})."
+
+
 def with_db(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
             ensure_db()
             return func(*args, **kwargs)
-        except PyMongoError:
-            return jsonify({
-                "detail": "Không thể kết nối MongoDB. Kiểm tra Network Access trên MongoDB Atlas.",
-            }), 503
+        except PyMongoError as exc:
+            return jsonify({"detail": _mongo_error_detail(exc)}), 503
 
     return wrapper
 
