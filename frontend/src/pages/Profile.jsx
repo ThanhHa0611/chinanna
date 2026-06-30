@@ -303,6 +303,7 @@ function MenteeProfile() {
   const [mentor, setMentor] = useState('');
   const [applyCloneEmail, setApplyCloneEmail] = useState('');
   const [applyClonePassword, setApplyClonePassword] = useState('');
+  const [applyCloneForwardInstalled, setApplyCloneForwardInstalled] = useState(false);
   const [scholarshipSystem, setScholarshipSystem] = useState('');
   const [applyDegreeLevel, setApplyDegreeLevel] = useState('');
   const [term3LanguageSemester, setTerm3LanguageSemester] = useState('');
@@ -371,6 +372,7 @@ function MenteeProfile() {
     setMentor(user?.mentor || '');
     setApplyCloneEmail(user?.apply_clone_email || '');
     setApplyClonePassword(user?.apply_clone_password || '');
+    setApplyCloneForwardInstalled(Boolean(user?.apply_clone_forward_installed));
     setScholarshipSystem(user?.scholarship_system || '');
     setApplyDegreeLevel(user?.apply_degree_level || '');
     setTerm3LanguageSemester(user?.term3_2027_language_semester || '');
@@ -1317,6 +1319,7 @@ function MenteeProfile() {
         ...(mentorLocked ? {} : { mentor }),
         apply_clone_email: applyCloneEmail,
         apply_clone_password: applyClonePassword,
+        apply_clone_forward_installed: applyCloneForwardInstalled,
         scholarship_system: scholarshipSystem,
         apply_degree_level: applyDegreeLevel,
         ...(user?.mentor === 'Thanh Hà'
@@ -1506,8 +1509,11 @@ function MenteeProfile() {
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Nhập họ và tên"
+                  placeholder="Họ và tên trong hộ chiếu (có dấu)"
                 />
+                <span className="profile-field-hint">
+                  Bắt buộc: họ và tên trong hộ chiếu, có dấu.
+                </span>
               </label>
               <label>
                 Số Zalo
@@ -1633,6 +1639,14 @@ function MenteeProfile() {
                       placeholder="Mật khẩu email clone"
                       autoComplete="off"
                     />
+                  </label>
+                  <label className="profile-doc-request-check">
+                    <input
+                      type="checkbox"
+                      checked={applyCloneForwardInstalled}
+                      onChange={(e) => setApplyCloneForwardInstalled(e.target.checked)}
+                    />
+                    Đã cài forward chưa
                   </label>
                 </>
               )}

@@ -47,6 +47,7 @@ def user_response(user: dict) -> dict:
         "mentor": user.get("mentor", ""),
         "apply_clone_email": user.get("apply_clone_email", ""),
         "apply_clone_password": user.get("apply_clone_password", ""),
+        "apply_clone_forward_installed": bool(user.get("apply_clone_forward_installed")),
         "scholarship_system": user.get("scholarship_system", ""),
         "parent_email": user.get("parent_email", ""),
         "zalo_phone": user.get("zalo_phone", ""),

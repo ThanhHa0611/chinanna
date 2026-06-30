@@ -1,5 +1,9 @@
 
-from config import PROFILE_INFO_REMINDER_MESSAGE, PROFILE_INFO_FIELD_LABELS
+from config import (
+    PROFILE_INFO_BOOLEAN_FIELDS,
+    PROFILE_INFO_FIELD_LABELS,
+    PROFILE_INFO_REMINDER_MESSAGE,
+)
 from database import users
 
 
@@ -7,10 +11,16 @@ def _field_value(user: dict, key: str) -> str:
     return str(user.get(key) or "").strip()
 
 
+def _is_field_complete(user: dict, key: str) -> bool:
+    if key in PROFILE_INFO_BOOLEAN_FIELDS:
+        return bool(user.get(key))
+    return bool(_field_value(user, key))
+
+
 def get_missing_profile_field_keys(user: dict) -> list[str]:
     missing = []
     for key in PROFILE_INFO_FIELD_LABELS:
-        if not _field_value(user, key):
+        if not _is_field_complete(user, key):
             missing.append(key)
     return missing
 

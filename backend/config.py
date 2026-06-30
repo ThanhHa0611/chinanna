@@ -44,7 +44,9 @@ PROFILE_INFO_FIELD_LABELS = {
     "parent_email": "Email phụ huynh",
     "apply_clone_email": "Email clone",
     "apply_clone_password": "Pass clone",
+    "apply_clone_forward_installed": "Đã cài forward",
 }
+PROFILE_INFO_BOOLEAN_FIELDS = {"apply_clone_forward_installed"}
 ADMIN_STATUS_PENDING = "pending"
 ADMIN_STATUS_APPROVED = "approved"
 ADMIN_STATUS_REJECTED = "rejected"

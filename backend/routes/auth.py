@@ -257,6 +257,9 @@ def update_profile():
     if "apply_clone_password" in data:
         updates["apply_clone_password"] = data["apply_clone_password"].strip()
 
+    if "apply_clone_forward_installed" in data:
+        updates["apply_clone_forward_installed"] = bool(data["apply_clone_forward_installed"])
+
     if "scholarship_system" in data:
         scholarship_system = data["scholarship_system"].strip().lower()
         if scholarship_system and scholarship_system not in SCHOLARSHIP_SYSTEMS:
@@ -322,6 +325,7 @@ def update_profile():
             "date_of_birth": "Ngày sinh",
             "mentor": "Mentor",
             "apply_clone_email": "Email clone apply",
+            "apply_clone_forward_installed": "Đã cài forward",
             "scholarship_system": "App học bổng",
             "parent_email": "Email phụ huynh",
             "zalo_phone": "Số Zalo",

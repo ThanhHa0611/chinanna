@@ -262,6 +262,7 @@ function computeSectionSignatures(mentee) {
       mentee.parent_email,
       mentee.apply_clone_email,
       mentee.apply_clone_password,
+      mentee.apply_clone_forward_installed,
       mentee.mentor?.email,
       languageScoresSignature(getLanguageDocument(mentee)),
     ].join('|'),
@@ -2192,6 +2193,12 @@ export default function Mentees() {
                         <div>
                           <span className="info-label">Pass clone</span>
                           <strong>{selectedMentee.apply_clone_password || '—'}</strong>
+                        </div>
+                        <div>
+                          <span className="info-label">Đã cài forward</span>
+                          <strong>
+                            {selectedMentee.apply_clone_forward_installed ? 'Có' : 'Chưa'}
+                          </strong>
                         </div>
                       </div>
                       <div className="mentee-classification-block">

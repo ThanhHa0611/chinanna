@@ -281,6 +281,7 @@ def serialize_admin_mentee_summary(user: dict, admin: dict | None = None) -> dic
         "parent_email": user.get("parent_email", ""),
         "apply_clone_email": user.get("apply_clone_email", ""),
         "apply_clone_password": user.get("apply_clone_password", ""),
+        "apply_clone_forward_installed": bool(user.get("apply_clone_forward_installed")),
         "created_at": user["created_at"].isoformat() if user.get("created_at") else "",
         "personal_declaration_url": get_personal_declaration_mentor_url(
             user.get("personal_declaration") or {},
