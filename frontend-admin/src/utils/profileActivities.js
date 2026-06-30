@@ -99,3 +99,25 @@ export const APPROVAL_STATUS_LABELS = {
   pending_l1_approval: 'Chờ mentor cấp 1 duyệt',
   rejected: 'Đã từ chối',
 };
+
+export const REGISTRATION_RESPONSE_LABELS = {
+  pending_l1_approval: 'Chờ L1 duyệt',
+  confirmed: 'Đã duyệt',
+  rejected: 'Từ chối',
+  pending: 'Chờ mentee xác nhận',
+  '': '—',
+};
+
+export function registrationResponseLabel(item) {
+  if (item?.response_display_label) return item.response_display_label;
+  const status = item?.response_display_status || item?.group_response_status || '';
+  return REGISTRATION_RESPONSE_LABELS[status] || status || '—';
+}
+
+export function registrationResponseBadgeClass(status) {
+  if (status === 'pending_l1_approval') return 'is-pending';
+  if (status === 'rejected') return 'is-rejected';
+  if (status === 'confirmed') return 'is-approved';
+  if (status === 'pending') return 'is-pending';
+  return '';
+}

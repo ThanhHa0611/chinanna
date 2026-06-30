@@ -9,6 +9,8 @@ import {
   feedLineText,
   formatImportanceStars,
   getDeadlineBadge,
+  registrationResponseBadgeClass,
+  registrationResponseLabel,
 } from '../utils/profileActivities';
 
 const ACTIVITY_TYPES = ['Cuộc thi', 'NCKH', 'HĐNK', 'Hội thảo', 'Chương trình hè', 'Dự án', 'Khác'];
@@ -108,6 +110,16 @@ export default function ProfileActivities() {
     () => activities.filter((item) => item.approval_status === 'pending_l1_approval'),
     [activities],
   );
+
+  const pendingGroupActions = useMemo(() => {
+    const items = [];
+    for (const activity of activities) {
+      for (const action of activity.pending_l1_actions || []) {
+        items.push({ ...action, activity_id: activity.id, activity_name: compose_activity_name(activity) });
+      }
+    }
+    return items;
+  }, [activities]);
 
   const composedName = useMemo(() => compose_activity_name(form), [
     form.activity_type,
@@ -248,7 +260,7 @@ export default function ProfileActivities() {
     setError('');
     setMessage('');
     try {
-      await api.upsertProfileActivityGroup(selectedActivity.id, {
+      const result = await api.upsertProfileActivityGroup(selectedActivity.id, {
         group_name: groupName || 'Nhóm mới',
         mentee_ids: selectedMentees,
       });
@@ -256,7 +268,102 @@ export default function ProfileActivities() {
       setGroupName('');
       await loadActivities();
       await loadRegistrations(selectedActivity.id);
-      setMessage('Đã tạo nhóm.');
+      setMessage(
+        result?.message ||
+          (isL2
+            ? 'Đã gửi phân nhóm, chờ mentor cấp 1 duyệt trước khi mentee thấy.'
+            : 'Đã tạo nhóm.'),
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleApproveGroupAction = async (activityId, groupId) => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.approveProfileActivityGroup(activityId, groupId);
+      await loadActivities();
+      if (activityId === selectedId) {
+        await loadRegistrations(activityId);
+      }
+      setMessage('Đã duyệt phân nhóm — mentee sẽ nhận thông báo.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRejectGroupAction = async (activityId, groupId) => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.rejectProfileActivityGroup(activityId, groupId);
+      await loadActivities();
+      if (activityId === selectedId) {
+        await loadRegistrations(activityId);
+      }
+      setMessage('Đã từ chối phân nhóm.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRejectRegistration = async (menteeId) => {
+    if (!selectedActivity) return;
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.rejectProfileActivityRegistration(selectedActivity.id, menteeId);
+      await loadActivities();
+      await loadRegistrations(selectedActivity.id);
+      setMessage(
+        result?.message ||
+          (isL2
+            ? 'Đã gửi từ chối, chờ mentor cấp 1 duyệt trước khi mentee thấy.'
+            : 'Đã từ chối báo danh mentee.'),
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleApproveRegistrationReject = async (activityId, menteeId) => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.approveProfileActivityRegistrationReject(activityId, menteeId);
+      await loadActivities();
+      if (activityId === selectedId) {
+        await loadRegistrations(activityId);
+      }
+      setMessage('Đã duyệt từ chối báo danh — mentee sẽ được thông báo.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDenyRegistrationReject = async (activityId, menteeId) => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.denyProfileActivityRegistrationReject(activityId, menteeId);
+      await loadActivities();
+      if (activityId === selectedId) {
+        await loadRegistrations(activityId);
+      }
+      setMessage('Đã hủy yêu cầu từ chối báo danh.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -325,6 +432,64 @@ export default function ProfileActivities() {
 
       {error && <p className="form-error">{error}</p>}
       {message && <p className="form-success">{message}</p>}
+
+      {canReview && pendingGroupActions.length > 0 && (
+        <div className="panel-card profile-activity-pending-queue">
+          <h3>Chờ duyệt phân nhóm / từ chối ({pendingGroupActions.length})</h3>
+          <ul className="profile-activity-pending-list">
+            {pendingGroupActions.map((item) => (
+              <li
+                key={
+                  item.action_type === 'assign_group'
+                    ? `group-${item.activity_id}-${item.group_id}`
+                    : `reject-${item.activity_id}-${item.mentee_id}`
+                }
+                className="profile-activity-pending-item"
+              >
+                <div className="profile-activity-pending-line">
+                  <strong>{item.activity_name}</strong>
+                  {item.action_type === 'assign_group' ? (
+                    <span className="muted">
+                      Phân nhóm &quot;{item.group_name}&quot; ({(item.mentee_ids || []).length} mentee)
+                    </span>
+                  ) : (
+                    <span className="muted">
+                      Từ chối báo danh: {item.mentee_name}
+                      {item.note ? ` — ${item.note}` : ''}
+                    </span>
+                  )}
+                </div>
+                <div className="action-cell">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() =>
+                      item.action_type === 'assign_group'
+                        ? handleApproveGroupAction(item.activity_id, item.group_id)
+                        : handleApproveRegistrationReject(item.activity_id, item.mentee_id)
+                    }
+                    disabled={saving}
+                  >
+                    Duyệt
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() =>
+                      item.action_type === 'assign_group'
+                        ? handleRejectGroupAction(item.activity_id, item.group_id)
+                        : handleDenyRegistrationReject(item.activity_id, item.mentee_id)
+                    }
+                    disabled={saving}
+                  >
+                    Từ chối
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {canReview && pendingActivities.length > 0 && (
         <div className="panel-card profile-activity-pending-queue">
@@ -538,6 +703,7 @@ export default function ProfileActivities() {
                     <th>Ngành apply</th>
                     <th>Nhóm</th>
                     <th>Phản hồi</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
@@ -554,7 +720,29 @@ export default function ProfileActivities() {
                       <td>{item.zalo_phone || '—'}</td>
                       <td>{item.apply_major || '—'}</td>
                       <td>{item.group_name || '—'}</td>
-                      <td>{item.group_response_status || 'pending'}</td>
+                      <td>
+                        <span
+                          className={`profile-activity-approval-badge ${registrationResponseBadgeClass(
+                            item.response_display_status || item.group_response_status,
+                          )}`}
+                        >
+                          {registrationResponseLabel(item)}
+                        </span>
+                      </td>
+                      <td>
+                        {!item.pending_l1_reject &&
+                          item.response_display_status !== 'rejected' &&
+                          item.response_display_status !== 'confirmed' && (
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              onClick={() => handleRejectRegistration(item.mentee_id)}
+                              disabled={saving}
+                            >
+                              Từ chối
+                            </button>
+                          )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -573,17 +761,44 @@ export default function ProfileActivities() {
             </div>
 
             <div className="profile-activity-groups">
-              {(selectedActivity.groups || []).map((group) => (
+              {(selectedActivity.groups || []).map((group) => {
+              const groupPending = group.approval_status === 'pending_l1_approval';
+              return (
                 <div key={group.group_id} className="panel-card">
                   <p>
                     <strong>{group.group_name}</strong> ({(group.mentee_ids || []).length} thành viên)
+                    {groupPending && (
+                      <span className="profile-activity-approval-badge is-pending">
+                        Chờ L1 duyệt
+                      </span>
+                    )}
                   </p>
                   <div className="action-cell">
+                    {canReview && groupPending && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleApproveGroupAction(selectedActivity.id, group.group_id)}
+                          disabled={saving}
+                        >
+                          Duyệt nhóm
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => handleRejectGroupAction(selectedActivity.id, group.group_id)}
+                          disabled={saving}
+                        >
+                          Từ chối
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
                       onClick={() => handleNotifyGroup(group.group_id)}
-                      disabled={saving}
+                      disabled={saving || groupPending}
                     >
                       Gửi thông báo nhóm
                     </button>
@@ -591,13 +806,14 @@ export default function ProfileActivities() {
                       type="button"
                       className="btn btn-primary btn-sm"
                       onClick={() => handleFinalizeGroup(group.group_id)}
-                      disabled={saving}
+                      disabled={saving || groupPending}
                     >
                       Chốt nhóm
                     </button>
                   </div>
                 </div>
-              ))}
+              );
+            })}
             </div>
           </div>
         )}

@@ -361,6 +361,34 @@ export const api = {
   rejectProfileActivity: (activityId) =>
     request(`/api/admin/profile-activities/${activityId}/reject`, { method: 'POST' }),
 
+  approveProfileActivityGroup: (activityId, groupId) =>
+    request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/approve`, {
+      method: 'POST',
+    }),
+
+  rejectProfileActivityGroup: (activityId, groupId) =>
+    request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/reject`, {
+      method: 'POST',
+    }),
+
+  rejectProfileActivityRegistration: (activityId, menteeId, body = {}) =>
+    request(`/api/admin/profile-activities/${activityId}/registrations/${menteeId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  approveProfileActivityRegistrationReject: (activityId, menteeId) =>
+    request(
+      `/api/admin/profile-activities/${activityId}/registrations/${menteeId}/reject/approve`,
+      { method: 'POST' },
+    ),
+
+  denyProfileActivityRegistrationReject: (activityId, menteeId) =>
+    request(
+      `/api/admin/profile-activities/${activityId}/registrations/${menteeId}/reject/deny`,
+      { method: 'POST' },
+    ),
+
   getMenteeRegistrations: () => request('/api/admin/mentee-registrations'),
 
   reviewMenteeRegistration: (id, body) =>

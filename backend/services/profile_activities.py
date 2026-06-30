@@ -376,13 +376,21 @@ def activity_visible_to_mentee(doc: dict) -> bool:
     return status == PROFILE_ACTIVITY_APPROVAL_APPROVED
 
 
-def resolve_initial_approval_status(admin: dict) -> str:
+def admin_requires_l1_approval(admin: dict) -> bool:
     from services.admins import is_super_admin
     from services.apply_progress import admin_is_level1_mentor
 
-    if is_super_admin(admin) or admin_is_level1_mentor(admin):
-        return PROFILE_ACTIVITY_APPROVAL_APPROVED
-    return PROFILE_ACTIVITY_APPROVAL_PENDING
+    return not (is_super_admin(admin) or admin_is_level1_mentor(admin))
+
+
+def resolve_initial_approval_status(admin: dict) -> str:
+    if admin_requires_l1_approval(admin):
+        return PROFILE_ACTIVITY_APPROVAL_PENDING
+    return PROFILE_ACTIVITY_APPROVAL_APPROVED
+
+
+def group_is_approved(group: dict) -> bool:
+    return _normalize_approval_status(group.get("approval_status")) == PROFILE_ACTIVITY_APPROVAL_APPROVED
 
 
 def parse_profile_activity_from_description(description: str) -> dict:
@@ -503,10 +511,74 @@ def _matches_other_major(activity: dict, mentee: dict) -> bool:
 
 def _mentee_has_notified_group_assignment(activity: dict, mentee_id: str) -> bool:
     for group in activity.get("groups", []):
+        if not group_is_approved(group):
+            continue
         mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
         if mentee_id in mentee_ids and group.get("notification_sent_at"):
             return True
     return False
+
+
+def _resolve_group_name_for_admin(activity: dict, mentee_id: str) -> str:
+    for group in activity.get("groups", []):
+        mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
+        if mentee_id in mentee_ids:
+            return group.get("group_name", "")
+    return ""
+
+
+def _get_mentee_state(activity: dict, mentee_id: str) -> dict | None:
+    for item in activity.get("mentee_states", []):
+        if item.get("mentee_id") == mentee_id:
+            return item
+    return None
+
+
+def _mentee_in_pending_group(activity: dict, mentee_id: str) -> bool:
+    for group in activity.get("groups", []):
+        mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
+        if mentee_id in mentee_ids and not group_is_approved(group):
+            return True
+    return False
+
+
+def registration_response_display(activity: dict, state: dict, mentee_id: str) -> dict:
+    pending_reject = state.get("mentor_reject_pending") or {}
+    if pending_reject.get("approval_status") == PROFILE_ACTIVITY_APPROVAL_PENDING:
+        return {"status": "pending_l1_approval", "label": "Chờ L1 duyệt"}
+
+    if _mentee_in_pending_group(activity, mentee_id):
+        return {"status": "pending_l1_approval", "label": "Chờ L1 duyệt"}
+
+    response = (state.get("group_response_status") or "").strip().lower()
+    if response == "confirmed":
+        return {"status": "confirmed", "label": "Đã duyệt"}
+    if response == "rejected":
+        return {"status": "rejected", "label": "Từ chối"}
+    if response == "pending":
+        return {"status": "pending", "label": "Chờ mentee xác nhận"}
+    return {"status": "", "label": "—"}
+
+
+def serialize_admin_registration(activity: dict, state: dict, mentee: dict) -> dict:
+    mentee_id = state.get("mentee_id", "")
+    display = registration_response_display(activity, state, mentee_id)
+    pending_reject = state.get("mentor_reject_pending") or {}
+    return {
+        "mentee_id": mentee_id,
+        "mentee_name": mentee.get("full_name") or mentee.get("username") or mentee.get("email", ""),
+        "zalo_phone": mentee.get("zalo_phone", ""),
+        "apply_major": mentor_apply_direction_label(mentee.get("mentor_apply_direction", ""))
+        or mentee.get("apply_direction", ""),
+        "group_name": _resolve_group_name_for_admin(activity, mentee_id),
+        "group_response_status": state.get("group_response_status") or "",
+        "group_response_note": state.get("group_response_note", ""),
+        "response_display_status": display["status"],
+        "response_display_label": display["label"],
+        "pending_l1_group": _mentee_in_pending_group(activity, mentee_id),
+        "pending_l1_reject": pending_reject.get("approval_status") == PROFILE_ACTIVITY_APPROVAL_PENDING,
+        "mentor_reject_note": pending_reject.get("note", ""),
+    }
 
 
 def format_activity_feed_line(activity: dict, mentee: dict | None = None) -> str:
@@ -609,6 +681,7 @@ def serialize_admin_profile_activity(doc: dict) -> dict:
         "rejected_at": doc.get("rejected_at").isoformat() if doc.get("rejected_at") else "",
         "rejected_by_admin_id": doc.get("rejected_by_admin_id", ""),
         "deadline_badge": get_deadline_badge(doc.get("deadline", "")),
+        "pending_l1_actions": list_pending_l1_group_actions(doc),
     }
 
 
@@ -726,29 +799,225 @@ def register_for_activity(activity: dict, mentee: dict) -> dict:
     return activity
 
 
-def _group_payload(group: dict) -> dict:
+def _group_payload(group: dict, *, approval_status: str | None = None) -> dict:
+    status = approval_status or _normalize_approval_status(group.get("approval_status"))
     return {
         "group_id": group.get("group_id") or str(uuid.uuid4()),
         "group_name": (group.get("group_name") or "").strip() or "Nhóm mới",
         "mentee_ids": [str(item) for item in (group.get("mentee_ids") or []) if str(item)],
         "notification_sent_at": group.get("notification_sent_at"),
         "finalized_at": group.get("finalized_at"),
+        "approval_status": status,
+        "submitted_by_admin_id": group.get("submitted_by_admin_id", ""),
+        "submitted_at": group.get("submitted_at"),
+        "approved_at": group.get("approved_at"),
+        "approved_by_admin_id": group.get("approved_by_admin_id", ""),
     }
 
 
-def _upsert_group(activity: dict, payload: dict) -> dict:
+def upsert_activity_group(activity: dict, payload: dict, admin: dict) -> tuple[dict, bool]:
     groups = activity.get("groups") or []
     target_id = (payload.get("group_id") or "").strip()
-    normalized = _group_payload(payload)
+    requires_l1 = admin_requires_l1_approval(admin)
+    now = datetime.now(timezone.utc)
+    approval_status = (
+        PROFILE_ACTIVITY_APPROVAL_PENDING if requires_l1 else PROFILE_ACTIVITY_APPROVAL_APPROVED
+    )
+    normalized = _group_payload(payload, approval_status=approval_status)
+    if requires_l1:
+        normalized["submitted_by_admin_id"] = str(admin["_id"])
+        normalized["submitted_at"] = now
+        normalized["notification_sent_at"] = None
+        normalized["approved_at"] = None
+        normalized["approved_by_admin_id"] = ""
+    elif not target_id:
+        normalized["approved_at"] = now
+        normalized["approved_by_admin_id"] = str(admin["_id"])
     if target_id:
         for idx, group in enumerate(groups):
             if group.get("group_id") == target_id:
-                groups[idx] = {**group, **normalized, "group_id": target_id}
+                merged = {**group, **normalized, "group_id": target_id}
+                if requires_l1:
+                    merged["notification_sent_at"] = None
+                elif group_is_approved(group):
+                    merged["approval_status"] = PROFILE_ACTIVITY_APPROVAL_APPROVED
+                    merged.setdefault("approved_at", group.get("approved_at") or now)
+                    merged.setdefault("approved_by_admin_id", group.get("approved_by_admin_id") or str(admin["_id"]))
+                groups[idx] = merged
                 activity["groups"] = groups
-                return groups[idx]
+                return merged, requires_l1
     groups.append(normalized)
     activity["groups"] = groups
-    return normalized
+    return normalized, requires_l1
+
+
+def _find_group(activity: dict, group_id: str) -> dict | None:
+    return next((row for row in activity.get("groups", []) if row.get("group_id") == group_id), None)
+
+
+def approve_pending_group(activity: dict, group_id: str, admin: dict) -> dict:
+    group = _find_group(activity, group_id)
+    if not group:
+        return activity
+    now = datetime.now(timezone.utc)
+    group["approval_status"] = PROFILE_ACTIVITY_APPROVAL_APPROVED
+    group["approved_at"] = now
+    group["approved_by_admin_id"] = str(admin["_id"])
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"groups": activity.get("groups", []), "updated_at": now}},
+    )
+    refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    approved_group = _find_group(refreshed, group_id)
+    if approved_group and not approved_group.get("notification_sent_at"):
+        notify_group_assignment(refreshed, approved_group)
+        refreshed = profile_activities.find_one({"_id": activity["_id"]}) or refreshed
+    return refreshed
+
+
+def reject_pending_group(activity: dict, group_id: str) -> dict:
+    groups = [row for row in activity.get("groups", []) if row.get("group_id") != group_id]
+    activity["groups"] = groups
+    now = datetime.now(timezone.utc)
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"groups": groups, "updated_at": now}},
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def _apply_mentor_reject(activity: dict, mentee: dict, note: str = "") -> None:
+    state = _get_or_create_state(activity, str(mentee["_id"]))
+    state["group_response_status"] = "rejected"
+    state["group_response_note"] = (note or "").strip()
+    state["group_response_at"] = datetime.now(timezone.utc)
+    state.pop("mentor_reject_pending", None)
+    notify_mentee_mentor_activity(
+        mentee,
+        action="profile_activity_rejected",
+        title="Mentor từ chối báo danh",
+        description=(
+            f"Mentor đã từ chối báo danh của bạn cho hoạt động "
+            f"'{activity.get('activity_name')}'."
+            + (f" Ghi chú: {note.strip()}" if note.strip() else "")
+        ),
+        mentor_name=activity.get("mentor_name", ""),
+    )
+
+
+def submit_mentor_reject_registration(
+    activity: dict, mentee: dict, admin: dict, note: str = ""
+) -> tuple[dict, bool]:
+    mentee_id = str(mentee["_id"])
+    requires_l1 = admin_requires_l1_approval(admin)
+    now = datetime.now(timezone.utc)
+    if requires_l1:
+        state = _get_or_create_state(activity, mentee_id)
+        state["mentor_reject_pending"] = {
+            "note": (note or "").strip(),
+            "approval_status": PROFILE_ACTIVITY_APPROVAL_PENDING,
+            "submitted_by_admin_id": str(admin["_id"]),
+            "submitted_at": now,
+        }
+        profile_activities.update_one(
+            {"_id": activity["_id"]},
+            {
+                "$set": {
+                    "mentee_states": activity.get("mentee_states", []),
+                    "updated_at": now,
+                }
+            },
+        )
+        refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+        return refreshed, True
+    _apply_mentor_reject(activity, mentee, note)
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "mentee_states": activity.get("mentee_states", []),
+                "updated_at": now,
+            }
+        },
+    )
+    refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    return refreshed, False
+
+
+def approve_pending_mentor_reject(activity: dict, mentee_id: str, admin: dict) -> dict:
+    mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
+    if not mentee:
+        return activity
+    state = _get_mentee_state(activity, mentee_id) or {}
+    pending = state.get("mentor_reject_pending") or {}
+    note = pending.get("note", "")
+    _apply_mentor_reject(activity, mentee, note)
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "mentee_states": activity.get("mentee_states", []),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def reject_pending_mentor_reject(activity: dict, mentee_id: str) -> dict:
+    state = _get_mentee_state(activity, mentee_id)
+    if state:
+        state.pop("mentor_reject_pending", None)
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "mentee_states": activity.get("mentee_states", []),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def list_pending_l1_group_actions(activity: dict) -> list[dict]:
+    pending: list[dict] = []
+    for group in activity.get("groups", []):
+        if _normalize_approval_status(group.get("approval_status")) != PROFILE_ACTIVITY_APPROVAL_PENDING:
+            continue
+        pending.append(
+            {
+                "action_type": "assign_group",
+                "group_id": group.get("group_id", ""),
+                "group_name": group.get("group_name", ""),
+                "mentee_ids": group.get("mentee_ids", []),
+                "submitted_at": group.get("submitted_at").isoformat()
+                if group.get("submitted_at")
+                else "",
+            }
+        )
+    for state in activity.get("mentee_states", []):
+        pending_reject = state.get("mentor_reject_pending") or {}
+        if pending_reject.get("approval_status") != PROFILE_ACTIVITY_APPROVAL_PENDING:
+            continue
+        mentee_id = state.get("mentee_id", "")
+        mentee = users.find_one({"_id": ObjectId(mentee_id)}) if ObjectId.is_valid(mentee_id) else None
+        pending.append(
+            {
+                "action_type": "reject_mentee",
+                "mentee_id": mentee_id,
+                "mentee_name": (
+                    (mentee.get("full_name") or mentee.get("username") or mentee.get("email", ""))
+                    if mentee
+                    else mentee_id
+                ),
+                "note": pending_reject.get("note", ""),
+                "submitted_at": pending_reject.get("submitted_at").isoformat()
+                if pending_reject.get("submitted_at")
+                else "",
+            }
+        )
+    return pending
 
 
 def _build_team_message(activity: dict, group: dict, member_profiles: list[dict]) -> str:
@@ -763,6 +1032,8 @@ def _build_team_message(activity: dict, group: dict, member_profiles: list[dict]
 
 
 def notify_group_assignment(activity: dict, group: dict) -> dict:
+    if not group_is_approved(group):
+        return activity
     member_ids = [ObjectId(item) for item in group.get("mentee_ids", []) if ObjectId.is_valid(item)]
     members = list(users.find({"_id": {"$in": member_ids}, "role": {"$ne": ROLE_PARENT}}))
     message = _build_team_message(activity, group, members)
@@ -808,12 +1079,8 @@ def update_group_response(activity: dict, mentee: dict, status: str, note: str =
 
 
 def finalize_group_and_sync_hdnk(activity: dict, group_id: str, admin_name: str = "") -> dict:
-    target_group = None
-    for group in activity.get("groups", []):
-        if group.get("group_id") == group_id:
-            target_group = group
-            break
-    if not target_group:
+    target_group = _find_group(activity, group_id)
+    if not target_group or not group_is_approved(target_group):
         return activity
 
     now = datetime.now(timezone.utc)

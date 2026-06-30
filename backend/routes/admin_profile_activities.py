@@ -7,22 +7,26 @@ from flask import jsonify, request
 from auth.security import get_authenticated_admin
 from database import profile_activities, users, with_db
 from extensions import app
-from services.admins import admin_display_name, admin_is_approved
-from services.apply_documents import mentor_apply_direction_label
+from services.admins import admin_display_name, admin_is_approved, is_super_admin
 from services.apply_progress import admin_is_level1_mentor
 from services.profile_activities import (
+    approve_pending_group,
+    approve_pending_mentor_reject,
     approve_profile_activity,
     create_profile_activity,
     finalize_group_and_sync_hdnk,
+    group_is_approved,
     notify_group_assignment,
     parse_profile_activity_from_description,
+    reject_pending_group,
+    reject_pending_mentor_reject,
     reject_profile_activity,
     sanitize_profile_activity_input,
     serialize_admin_profile_activity,
-    update_group_response,
-    _upsert_group,
+    serialize_admin_registration,
+    submit_mentor_reject_registration,
+    upsert_activity_group,
 )
-from services.admins import is_super_admin
 
 
 def _get_activity_or_404(activity_id: str):
@@ -43,30 +47,8 @@ def _admin_activity_query(admin: dict) -> dict:
     return {}
 
 
-def _resolve_group_name(activity: dict, mentee_id: str) -> str:
-    for group in activity.get("groups", []):
-        if mentee_id in (group.get("mentee_ids") or []):
-            return group.get("group_name", "")
-    return ""
-
-
-def _serialize_registration(activity: dict, state: dict) -> dict:
-    mentee_id = state.get("mentee_id", "")
-    if not ObjectId.is_valid(mentee_id):
-        return {}
-    mentee = users.find_one({"_id": ObjectId(mentee_id)})
-    if not mentee:
-        return {}
-    return {
-        "mentee_id": mentee_id,
-        "mentee_name": mentee.get("full_name") or mentee.get("username") or mentee.get("email", ""),
-        "zalo_phone": mentee.get("zalo_phone", ""),
-        "apply_major": mentor_apply_direction_label(mentee.get("mentor_apply_direction", ""))
-        or mentee.get("apply_direction", ""),
-        "group_name": _resolve_group_name(activity, mentee_id),
-        "group_response_status": state.get("group_response_status") or "",
-        "group_response_note": state.get("group_response_note", ""),
-    }
+def _can_review_profile_activity(admin: dict) -> bool:
+    return bool(is_super_admin(admin) or admin_is_level1_mentor(admin))
 
 
 @app.post("/api/admin/profile-activities/parse")
@@ -117,10 +99,6 @@ def admin_list_profile_activities():
 
     cursor = profile_activities.find(_admin_activity_query(admin)).sort("created_at", -1)
     return jsonify([serialize_admin_profile_activity(doc) for doc in cursor])
-
-
-def _can_review_profile_activity(admin: dict) -> bool:
-    return bool(is_super_admin(admin) or admin_is_level1_mentor(admin))
 
 
 @app.post("/api/admin/profile-activities/<activity_id>/approve")
@@ -177,9 +155,13 @@ def admin_activity_registrations(activity_id: str):
     for state in activity.get("mentee_states", []):
         if not state.get("registered_at"):
             continue
-        row = _serialize_registration(activity, state)
-        if row:
-            registrations.append(row)
+        mentee_id = state.get("mentee_id", "")
+        if not ObjectId.is_valid(mentee_id):
+            continue
+        mentee = users.find_one({"_id": ObjectId(mentee_id)})
+        if not mentee:
+            continue
+        registrations.append(serialize_admin_registration(activity, state, mentee))
     return jsonify({"items": registrations})
 
 
@@ -196,12 +178,67 @@ def admin_upsert_activity_group(activity_id: str):
     if error:
         return error
     data = request.get_json(silent=True) or {}
-    group = _upsert_group(activity, data)
+    group, requires_l1 = upsert_activity_group(activity, data, admin)
     profile_activities.update_one(
         {"_id": activity["_id"]},
         {"$set": {"groups": activity.get("groups", []), "updated_at": datetime.now(timezone.utc)}},
     )
-    return jsonify({"group": group, "groups": activity.get("groups", [])})
+    response = {"group": group, "groups": activity.get("groups", [])}
+    if requires_l1:
+        response["message"] = "Đã gửi phân nhóm, chờ mentor cấp 1 duyệt trước khi mentee thấy."
+    return jsonify(response)
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/groups/<group_id>/approve")
+@with_db
+def admin_approve_activity_group(activity_id: str, group_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới được duyệt phân nhóm."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    group = next((row for row in activity.get("groups", []) if row.get("group_id") == group_id), None)
+    if not group:
+        return jsonify({"detail": "Nhóm không tồn tại"}), 404
+    updated = approve_pending_group(activity, group_id, admin)
+    return jsonify(
+        {
+            "message": "Đã duyệt phân nhóm — mentee sẽ nhận thông báo.",
+            "activity": serialize_admin_profile_activity(updated),
+        }
+    )
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/groups/<group_id>/reject")
+@with_db
+def admin_reject_activity_group(activity_id: str, group_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới được từ chối phân nhóm."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    group = next((row for row in activity.get("groups", []) if row.get("group_id") == group_id), None)
+    if not group:
+        return jsonify({"detail": "Nhóm không tồn tại"}), 404
+    updated = reject_pending_group(activity, group_id)
+    return jsonify(
+        {
+            "message": "Đã từ chối phân nhóm.",
+            "activity": serialize_admin_profile_activity(updated),
+        }
+    )
 
 
 @app.post("/api/admin/profile-activities/<activity_id>/groups/<group_id>/notify")
@@ -219,6 +256,8 @@ def admin_notify_activity_group(activity_id: str, group_id: str):
     group = next((row for row in activity.get("groups", []) if row.get("group_id") == group_id), None)
     if not group:
         return jsonify({"detail": "Nhóm không tồn tại"}), 404
+    if not group_is_approved(group):
+        return jsonify({"detail": "Nhóm đang chờ mentor cấp 1 duyệt."}), 400
     notify_group_assignment(activity, group)
     return jsonify({"message": "Đã gửi thông báo nhóm"})
 
@@ -235,13 +274,18 @@ def admin_finalize_activity_group(activity_id: str, group_id: str):
     activity, error = _get_activity_or_404(activity_id)
     if error:
         return error
+    group = next((row for row in activity.get("groups", []) if row.get("group_id") == group_id), None)
+    if not group:
+        return jsonify({"detail": "Nhóm không tồn tại"}), 404
+    if not group_is_approved(group):
+        return jsonify({"detail": "Nhóm đang chờ mentor cấp 1 duyệt."}), 400
     finalize_group_and_sync_hdnk(activity, group_id, admin_display_name(admin))
     return jsonify({"message": "Đã chốt nhóm và đồng bộ HDNK + NCKH"})
 
 
-@app.post("/api/admin/profile-activities/<activity_id>/responses/<mentee_id>")
+@app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/reject")
 @with_db
-def admin_set_group_response(activity_id: str, mentee_id: str):
+def admin_reject_activity_registration(activity_id: str, mentee_id: str):
     admin, error_response = get_authenticated_admin()
     if error_response:
         return error_response
@@ -257,5 +301,49 @@ def admin_set_group_response(activity_id: str, mentee_id: str):
     if not mentee:
         return jsonify({"detail": "Mentee không tồn tại"}), 404
     data = request.get_json(silent=True) or {}
-    update_group_response(activity, mentee, data.get("status", ""), data.get("note", ""))
-    return jsonify({"message": "Đã cập nhật phản hồi nhóm"})
+    updated, requires_l1 = submit_mentor_reject_registration(
+        activity, mentee, admin, data.get("note", "")
+    )
+    if requires_l1:
+        return jsonify({"message": "Đã gửi từ chối, chờ mentor cấp 1 duyệt trước khi mentee thấy."})
+    return jsonify({"message": "Đã từ chối báo danh mentee."})
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/reject/approve")
+@with_db
+def admin_approve_reject_activity_registration(activity_id: str, mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới được duyệt từ chối báo danh."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    if not ObjectId.is_valid(mentee_id):
+        return jsonify({"detail": "Mentee không tồn tại"}), 404
+    approve_pending_mentor_reject(activity, mentee_id, admin)
+    return jsonify({"message": "Đã duyệt từ chối báo danh — mentee sẽ được thông báo."})
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/reject/deny")
+@with_db
+def admin_deny_reject_activity_registration(activity_id: str, mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới được hủy yêu cầu từ chối."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    if not ObjectId.is_valid(mentee_id):
+        return jsonify({"detail": "Mentee không tồn tại"}), 404
+    reject_pending_mentor_reject(activity, mentee_id)
+    return jsonify({"message": "Đã hủy yêu cầu từ chối báo danh."})
