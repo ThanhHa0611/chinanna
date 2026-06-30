@@ -51,6 +51,14 @@ function inboxItemHasFile(item) {
   return true;
 }
 
+function isInboxItemDone(item) {
+  return item?.status === 'done' || item?.display_state === 'done';
+}
+
+function isInboxItemPending(item) {
+  return item?.status === 'pending' && !isInboxItemDone(item);
+}
+
 export default function Home() {
   const { admin } = useAuth();
   const [stats, setStats] = useState(null);
@@ -65,10 +73,13 @@ export default function Home() {
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [inboxItems, setInboxItems] = useState([]);
+  const [inboxBoard, setInboxBoard] = useState(null);
   const [dailySummary, setDailySummary] = useState(null);
   const [archiveDays, setArchiveDays] = useState([]);
   const [inboxPendingCount, setInboxPendingCount] = useState(0);
   const [inboxSavingId, setInboxSavingId] = useState('');
+  const [selectedInboxIds, setSelectedInboxIds] = useState([]);
+  const [bulkInboxProcessing, setBulkInboxProcessing] = useState(false);
   const [reminderDrafts, setReminderDrafts] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
   const [archiveView, setArchiveView] = useState(null);
@@ -82,6 +93,7 @@ export default function Home() {
         setMentees(menteeData || []);
         setFeedback(feedbackData || []);
         setInboxItems(inboxData?.items || []);
+        setInboxBoard(inboxData?.board || null);
         setDailySummary(inboxData?.daily_summary || null);
         setArchiveDays(inboxData?.archive_days || []);
         setInboxPendingCount(inboxData?.pending_count || 0);
@@ -160,10 +172,60 @@ export default function Home() {
   const refreshInbox = () =>
     api.getInbox().then((data) => {
       setInboxItems(data?.items || []);
+      setInboxBoard(data?.board || null);
       setDailySummary(data?.daily_summary || null);
       setArchiveDays(data?.archive_days || []);
       setInboxPendingCount(data?.pending_count || 0);
     });
+
+  const toggleInboxSelection = (taskId) => {
+    setSelectedInboxIds((prev) =>
+      prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId],
+    );
+  };
+
+  const getSectionSelectableIds = (section) =>
+    (section?.items || []).filter(isInboxItemPending).map((item) => item.id);
+
+  const isSectionAllSelected = (section) => {
+    const ids = getSectionSelectableIds(section);
+    return ids.length > 0 && ids.every((id) => selectedInboxIds.includes(id));
+  };
+
+  const selectedCountForSection = (section) =>
+    getSectionSelectableIds(section).filter((id) => selectedInboxIds.includes(id)).length;
+
+  const toggleSectionSelectAll = (section) => {
+    const ids = getSectionSelectableIds(section);
+    if (isSectionAllSelected(section)) {
+      const idSet = new Set(ids);
+      setSelectedInboxIds((prev) => prev.filter((id) => !idSet.has(id)));
+      return;
+    }
+    setSelectedInboxIds((prev) => [...new Set([...prev, ...ids])]);
+  };
+
+  const handleBulkConfirmSection = async (section) => {
+    const taskIds = getSectionSelectableIds(section).filter((id) =>
+      selectedInboxIds.includes(id),
+    );
+    if (taskIds.length === 0) {
+      setActionError('Chọn ít nhất một mục để xử lí.');
+      return;
+    }
+
+    setBulkInboxProcessing(true);
+    setActionError('');
+    try {
+      await api.bulkConfirmInboxTasks(taskIds);
+      setSelectedInboxIds((prev) => prev.filter((id) => !taskIds.includes(id)));
+      await refreshInbox();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setBulkInboxProcessing(false);
+    }
+  };
 
   const toggleSection = (sectionKey) => {
     setCollapsedSections((prev) => ({
@@ -323,6 +385,94 @@ export default function Home() {
     );
   };
 
+  const renderInboxBoardItem = (item) => {
+    const isDone = isInboxItemDone(item);
+    const isPending = isInboxItemPending(item);
+    const isViewed = !isDone && (item.display_state === 'viewed' || Boolean(item.viewed_at));
+    const stateClass = isDone ? 'is-done' : isViewed ? 'is-viewed' : 'is-new';
+    const statusClass = isDone ? 'is-done' : isViewed ? 'is-viewed' : 'is-new';
+    const statusLine =
+      item.status_line ||
+      (isDone ? 'Đã xử lí' : isViewed ? 'Đã xem · chưa xử lí' : 'Chưa xem');
+    const processedByLabel = item.processed_by_label || item.processed_by_name || '';
+    const reminderDate = reminderDrafts[item.id] ?? vnTomorrowDateInputValue();
+    const actionLine = item.action_line || item.summary_line || item.title || '—';
+
+    return (
+      <div key={item.id} className={`home-inbox-item ${stateClass}`}>
+        {isPending ? (
+          <div className="home-inbox-check-col">
+            <input
+              type="checkbox"
+              checked={selectedInboxIds.includes(item.id)}
+              onChange={() => toggleInboxSelection(item.id)}
+              disabled={bulkInboxProcessing || inboxSavingId === item.id}
+              aria-label={`Chọn ${actionLine}`}
+            />
+          </div>
+        ) : (
+          <div className="home-inbox-check-col home-inbox-check-col-spacer" aria-hidden="true" />
+        )}
+        <div className="home-inbox-main">
+          <strong>{actionLine}</strong>
+          {item.description && <p className="home-inbox-desc">{item.description}</p>}
+          <span className={`home-inbox-status status-${item.display_state || 'pending'} ${statusClass}`}>
+            {statusLine}
+          </span>
+          {isDone && processedByLabel && !statusLine.includes(processedByLabel) && (
+            <span className="daily-summary-processed-by">{processedByLabel}</span>
+          )}
+        </div>
+        {!isDone && (
+          <div className="home-inbox-actions">
+            <button
+              type="button"
+              className="btn btn-outline btn-sm daily-summary-btn"
+              disabled={inboxSavingId === item.id || bulkInboxProcessing}
+              onClick={() => handleViewInbox(item)}
+            >
+              Xem
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm daily-summary-btn daily-summary-btn-done"
+              disabled={inboxSavingId === item.id || bulkInboxProcessing}
+              onClick={() => handleConfirmInbox(item.id)}
+            >
+              Đã xử lí
+            </button>
+            <label className="home-inbox-reminder-field">
+              Hẹn xử lí (ngày)
+              <input
+                type="date"
+                value={reminderDate}
+                min={formatDateInputInVn(new Date())}
+                onChange={(e) =>
+                  setReminderDrafts((prev) => ({
+                    ...prev,
+                    [item.id]: e.target.value,
+                  }))
+                }
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm daily-summary-btn"
+              disabled={inboxSavingId === item.id || bulkInboxProcessing}
+              onClick={() => handleUpdateReminder(item.id)}
+            >
+              Lưu nhắc hẹn
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const inboxBoardSections = (inboxBoard?.sections || []).filter(
+    (section) => (section?.item_count || 0) > 0,
+  );
+
   if (loading) return <p className="loader">Đang tải...</p>;
   if (loadError) return <p className="form-error">{loadError}</p>;
 
@@ -361,6 +511,93 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {inboxBoardSections.length > 0 && (
+        <div className="panel-card home-inbox-panel">
+          <button
+            type="button"
+            className="daily-summary-head"
+            onClick={() => toggleSection('inboxBoard')}
+            aria-expanded={!collapsedSections.inboxBoard}
+          >
+            <span className="daily-summary-title">
+              {inboxBoard?.title || 'Tổng hợp Trơn Tru'}
+            </span>
+            <span className="daily-summary-toggle">
+              {collapsedSections.inboxBoard ? 'Mở rộng' : 'Thu gọn'}
+            </span>
+          </button>
+          {!collapsedSections.inboxBoard && (
+            <div className="daily-summary-body">
+              {inboxBoard?.date_label && (
+                <p className="daily-summary-date">Ngày {inboxBoard.date_label}</p>
+              )}
+              <div className="home-inbox-board">
+                {inboxBoardSections.map((section) => {
+                  const sectionKey = `inbox-${section.key}`;
+                  const selectableCount = getSectionSelectableIds(section).length;
+                  const selectedCount = selectedCountForSection(section);
+
+                  return (
+                    <div key={section.key} className="home-inbox-section">
+                      <button
+                        type="button"
+                        className="home-inbox-section-head"
+                        onClick={() => toggleSection(sectionKey)}
+                        aria-expanded={!collapsedSections[sectionKey]}
+                      >
+                        <span>
+                          {section.label}
+                          <span className="home-inbox-section-count">
+                            {section.pending_count > 0
+                              ? `${section.pending_count} chưa xử lí`
+                              : `${section.item_count} mục`}
+                          </span>
+                        </span>
+                        <span className="home-inbox-section-toggle">
+                          {collapsedSections[sectionKey] ? 'Mở rộng' : 'Thu gọn'}
+                        </span>
+                      </button>
+                      {!collapsedSections[sectionKey] && (
+                        <>
+                          {selectableCount > 0 && (
+                            <div className="home-inbox-bulk-toolbar">
+                              <label className="checkbox-label home-inbox-select-all">
+                                <input
+                                  type="checkbox"
+                                  checked={isSectionAllSelected(section)}
+                                  onChange={() => toggleSectionSelectAll(section)}
+                                  disabled={bulkInboxProcessing}
+                                />
+                                Chọn tất cả
+                              </label>
+                              {selectedCount > 0 && (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm daily-summary-btn-done"
+                                  disabled={bulkInboxProcessing}
+                                  onClick={() => handleBulkConfirmSection(section)}
+                                >
+                                  {bulkInboxProcessing
+                                    ? 'Đang xử lý...'
+                                    : `Đã xử lí hàng loạt (${selectedCount})`}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          <div className="home-inbox-list">
+                            {(section.items || []).map((item) => renderInboxBoardItem(item))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {(dailySummary?.items?.length > 0 || archiveDays.length > 0 || inboxItems.length > 0) && (
         <div className="daily-summary-wrap">

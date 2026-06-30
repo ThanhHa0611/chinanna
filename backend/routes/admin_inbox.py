@@ -130,6 +130,52 @@ def admin_inbox_view(task_id: str):
     })
 
 
+@app.post("/api/admin/inbox/bulk-confirm")
+@with_db
+def admin_inbox_bulk_confirm():
+    from inbox_tasks import bulk_confirm_inbox_tasks, serialize_inbox_task
+
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    data = request.get_json(silent=True) or {}
+    raw_ids = data.get("task_ids") or data.get("ids") or []
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({"detail": "Danh sách trống"}), 400
+
+    result = bulk_confirm_inbox_tasks(
+        mentor_inbox,
+        raw_ids,
+        via="app",
+        processed_by=str(admin["_id"]),
+        processed_by_name=admin_display_name(admin),
+    )
+    succeeded = result["succeeded"]
+    failed = result["failed"]
+    confirmed_tasks = result["tasks"]
+
+    for task in confirmed_tasks:
+        apply_inbox_confirm_side_effects(task)
+        notify_mentee_inbox_processed(task)
+
+    if succeeded == 0:
+        return jsonify({"detail": "Không xử lý được mục nào", "succeeded": 0, "failed": failed}), 400
+
+    message = f"Đã xử lí {succeeded} mục"
+    if failed:
+        message += f" ({failed} lỗi)"
+    return jsonify({
+        "message": message,
+        "succeeded": succeeded,
+        "failed": failed,
+        "items": [serialize_inbox_task(task) for task in confirmed_tasks],
+    })
+
+
 @app.post("/api/admin/inbox/<task_id>/confirm")
 @with_db
 def admin_inbox_confirm(task_id: str):

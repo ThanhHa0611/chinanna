@@ -3085,6 +3085,32 @@ html.device-phone .home-inbox-actions .btn {
   flex: 1 1 calc(50% - 0.25rem);
 }
 
+.home-inbox-bulk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+
+.home-inbox-select-all {
+  margin: 0;
+}
+
+.home-inbox-check-col {
+  width: 2.25rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 0.15rem;
+}
+
+.home-inbox-check-col-spacer {
+  visibility: hidden;
+}
+
 .daily-summary-wrap {
   display: flex;
   flex-direction: column;

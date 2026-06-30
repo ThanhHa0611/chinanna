@@ -272,6 +272,7 @@ def serialize_inbox_task(doc: dict, *, base_url: str = "") -> dict:
     if base_url:
         urls = inbox_urls(base_url, doc)
         payload["view_url"] = urls["view"]
+        payload["file_url"] = urls["file"]
         payload["confirm_url"] = urls["confirm"]
         payload["snooze_urls"] = inbox_snooze_urls(base_url, doc)
     return payload
@@ -567,6 +568,59 @@ def ensure_stale_pending_daily_reminders(collection) -> int:
         {"$set": {"next_reminder_at": target, "reminder_interval_hours": DEFAULT_REMINDER_HOURS}},
     )
     return result.modified_count
+
+
+def bulk_confirm_inbox_tasks(
+    collection,
+    task_ids: list[str],
+    *,
+    via: str = "app",
+    processed_by: str = "",
+    processed_by_name: str = "",
+) -> dict:
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    succeeded = 0
+    failed = 0
+    confirmed_tasks: list[dict] = []
+
+    for task_id in task_ids:
+        task_id = (task_id or "").strip()
+        if not task_id:
+            failed += 1
+            continue
+        try:
+            oid = ObjectId(task_id)
+        except InvalidId:
+            failed += 1
+            continue
+
+        existing = collection.find_one({"_id": oid, "audience": "mentor"})
+        if not existing:
+            failed += 1
+            continue
+        if existing.get("status") == "done":
+            continue
+
+        task = confirm_inbox_task(
+            collection,
+            task_id=task_id,
+            via=via,
+            processed_by=processed_by,
+            processed_by_name=processed_by_name,
+        )
+        if not task or task.get("status") != "done":
+            failed += 1
+            continue
+        succeeded += 1
+        confirmed_tasks.append(task)
+
+    return {
+        "succeeded": succeeded,
+        "failed": failed,
+        "tasks": confirmed_tasks,
+    }
 
 
 def confirm_inbox_task(

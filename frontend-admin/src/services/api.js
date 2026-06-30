@@ -147,6 +147,12 @@ export const api = {
   confirmInboxTask: (taskId) =>
     request(`/api/admin/inbox/${taskId}/confirm`, { method: 'POST' }),
 
+  bulkConfirmInboxTasks: (taskIds) =>
+    request('/api/admin/inbox/bulk-confirm', {
+      method: 'POST',
+      body: JSON.stringify({ task_ids: taskIds }),
+    }),
+
   viewInboxTask: (taskId) =>
     request(`/api/admin/inbox/${taskId}/view`, { method: 'POST' }),
 
@@ -201,6 +207,9 @@ export const api = {
       if (token) {
         return `${API_BASE}/api/email/inbox/file?token=${encodeURIComponent(token)}`;
       }
+      if (parsed.pathname.includes('/api/email/inbox/file')) {
+        return `${API_BASE}${parsed.pathname}${parsed.search}`;
+      }
       if (parsed.pathname.includes('/api/email/inbox/view')) {
         return `${API_BASE}${parsed.pathname.replace('/view', '/file')}${parsed.search}`;
       }
@@ -231,6 +240,10 @@ export const api = {
       const text = await response.text().catch(() => '');
       throw new Error(text.includes('Không') ? 'Không mở được file' : 'Không mở được file');
     }
+    const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
+    if (contentType.includes('text/html')) {
+      throw new Error('Không mở được file');
+    }
     const blob = await response.blob();
     return {
       url: URL.createObjectURL(blob),
@@ -242,25 +255,30 @@ export const api = {
     const docId = (item?.doc_id || '').trim();
     const menteeId = (item?.mentee_id || '').trim();
     const viewUrl = (item?.view_url || '').trim();
-    const hasUploadFile = Boolean(docId && docId !== 'personal-declaration');
+    const fileUrl = (item?.file_url || '').trim();
+    const inboxFileUrl = fileUrl || viewUrl;
 
     if (docId === 'personal-declaration' && menteeId) {
       return this.fetchMenteeDocumentPreview(menteeId, docId);
     }
 
-    if (viewUrl && hasUploadFile) {
+    if (menteeId && docId) {
       try {
-        return await this.fetchInboxFileFromViewUrl(viewUrl);
-      } catch (inboxError) {
-        if (menteeId && docId) {
-          return this.fetchMenteeDocumentPreview(menteeId, docId);
+        return await this.fetchMenteeDocumentPreview(menteeId, docId);
+      } catch (adminError) {
+        if (inboxFileUrl) {
+          try {
+            return await this.fetchInboxFileFromViewUrl(inboxFileUrl);
+          } catch {
+            throw adminError;
+          }
         }
-        throw inboxError;
+        throw adminError;
       }
     }
 
-    if (menteeId && docId) {
-      return this.fetchMenteeDocumentPreview(menteeId, docId);
+    if (inboxFileUrl) {
+      return await this.fetchInboxFileFromViewUrl(inboxFileUrl);
     }
 
     throw new Error('Không có file để xem');
