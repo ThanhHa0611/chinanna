@@ -10,6 +10,7 @@ from extensions import app
 from services.admins import admin_display_name, admin_is_approved, is_super_admin
 from services.apply_progress import admin_is_level1_mentor
 from services.profile_activities import (
+    ProfileActivityBulkImportError,
     ProfileActivityKeeptrackError,
     ProfileActivityRegistrationError,
     add_mentee_to_group,
@@ -19,6 +20,7 @@ from services.profile_activities import (
     approve_profile_activity,
     bulk_view_individual_keeptrack_reviews,
     create_profile_activity,
+    delete_activity,
     delete_activity_group,
     finalize_group_and_sync_hdnk,
     group_is_approved,
@@ -30,6 +32,7 @@ from services.profile_activities import (
     list_progress_tracking_for_admin,
     move_mentee_to_group,
     notify_group_assignment,
+    parse_profile_activities_bulk_excel,
     parse_profile_activity_from_description,
     reject_individual_keeptrack_review,
     reject_keeptrack_abandon,
@@ -108,6 +111,72 @@ def admin_create_profile_activity():
     return jsonify(response), 201
 
 
+@app.post("/api/admin/profile-activities/bulk-import/parse")
+@with_db
+def admin_bulk_import_parse_profile_activities():
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    uploaded = request.files.get("file")
+    if not uploaded or not uploaded.filename:
+        return jsonify({"detail": "Chưa chọn file để tải lên"}), 400
+    if not uploaded.filename.lower().endswith(".xlsx"):
+        return jsonify({"detail": "Chỉ hỗ trợ file Excel (.xlsx)"}), 400
+
+    try:
+        result = parse_profile_activities_bulk_excel(uploaded)
+    except ProfileActivityBulkImportError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify(result)
+
+
+@app.post("/api/admin/profile-activities/bulk-import/create")
+@with_db
+def admin_bulk_import_create_profile_activities():
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    if not isinstance(items, list) or not items:
+        return jsonify({"detail": "Thiếu danh sách hoạt động cần tạo."}), 400
+
+    results = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        row_index = item.get("row_index")
+        try:
+            payload = sanitize_profile_activity_input(item)
+            if not payload.get("activity_name"):
+                raise ValueError("Không thể tạo tên hoạt động — vui lòng điền loại hoạt động")
+            created = create_profile_activity(admin, payload)
+            results.append(
+                {
+                    "row_index": row_index,
+                    "success": True,
+                    "activity": serialize_admin_profile_activity(created, admin=admin),
+                    "error": None,
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - one bad row must not abort the whole batch
+            results.append(
+                {
+                    "row_index": row_index,
+                    "success": False,
+                    "activity": None,
+                    "error": str(exc) or "Không tạo được hoạt động",
+                }
+            )
+    return jsonify({"results": results})
+
+
 @app.get("/api/admin/profile-activities")
 @with_db
 def admin_list_profile_activities():
@@ -121,6 +190,22 @@ def admin_list_profile_activities():
     items = [serialize_admin_profile_activity(doc, admin=admin) for doc in cursor]
     total_pending_count = sum(item.get("pending_action_count", 0) for item in items)
     return jsonify({"items": items, "total_pending_count": total_pending_count})
+
+
+@app.delete("/api/admin/profile-activities/<activity_id>")
+@with_db
+def admin_delete_profile_activity(activity_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    success, message = delete_activity(activity_id, admin)
+    if not success:
+        status = 404 if "không tồn tại" in message else 403
+        return jsonify({"detail": message}), status
+    return jsonify({"message": message})
 
 
 @app.post("/api/admin/profile-activities/<activity_id>/approve")

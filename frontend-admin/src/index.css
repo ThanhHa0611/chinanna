@@ -3402,6 +3402,27 @@ html.device-phone .daily-summary-status {
   width: 100%;
 }
 
+.profile-activity-bulk-import {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.1rem;
+  border-bottom: 1px dashed var(--border);
+}
+
+.profile-activity-bulk-import-skipped {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+}
+
+.profile-activity-bulk-import-preview {
+  margin-top: 0.85rem;
+}
+
+.profile-activity-bulk-import-preview table input,
+.profile-activity-bulk-import-preview table select {
+  min-width: 7.5rem;
+}
+
 .profile-activity-form textarea {
   padding: 0.75rem 1rem;
   border-radius: 10px;

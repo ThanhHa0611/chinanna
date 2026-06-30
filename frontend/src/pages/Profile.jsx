@@ -858,7 +858,15 @@ function MenteeProfile() {
     }
   };
 
-  const handleMenteeRequestToggle = async (docId, field, checked) => {
+  const handleMenteeRequestToggle = async (docId, field, checked, docLabel) => {
+    if (checked) {
+      const fieldText =
+        field === 'mentor_handles' ? 'Mentor làm' : 'Gói cơ bản_Cần mentor sửa';
+      const confirmText = docLabel
+        ? `Xác nhận yêu cầu "${fieldText}" cho mục "${docLabel}"? Mentor sẽ nhận được thông báo.`
+        : `Xác nhận yêu cầu "${fieldText}"? Mentor sẽ nhận được thông báo.`;
+      if (!window.confirm(confirmText)) return;
+    }
     setMenteeRequestSaving(docId);
     setApplyDocsError('');
     try {
@@ -899,7 +907,9 @@ function MenteeProfile() {
             type="checkbox"
             checked={Boolean(record?.mentor_handles)}
             disabled={saving}
-            onChange={(e) => handleMenteeRequestToggle(doc.id, 'mentor_handles', e.target.checked)}
+            onChange={(e) =>
+              handleMenteeRequestToggle(doc.id, 'mentor_handles', e.target.checked, doc.label)
+            }
           />
           Mentor làm
         </label>
@@ -909,7 +919,7 @@ function MenteeProfile() {
             checked={Boolean(record?.needs_mentor_edit)}
             disabled={saving}
             onChange={(e) =>
-              handleMenteeRequestToggle(doc.id, 'needs_mentor_edit', e.target.checked)
+              handleMenteeRequestToggle(doc.id, 'needs_mentor_edit', e.target.checked, doc.label)
             }
           />
           Gói cơ bản_Cần mentor sửa

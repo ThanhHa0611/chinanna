@@ -372,10 +372,39 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  bulkImportParseProfileActivities: async (file) => {
+    const token = localStorage.getItem('admin_token');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/api/admin/profile-activities/bulk-import/parse`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || `Có lỗi xảy ra (HTTP ${response.status})`);
+    }
+    return data;
+  },
+
+  bulkCreateProfileActivities: (items) =>
+    request('/api/admin/profile-activities/bulk-import/create', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    }),
+
   getProfileActivities: () => request('/api/admin/profile-activities'),
 
   getProfileActivityRegistrations: (activityId) =>
     request(`/api/admin/profile-activities/${activityId}/registrations`),
+
+  deleteProfileActivity: (activityId) =>
+    request(`/api/admin/profile-activities/${activityId}`, {
+      method: 'DELETE',
+    }),
 
   upsertProfileActivityGroup: (activityId, body) =>
     request(`/api/admin/profile-activities/${activityId}/groups`, {

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import io
 import re
 import uuid
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+import openpyxl
 from bson import ObjectId
 
 from config import ROLE_PARENT
-from database import profile_activities, users
+from database import mentor_inbox, profile_activities, users
 from services.apply_documents import (
     mentee_keeptrack_profile_summary_line,
     mentee_keeptrack_profile_summary_parts,
@@ -1541,6 +1543,71 @@ def sanitize_profile_activity_input(data: dict, *, parsed_fallback: dict | None 
     return cleaned
 
 
+class ProfileActivityBulkImportError(ValueError):
+    """Raised when an uploaded bulk-import Excel file is malformed."""
+
+
+def _normalize_header_label(raw) -> str:
+    return str(raw or "").strip().lower()
+
+
+def parse_profile_activities_bulk_excel(file_stream) -> dict:
+    """Parse an uploaded .xlsx file with "Link" and "Mô tả gốc" columns.
+
+    Returns {"items": [cleaned dicts with row_index], "skipped_rows": [{"row_index": int}]}.
+    Does not write to the database — pure parse/preview step.
+    """
+    try:
+        workbook = openpyxl.load_workbook(io.BytesIO(file_stream.read()), data_only=True, read_only=True)
+    except Exception as exc:  # noqa: BLE001 - surface a clear Vietnamese error regardless of cause
+        raise ProfileActivityBulkImportError("Không đọc được file Excel — vui lòng kiểm tra lại file") from exc
+
+    sheet = workbook.active
+    rows_iter = sheet.iter_rows(values_only=True)
+    try:
+        header_row = next(rows_iter)
+    except StopIteration:
+        raise ProfileActivityBulkImportError("File Excel trống — không có dòng tiêu đề")
+
+    link_col = None
+    description_col = None
+    for index, raw_label in enumerate(header_row):
+        label = _normalize_header_label(raw_label)
+        if label == "link":
+            link_col = index
+        elif label == "mô tả gốc":
+            description_col = index
+
+    if link_col is None and description_col is None:
+        raise ProfileActivityBulkImportError("Thiếu cột \"Link\" và \"Mô tả gốc\" trong file Excel")
+    if link_col is None:
+        raise ProfileActivityBulkImportError("Thiếu cột \"Link\" trong file Excel")
+    if description_col is None:
+        raise ProfileActivityBulkImportError("Thiếu cột \"Mô tả gốc\" trong file Excel")
+
+    items: list[dict] = []
+    skipped_rows: list[dict] = []
+    for offset, row in enumerate(rows_iter):
+        row_index = offset + 2  # 1-based Excel row number, header is row 1
+        if row is None or all(cell is None or str(cell).strip() == "" for cell in row):
+            continue
+        link = str(row[link_col]).strip() if link_col < len(row) and row[link_col] is not None else ""
+        description = (
+            str(row[description_col]).strip()
+            if description_col < len(row) and row[description_col] is not None
+            else ""
+        )
+        if not description:
+            skipped_rows.append({"row_index": row_index})
+            continue
+        parsed = parse_profile_activity_from_description(description)
+        cleaned = sanitize_profile_activity_input({"link": link, "description": description}, parsed_fallback=parsed)
+        cleaned["row_index"] = row_index
+        items.append(cleaned)
+
+    return {"items": items, "skipped_rows": skipped_rows}
+
+
 def _get_or_create_state(doc: dict, mentee_id: str) -> dict:
     states = doc.setdefault("mentee_states", [])
     for item in states:
@@ -1732,7 +1799,6 @@ def serialize_profile_activity_for_feed(
         "activity_name": doc.get("activity_name", ""),
         "activity_type": doc.get("activity_type", "Khác"),
         "link": doc.get("link", ""),
-        "description": doc.get("description", ""),
         "deadline": doc.get("deadline", ""),
         "organizer": doc.get("organizer", ""),
         "target_audience": doc.get("target_audience", ""),
@@ -2266,6 +2332,79 @@ def delete_activity_group(activity: dict, group_id: str, admin: dict) -> dict:
         },
     )
     return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+class ProfileActivityDeleteError(ValueError):
+    pass
+
+
+def delete_activity(activity_id: str, admin: dict) -> tuple[bool, str]:
+    """Permanently delete a whole profile activity (HDNK) — not just one of its groups.
+
+    Unlike ``delete_activity_group`` (which only removes a group within an activity),
+    this removes the entire ``profile_activities`` document plus everything denormalized
+    from it onto mentee ``users`` documents and the shared ``mentor_inbox`` collection,
+    so no orphaned references are left behind:
+
+    - Active "Keep track" (HDNK/NCKH) entries the activity created on mentee user docs
+      (``users.hdnk_nckh_entries``), matched via each mentee_state's
+      ``keeptrack.hdnk_entry_id`` — the only structured link between an activity and a
+      mentee's keeptrack panel.
+    - ``mentor_inbox`` tasks about this activity. These tasks don't store a structured
+      activity_id, so cleanup is best-effort: scoped to participants of this activity
+      (mentee_states), to ``profile_activity*`` actions, and to tasks whose title or
+      description literally mentions this activity's name.
+
+    Permission convention mirrors ``delete_activity_group``: deleting an activity that
+    already has real mentee registrations is restricted to L1 mentors (or super admins);
+    an empty/placeholder activity with no registrations yet may be deleted by any
+    approved admin in the same mentor scope.
+    """
+    try:
+        oid = ObjectId(activity_id)
+    except (InvalidId, TypeError):
+        return False, "Hoạt động không tồn tại."
+
+    activity = profile_activities.find_one({"_id": oid})
+    if not activity:
+        return False, "Hoạt động không tồn tại."
+
+    mentee_states = activity.get("mentee_states") or []
+    has_registrations = any(state.get("registered_at") for state in mentee_states)
+    if has_registrations and admin_requires_l1_approval(admin):
+        return False, "Hoạt động đã có mentee báo danh — vui lòng liên hệ mentor cấp 1 để xóa."
+
+    activity_name = (activity.get("activity_name") or "").strip()
+    mentee_ids: list[str] = []
+    for state in mentee_states:
+        mentee_id = str(state.get("mentee_id") or "")
+        if not mentee_id or not ObjectId.is_valid(mentee_id):
+            continue
+        mentee_ids.append(mentee_id)
+
+        entry_id = (state.get("keeptrack") or {}).get("hdnk_entry_id")
+        if entry_id:
+            mentee = users.find_one({"_id": ObjectId(mentee_id)})
+            if mentee:
+                _restore_mentee_hdnk_entry(mentee, entry_id, None)
+
+    removed_inbox_count = 0
+    mentee_ids = sorted(set(mentee_ids))
+    if activity_name and mentee_ids:
+        result = mentor_inbox.delete_many(
+            {
+                "mentee_id": {"$in": mentee_ids},
+                "action": {"$regex": "^profile_activity"},
+                "$or": [
+                    {"description": {"$regex": re.escape(activity_name)}},
+                    {"title": {"$regex": re.escape(activity_name)}},
+                ],
+            }
+        )
+        removed_inbox_count = result.deleted_count
+
+    profile_activities.delete_one({"_id": oid})
+    return True, f"Đã xóa hoạt động và {removed_inbox_count} thông báo liên quan trong inbox mentor."
 
 
 def _apply_mentor_reject(activity: dict, mentee: dict, note: str = "") -> None:

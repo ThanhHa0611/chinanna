@@ -254,6 +254,10 @@ export default function ProfileActivities() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [createFormCollapsed, setCreateFormCollapsed] = useState(true);
+  const [bulkImportRows, setBulkImportRows] = useState([]);
+  const [bulkImportSkipped, setBulkImportSkipped] = useState([]);
+  const [bulkImportLoading, setBulkImportLoading] = useState(false);
+  const [bulkApproving, setBulkApproving] = useState(false);
   const [manageFormCollapsed, setManageFormCollapsed] = useState(true);
   const [moveTargets, setMoveTargets] = useState({});
   const [addToGroupTargets, setAddToGroupTargets] = useState({});
@@ -479,6 +483,100 @@ export default function ProfileActivities() {
     }
   };
 
+  const handleBulkImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkImportLoading(true);
+    setError('');
+    setMessage('');
+    try {
+      const data = await api.bulkImportParseProfileActivities(file);
+      const items = (data.items || []).map((item) => ({ ...item, _selected: true, _error: '' }));
+      setBulkImportRows(items);
+      setBulkImportSkipped(data.skipped_rows || []);
+      if (items.length) {
+        setMessage(`Đã phân tích ${items.length} dòng từ file — kiểm tra xem trước feed bên dưới.`);
+      } else {
+        setMessage('Không tìm thấy dòng hợp lệ nào trong file.');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBulkImportLoading(false);
+      e.target.value = '';
+    }
+  };
+
+  const updateBulkImportRow = (rowIndex, key, value) => {
+    setBulkImportRows((prev) =>
+      prev.map((row) => {
+        if (row.row_index !== rowIndex) return row;
+        const next = { ...row, [key]: value };
+        next.activity_name = compose_activity_name(next);
+        return next;
+      }),
+    );
+  };
+
+  const toggleBulkImportRowSelected = (rowIndex) => {
+    setBulkImportRows((prev) =>
+      prev.map((row) => (row.row_index === rowIndex ? { ...row, _selected: !row._selected } : row)),
+    );
+  };
+
+  const allBulkImportSelected =
+    bulkImportRows.length > 0 && bulkImportRows.every((row) => row._selected);
+
+  const toggleAllBulkImportRows = () => {
+    setBulkImportRows((prev) => prev.map((row) => ({ ...row, _selected: !allBulkImportSelected })));
+  };
+
+  const handleBulkApprove = async () => {
+    const selectedRows = bulkImportRows.filter((row) => row._selected);
+    if (!selectedRows.length) return;
+    setBulkApproving(true);
+    setError('');
+    setMessage('');
+    try {
+      const items = selectedRows.map(({ _selected, _error, ...rest }) => rest);
+      const data = await api.bulkCreateProfileActivities(items);
+      const results = data.results || [];
+      const successRowIndexes = new Set(
+        results.filter((item) => item.success).map((item) => item.row_index),
+      );
+      const errorByRow = new Map(
+        results.filter((item) => !item.success).map((item) => [item.row_index, item.error]),
+      );
+      setBulkImportRows((prev) =>
+        prev
+          .filter((row) => !successRowIndexes.has(row.row_index))
+          .map((row) =>
+            errorByRow.has(row.row_index)
+              ? { ...row, _error: errorByRow.get(row.row_index) }
+              : row,
+          ),
+      );
+      await loadActivities();
+      const successCount = successRowIndexes.size;
+      const failCount = results.length - successCount;
+      if (successCount && !failCount) {
+        setMessage(
+          isL2
+            ? `Đã gửi ${successCount} hoạt động, chờ mentor cấp 1 duyệt trước khi hiển thị cho mentee.`
+            : `Đã đăng ${successCount} hoạt động mới.`,
+        );
+      } else if (successCount && failCount) {
+        setMessage(`Đã tạo ${successCount} hoạt động, ${failCount} dòng lỗi — sửa lại bên dưới rồi duyệt lại.`);
+      } else {
+        setError('Không tạo được hoạt động nào — kiểm tra lại các dòng bên dưới.');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBulkApproving(false);
+    }
+  };
+
   const handleApprove = async (activityId) => {
     setSaving(true);
     setError('');
@@ -500,6 +598,33 @@ export default function ProfileActivities() {
       await api.rejectProfileActivity(activityId);
       await loadActivities();
       setMessage('Đã từ chối hoạt động.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteActivity = async (activity) => {
+    if (!activity?.id) return;
+    const activityName = (activity.activity_name || '').trim() || 'này';
+    if (
+      !window.confirm(
+        `Bạn có chắc muốn xóa toàn bộ hoạt động "${activityName}"? Hành động này sẽ xóa hoạt động, các nhóm và toàn bộ báo danh/tiến độ của mentee — không thể hoàn tác.`,
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.deleteProfileActivity(activity.id);
+      if (activity.id === selectedId) {
+        setSelectedId('');
+      }
+      await loadActivities();
+      setMessage(result?.message || 'Đã xóa hoạt động.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1520,6 +1645,174 @@ export default function ProfileActivities() {
         </button>
         {!createFormCollapsed && (
           <div className="daily-summary-body">
+            <div className="profile-activity-bulk-import">
+              <div className="action-cell">
+                <label
+                  className={`btn btn-outline btn-sm${bulkImportLoading ? ' btn-disabled' : ''}`}
+                  title="Tạo hàng loạt từ file Excel (cột Link và Mô tả gốc)"
+                >
+                  {bulkImportLoading ? 'Đang phân tích...' : '+ File'}
+                  <input
+                    type="file"
+                    accept=".xlsx"
+                    hidden
+                    disabled={bulkImportLoading}
+                    onChange={handleBulkImportFile}
+                  />
+                </label>
+                <span className="muted field-hint">
+                  Upload file Excel (cột Link, Mô tả gốc) để tạo hàng loạt hoạt động — xem trước và duyệt
+                  bên dưới
+                </span>
+              </div>
+              {bulkImportSkipped.length > 0 && (
+                <ul className="profile-activity-bulk-import-skipped muted">
+                  {bulkImportSkipped.map((row) => (
+                    <li key={row.row_index}>Bỏ qua dòng {row.row_index}: thiếu Mô tả gốc</li>
+                  ))}
+                </ul>
+              )}
+              {bulkImportRows.length > 0 && (
+                <div className="profile-activity-bulk-import-preview">
+                  <p className="profile-activity-feed-preview-label">
+                    Xem trước feed ({bulkImportRows.length} dòng)
+                  </p>
+                  <p className="muted profile-activity-feed-preview-hint">
+                    Kiểm tra/sửa các trường rồi chọn dòng cần duyệt — Tên hoạt động tự cập nhật theo các
+                    trường bên dưới
+                  </p>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>
+                            <input
+                              type="checkbox"
+                              checked={allBulkImportSelected}
+                              onChange={toggleAllBulkImportRows}
+                            />
+                          </th>
+                          <th>Tên hoạt động (tự động)</th>
+                          <th>Link</th>
+                          <th>Loại hoạt động</th>
+                          <th>Đơn vị tổ chức</th>
+                          <th>Nội dung</th>
+                          <th>Đối tượng</th>
+                          <th>Deadline</th>
+                          <th>Hình thức tham gia</th>
+                          <th>Mức độ quan trọng</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkImportRows.map((row) => (
+                          <tr key={row.row_index}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(row._selected)}
+                                onChange={() => toggleBulkImportRowSelected(row.row_index)}
+                              />
+                            </td>
+                            <td>
+                              <div>{row.activity_name}</div>
+                              {row._error && <p className="form-error">{row._error}</p>}
+                            </td>
+                            <td>
+                              <input
+                                value={row.link}
+                                onChange={(e) => updateBulkImportRow(row.row_index, 'link', e.target.value)}
+                              />
+                            </td>
+                            <td>
+                              <select
+                                value={row.activity_type}
+                                onChange={(e) =>
+                                  updateBulkImportRow(row.row_index, 'activity_type', e.target.value)
+                                }
+                              >
+                                {ACTIVITY_TYPES.map((item) => (
+                                  <option key={item} value={item}>
+                                    {item}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td>
+                              <input
+                                value={row.organizer}
+                                onChange={(e) =>
+                                  updateBulkImportRow(row.row_index, 'organizer', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                value={row.content}
+                                onChange={(e) =>
+                                  updateBulkImportRow(row.row_index, 'content', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                value={row.target_audience}
+                                onChange={(e) =>
+                                  updateBulkImportRow(row.row_index, 'target_audience', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                value={row.deadline}
+                                onChange={(e) =>
+                                  updateBulkImportRow(row.row_index, 'deadline', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td>
+                              <select
+                                value={row.participation_mode}
+                                onChange={(e) =>
+                                  updateBulkImportRow(row.row_index, 'participation_mode', e.target.value)
+                                }
+                              >
+                                {PARTICIPATION_MODE_OPTIONS.map((item) => (
+                                  <option key={item.value} value={item.value}>
+                                    {item.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td>
+                              <StarRating
+                                value={row.importance}
+                                onChange={(n) => updateBulkImportRow(row.row_index, 'importance', n)}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {isL2 && (
+                    <p className="muted profile-activity-l2-note">
+                      Hoạt động của mentor cấp 2 cần được mentor cấp 1 duyệt trước khi mentee thấy.
+                    </p>
+                  )}
+                  <div className="action-cell">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={handleBulkApprove}
+                      disabled={bulkApproving || !bulkImportRows.some((row) => row._selected)}
+                    >
+                      {isL2 ? 'Gửi duyệt hàng loạt' : 'Duyệt hàng loạt'} (
+                      {bulkImportRows.filter((row) => row._selected).length})
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="auth-form profile-activity-form">
           <label>
             Link
@@ -1677,6 +1970,16 @@ export default function ProfileActivities() {
               <span className="muted">
                 · {selectedActivity.registration_count || 0} báo danh
               </span>
+            </div>
+            <div className="action-cell">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => handleDeleteActivity(selectedActivity)}
+                disabled={saving}
+              >
+                Xóa HDNK
+              </button>
             </div>
             {canReview && selectedActivity.approval_status === 'pending_l1_approval' && (
               <div className="action-cell">

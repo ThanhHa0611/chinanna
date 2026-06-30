@@ -472,9 +472,18 @@ export default function Home() {
     );
   };
 
-  const inboxBoardSections = (inboxBoard?.sections || []).filter(
-    (section) => (section?.item_count || 0) > 0,
-  );
+  // Unprocessed items first, processed items last; stable sort keeps the
+  // existing relative order (e.g. newest-first) within each status group.
+  const byProcessedStatus = (a, b) => Number(isInboxItemDone(a)) - Number(isInboxItemDone(b));
+
+  const inboxBoardSections = (inboxBoard?.sections || [])
+    .filter((section) => (section?.item_count || 0) > 0)
+    .map((section) => ({
+      ...section,
+      items: [...(section.items || [])].sort(byProcessedStatus),
+    }));
+
+  const sortedDailySummaryItems = [...(dailySummary?.items || [])].sort(byProcessedStatus);
 
   if (loading) return <p className="loader">Đang tải...</p>;
   if (loadError) return <p className="form-error">{loadError}</p>;
@@ -626,7 +635,7 @@ export default function Home() {
                     <p className="muted">Không có hoạt động hôm nay.</p>
                   ) : (
                     <div className="daily-summary-list">
-                      {(dailySummary?.items || []).map((item) => renderDailySummaryRow(item))}
+                      {sortedDailySummaryItems.map((item) => renderDailySummaryRow(item))}
                     </div>
                   )}
                 </div>
