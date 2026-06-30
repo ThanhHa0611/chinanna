@@ -1,8 +1,49 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { formatDateTime } from '../utils/formatDateTime';
+import { formatDateTime, groupItemsByVnDate } from '../utils/formatDateTime';
 import { isLevel1MentorAccount } from '../utils/mentorDisplay';
+
+function FeedbackDateGroups({ sectionKey, items, renderItem }) {
+  const { todayItems, pastGroups } = useMemo(() => groupItemsByVnDate(items), [items]);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+
+  const groupCollapseKey = (dateKey) => `${sectionKey}-${dateKey}`;
+  const isGroupCollapsed = (dateKey) => collapsedGroups[groupCollapseKey(dateKey)] ?? true;
+
+  const toggleGroup = (dateKey) => {
+    const key = groupCollapseKey(dateKey);
+    setCollapsedGroups((prev) => ({ ...prev, [key]: !isGroupCollapsed(dateKey) }));
+  };
+
+  return (
+    <>
+      {todayItems.map(renderItem)}
+      {pastGroups.map((group) => (
+        <div key={group.dateKey} className="panel-card feedback-date-group">
+          <button
+            type="button"
+            className="daily-summary-head"
+            onClick={() => toggleGroup(group.dateKey)}
+            aria-expanded={!isGroupCollapsed(group.dateKey)}
+          >
+            <span className="daily-summary-title">
+              {group.dateLabel} ({group.items.length})
+            </span>
+            <span className="daily-summary-toggle">
+              {isGroupCollapsed(group.dateKey) ? 'Mở rộng' : 'Thu gọn'}
+            </span>
+          </button>
+          {!isGroupCollapsed(group.dateKey) && (
+            <div className="feedback-date-group-body">
+              {group.items.map(renderItem)}
+            </div>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
 
 export default function FeedbackPage() {
   const { admin } = useAuth();
@@ -142,7 +183,11 @@ export default function FeedbackPage() {
                 <p className="muted">Không có tin nhắn chưa đọc.</p>
               </div>
             ) : (
-              unreadFeedback.map(renderFeedbackItem)
+              <FeedbackDateGroups
+                sectionKey="unread"
+                items={unreadFeedback}
+                renderItem={renderFeedbackItem}
+              />
             )}
           </div>
 
@@ -155,7 +200,11 @@ export default function FeedbackPage() {
                 <p className="muted">Chưa có phản hồi đã xử lí.</p>
               </div>
             ) : (
-              doneFeedback.map(renderFeedbackItem)
+              <FeedbackDateGroups
+                sectionKey="done"
+                items={doneFeedback}
+                renderItem={renderFeedbackItem}
+              />
             )}
           </div>
         </>
