@@ -2757,20 +2757,12 @@ td.apply-progress-tone-black .apply-progress-select {
   border: 1px solid #fcd34d;
 }
 
-.access-login-warning {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  max-width: 16rem;
+.access-warnings-table td {
+  vertical-align: middle;
 }
 
-.access-login-warning strong {
-  color: #b45309;
-  font-size: 0.9rem;
-}
-
-.access-row-login-ip td {
-  vertical-align: top;
+.access-warnings-alert {
+  border-color: #fcd34d;
 }
 
 body.screen-protected-mentor {
@@ -3332,4 +3324,30 @@ html.device-phone .daily-summary-row {
 
 html.device-phone .daily-summary-status {
   width: 100%;
+}
+
+.profile-activity-form textarea {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-family: inherit;
+}
+
+.profile-activity-management {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.profile-activity-management input {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.profile-activity-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
 }

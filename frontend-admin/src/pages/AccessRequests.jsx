@@ -5,6 +5,8 @@ import { matchesNameSearch } from '../utils/searchByName';
 import { formatDateTime } from '../utils/formatDateTime';
 import { formatLevel1MentorLine } from '../utils/mentorDisplay';
 
+const REGISTRATION_TYPES = new Set(['mentee', 'mentor']);
+
 export default function AccessRequests() {
   const { admin } = useAuth();
   const isSuperAdmin = Boolean(admin?.is_super_admin);
@@ -18,24 +20,53 @@ export default function AccessRequests() {
   const [revokeTarget, setRevokeTarget] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const accessSearchFields = [
+  const registrationRequests = useMemo(
+    () => requests.filter((item) => REGISTRATION_TYPES.has(item.request_type)),
+    [requests],
+  );
+
+  const warningRequests = useMemo(
+    () => requests.filter((item) => item.request_type === 'mentee_login_ip'),
+    [requests],
+  );
+
+  const registrationSearchFields = [
     'full_name',
     'username',
     'email',
     'zalo_phone',
-    'mentee_name',
-    'old_ip',
-    'new_ip',
-    'warning_message',
   ];
 
-  const filteredRequests = useMemo(
-    () => requests.filter((item) => matchesNameSearch(item, searchQuery, accessSearchFields)),
-    [requests, searchQuery],
+  const warningSearchFields = [
+    'mentee_name',
+    'full_name',
+    'old_ip',
+    'new_ip',
+    'old_device_label',
+    'new_device_label',
+  ];
+
+  const filteredRegistration = useMemo(
+    () =>
+      registrationRequests.filter((item) =>
+        matchesNameSearch(item, searchQuery, registrationSearchFields),
+      ),
+    [registrationRequests, searchQuery],
+  );
+
+  const filteredWarnings = useMemo(
+    () =>
+      warningRequests.filter((item) =>
+        matchesNameSearch(item, searchQuery, warningSearchFields),
+      ),
+    [warningRequests, searchQuery],
   );
 
   const filteredTeam = useMemo(
-    () => team.filter((item) => matchesNameSearch(item, searchQuery, accessSearchFields)),
+    () =>
+      team.filter((item) =>
+        matchesNameSearch(item, searchQuery, ['full_name', 'username', 'email']),
+      ),
     [team, searchQuery],
   );
 
@@ -81,12 +112,6 @@ export default function AccessRequests() {
     }
   };
 
-  const formatIpLocation = (ip, location) => {
-    if (!ip && !location) return '—';
-    if (ip && location) return `${ip} · ${location}`;
-    return ip || location || '—';
-  };
-
   const handleRevoke = async () => {
     if (!revokeTarget) return;
     setProcessingId(revokeTarget.id);
@@ -111,9 +136,19 @@ export default function AccessRequests() {
   const tabs = isSuperAdmin
     ? [
         { id: 'team', label: 'Team mentor' },
-        { id: 'pending', label: 'Chờ duyệt' },
+        { id: 'pending', label: 'Chờ duyệt', count: filteredRegistration.length },
+        { id: 'warnings', label: 'Cảnh báo', count: filteredWarnings.length },
       ]
-    : [{ id: 'pending', label: 'Chờ duyệt' }];
+    : [
+        { id: 'pending', label: 'Chờ duyệt', count: filteredRegistration.length },
+        { id: 'warnings', label: 'Cảnh báo', count: filteredWarnings.length },
+      ];
+
+  const showSearch =
+    !loading &&
+    (registrationRequests.length > 0 ||
+      warningRequests.length > 0 ||
+      team.length > 0);
 
   return (
     <>
@@ -129,19 +164,27 @@ export default function AccessRequests() {
           <button
             key={item.id}
             type="button"
-            className={`page-tab${tab === item.id ? ' active' : ''}${item.id === 'pending' && filteredRequests.length > 0 ? ' page-tab-alert' : ''}`}
+            className={`page-tab${tab === item.id ? ' active' : ''}${item.count > 0 ? ' page-tab-alert' : ''}`}
             onClick={() => setTab(item.id)}
           >
             {item.label}
-            {item.id === 'pending' && filteredRequests.length > 0 ? ` (${filteredRequests.length})` : ''}
+            {item.count > 0 ? ` (${item.count})` : ''}
           </button>
         ))}
       </div>
 
-      {requests.length > 0 && tab === 'pending' && (
+      {registrationRequests.length > 0 && tab === 'pending' && (
         <div className="panel-card alert-card access-requests-alert">
           <p>
-            Có <strong>{requests.length}</strong> yêu cầu cấp quyền cần xử lí.
+            Có <strong>{registrationRequests.length}</strong> yêu cầu đăng ký cần duyệt.
+          </p>
+        </div>
+      )}
+
+      {warningRequests.length > 0 && tab === 'warnings' && (
+        <div className="panel-card alert-card access-requests-alert access-warnings-alert">
+          <p>
+            Có <strong>{warningRequests.length}</strong> cảnh báo đăng nhập IP/thiết bị mới.
           </p>
         </div>
       )}
@@ -149,7 +192,7 @@ export default function AccessRequests() {
       {message && <p className="form-success panel-error">{message}</p>}
       {error && <p className="form-error panel-error">{error}</p>}
 
-      {!loading && (requests.length > 0 || team.length > 0) && (
+      {showSearch && (
         <div className="page-search">
           <label className="page-search-label" htmlFor="access-search">
             Tìm kiếm
@@ -209,11 +252,70 @@ export default function AccessRequests() {
             </div>
           )}
         </div>
+      ) : tab === 'warnings' ? (
+        <div className="panel-card">
+          {filteredWarnings.length === 0 ? (
+            <p className="muted">
+              {warningRequests.length === 0
+                ? 'Không có cảnh báo đăng nhập.'
+                : 'Không tìm thấy kết quả phù hợp.'}
+            </p>
+          ) : (
+            <div className="table-wrap">
+              <table className="access-warnings-table">
+                <thead>
+                  <tr>
+                    <th>Tên</th>
+                    <th>Thiết bị cũ</th>
+                    <th>Thiết bị mới</th>
+                    <th>IP cũ</th>
+                    <th>IP mới</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredWarnings.map((req) => {
+                    const rowKey = `${req.request_type}-${req.id}`;
+                    return (
+                      <tr key={rowKey}>
+                        <td>{req.mentee_name || req.full_name || '—'}</td>
+                        <td>{req.old_device_label || '—'}</td>
+                        <td>{req.new_device_label || '—'}</td>
+                        <td>{req.old_ip || '—'}</td>
+                        <td>{req.new_ip || '—'}</td>
+                        <td className="action-cell">
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            disabled={processingId === rowKey}
+                            onClick={() => handleReview(req, 'approved')}
+                          >
+                            Đồng ý
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            disabled={processingId === rowKey}
+                            onClick={() => handleReview(req, 'rejected')}
+                          >
+                            Từ chối
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="panel-card">
-          {filteredRequests.length === 0 ? (
+          {filteredRegistration.length === 0 ? (
             <p className="muted">
-              {requests.length === 0 ? 'Không có yêu cầu đang chờ.' : 'Không tìm thấy kết quả phù hợp.'}
+              {registrationRequests.length === 0
+                ? 'Không có yêu cầu đăng ký đang chờ.'
+                : 'Không tìm thấy kết quả phù hợp.'}
             </p>
           ) : (
             <div className="table-wrap">
@@ -221,72 +323,39 @@ export default function AccessRequests() {
                 <thead>
                   <tr>
                     <th>Loại</th>
-                    <th>Cảnh báo</th>
-                    <th>Họ tên mentee</th>
-                    <th>IP & vị trí cũ</th>
-                    <th>IP & vị trí mới</th>
+                    <th>Họ tên</th>
                     <th>Email / Zalo</th>
                     <th>Team</th>
+                    <th>Vị trí đăng ký</th>
                     <th>Yêu cầu lúc</th>
                     <th>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRequests.map((req) => {
+                  {filteredRegistration.map((req) => {
                     const rowKey = `${req.request_type}-${req.id}`;
-                    const isLoginIp = req.request_type === 'mentee_login_ip';
                     const isMenteeReg = req.request_type === 'mentee';
-                    const roleClass = isLoginIp
-                      ? 'role-badge-login'
-                      : isMenteeReg
-                        ? 'role-badge-mentee'
-                        : 'role-badge-mentor';
+                    const roleClass = isMenteeReg ? 'role-badge-mentee' : 'role-badge-mentor';
                     return (
-                      <tr key={rowKey} className={isLoginIp ? 'access-row-login-ip' : ''}>
+                      <tr key={rowKey}>
                         <td>
                           <span className={`role-badge ${roleClass}`}>{req.role_label}</span>
                         </td>
                         <td>
-                          {isLoginIp ? (
-                            <div className="access-login-warning">
-                              <strong>{req.warning_message || 'Đăng nhập từ IP mới'}</strong>
-                              {req.device_label && (
-                                <span className="muted">{req.device_label}</span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="muted">—</span>
-                          )}
-                        </td>
-                        <td>
-                          {isLoginIp
-                            ? req.mentee_name || req.full_name || '—'
-                            : isMenteeReg
-                              ? req.full_name || '—'
-                              : req.full_name || req.username || '—'}
-                        </td>
-                        <td>
-                          {isLoginIp
-                            ? formatIpLocation(req.old_ip, req.old_location_label)
-                            : isMenteeReg
-                              ? req.registration_location_label || '—'
-                              : '—'}
-                        </td>
-                        <td>
-                          {isLoginIp
-                            ? formatIpLocation(req.new_ip, req.new_location_label)
-                            : '—'}
+                          {isMenteeReg
+                            ? req.full_name || '—'
+                            : req.full_name || req.username || '—'}
                         </td>
                         <td>
                           <div>{req.email || '—'}</div>
                           {isMenteeReg && req.zalo_phone && (
                             <span className="muted">Zalo: {req.zalo_phone}</span>
                           )}
-                          {isLoginIp && req.zalo_phone && (
-                            <span className="muted">Zalo: {req.zalo_phone}</span>
-                          )}
                         </td>
                         <td>{formatLevel1MentorLine(req.team) || req.team || '—'}</td>
+                        <td>
+                          {isMenteeReg ? req.registration_location_label || '—' : '—'}
+                        </td>
                         <td>{formatDateTime(req.requested_at)}</td>
                         <td className="action-cell">
                           <button

@@ -232,15 +232,11 @@ def serialize_unified_access_request_mentee_login(
         return value or ""
 
     old_info = get_primary_known_ip_info(account_user)
+    old_device_raw = get_primary_known_device_label(account_user)
+    new_device_raw = pending_entry.get("device_label", "")
     requested_at = pending_entry.get("requested_at")
     is_parent = account_user.get("role") == ROLE_PARENT
     mentee_name = subject_mentee.get("full_name") or subject_mentee.get("username", "")
-    if is_parent:
-        account_label = account_user.get("full_name") or "Phụ huynh"
-        warning = f"Phụ huynh của {mentee_name} đăng nhập từ IP mới"
-    else:
-        account_label = mentee_name
-        warning = f"{mentee_name} đăng nhập từ IP mới"
 
     return {
         "id": pending_entry.get("id", ""),
@@ -248,12 +244,13 @@ def serialize_unified_access_request_mentee_login(
         "request_type": "mentee_login_ip",
         "role_label": "Phụ huynh" if is_parent else "Đăng nhập",
         "mentee_name": mentee_name,
-        "full_name": account_label,
+        "full_name": (account_user.get("full_name") or mentee_name)
+        if not is_parent
+        else (account_user.get("full_name") or "Phụ huynh"),
         "email": account_user.get("email", ""),
         "username": account_user.get("username", ""),
         "team": subject_mentee.get("mentor", ""),
         "requested_at": fmt_dt(requested_at),
-        "warning_message": warning,
         "old_ip": old_info.get("ip", ""),
         "old_location_label": old_info.get("location_label", ""),
         "new_ip": pending_entry.get("ip", ""),
@@ -262,7 +259,8 @@ def serialize_unified_access_request_mentee_login(
             latitude=pending_entry.get("latitude"),
             longitude=pending_entry.get("longitude"),
         ),
-        "device_label": pending_entry.get("device_label", ""),
+        "old_device_label": short_device_label(old_device_raw),
+        "new_device_label": short_device_label(new_device_raw),
         "zalo_phone": subject_mentee.get("zalo_phone", ""),
     }
 
@@ -314,7 +312,7 @@ def count_pending_mentee_login_requests(admin: dict) -> int:
     return total
 
 
-def list_pending_access_requests(admin: dict) -> list:
+def list_pending_registration_requests(admin: dict) -> list:
     items: list[dict] = []
     if is_super_admin(admin):
         mentor_query = {"status": ADMIN_STATUS_PENDING, **access_branch_query(admin)}
@@ -325,20 +323,35 @@ def list_pending_access_requests(admin: dict) -> list:
     for doc in users.find(mentee_query).sort("requested_at", -1):
         items.append(serialize_unified_access_request_mentee(doc))
 
-    append_pending_mentee_login_access_requests(admin, items)
-
     items.sort(key=lambda item: item.get("requested_at") or "", reverse=True)
     return items
 
 
-def count_pending_access_requests(admin: dict) -> int:
+def list_pending_login_ip_requests(admin: dict) -> list:
+    items: list[dict] = []
+    append_pending_mentee_login_access_requests(admin, items)
+    items.sort(key=lambda item: item.get("requested_at") or "", reverse=True)
+    return items
+
+
+def list_pending_access_requests(admin: dict) -> list:
+    items = list_pending_registration_requests(admin)
+    append_pending_mentee_login_access_requests(admin, items)
+    items.sort(key=lambda item: item.get("requested_at") or "", reverse=True)
+    return items
+
+
+def count_pending_registration_requests(admin: dict) -> int:
     total = users.count_documents(pending_mentee_registration_query(admin))
-    total += count_pending_mentee_login_requests(admin)
     if is_super_admin(admin):
         total += admins.count_documents(
             {"status": ADMIN_STATUS_PENDING, **access_branch_query(admin)}
         )
     return total
+
+
+def count_pending_access_requests(admin: dict) -> int:
+    return count_pending_registration_requests(admin) + count_pending_mentee_login_requests(admin)
 
 
 def apply_mentee_login_ip_review(admin: dict, user_id: str, request_id: str, data: dict):

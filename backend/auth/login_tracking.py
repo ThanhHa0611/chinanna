@@ -43,6 +43,46 @@ def device_label_from_user_agent(user_agent: str) -> str:
     return ua[:160] if ua else "Thiết bị không xác định"
 
 
+def short_device_label(label: str) -> str:
+    text = (label or "").strip()
+    if not text:
+        return "—"
+    if len(text) <= 48 and not text.startswith("Mozilla"):
+        return text
+
+    browser = ""
+    if "Edg/" in text:
+        browser = "Edge"
+    elif "OPR/" in text or "Opera" in text:
+        browser = "Opera"
+    elif "Chrome/" in text:
+        browser = "Chrome"
+    elif "Firefox/" in text:
+        browser = "Firefox"
+    elif "Safari/" in text:
+        browser = "Safari"
+
+    os_name = ""
+    if "Windows" in text:
+        os_name = "Windows"
+    elif "Mac OS" in text or "Macintosh" in text:
+        os_name = "macOS"
+    elif "Android" in text:
+        os_name = "Android"
+    elif "iPhone" in text or "iPad" in text:
+        os_name = "iOS"
+    elif "Linux" in text:
+        os_name = "Linux"
+
+    if browser and os_name:
+        return f"{browser} · {os_name}"
+    if browser:
+        return browser
+    if os_name:
+        return os_name
+    return text[:48] + ("…" if len(text) > 48 else "")
+
+
 def serialize_pending_login_requests(user: dict) -> list:
     def fmt_dt(value):
         if isinstance(value, datetime):
@@ -119,6 +159,29 @@ def get_primary_known_ip_info(user: dict) -> dict:
             last_longitude=latest.get("last_longitude"),
         ),
     }
+
+
+def get_primary_known_device_label(user: dict) -> str:
+    approved_devices = set(user.get("approved_login_devices") or [])
+    login_devices = list(user.get("login_devices") or [])
+    candidates = [
+        entry for entry in login_devices if entry.get("device_id") in approved_devices
+    ]
+    if not candidates:
+        candidates = login_devices
+    if not candidates:
+        return ""
+
+    def sort_key(entry: dict) -> datetime:
+        seen = entry.get("last_seen")
+        if isinstance(seen, datetime):
+            if seen.tzinfo is None:
+                return seen.replace(tzinfo=timezone.utc)
+            return seen
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+    latest = max(candidates, key=sort_key)
+    return latest.get("label", "")
 
 
 def get_login_context() -> tuple[str, str, str]:
