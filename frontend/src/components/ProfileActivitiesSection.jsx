@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api';
-import { format_activity_feed_line } from '../utils/profileActivities';
+import { format_activity_feed_line, getDeadlineBadge } from '../utils/profileActivities';
 
 export default function ProfileActivitiesSection({ user }) {
   const [days, setDays] = useState([]);
@@ -74,6 +74,14 @@ export default function ProfileActivitiesSection({ user }) {
     }
   };
 
+  const renderDeadlineBadge = (item) => {
+    const badge = getDeadlineBadge(item.deadline, item.deadline_badge);
+    if (!badge) return null;
+    return (
+      <span className={`profile-activity-deadline-badge is-${badge.variant}`}>{badge.label}</span>
+    );
+  };
+
   const renderItem = (item) => {
     const line = format_activity_feed_line(item, user);
     return (
@@ -90,6 +98,7 @@ export default function ProfileActivitiesSection({ user }) {
           >
             {item.highlight_star ? '⭐ ' : ''}
             {line}
+            {renderDeadlineBadge(item)}
           </button>
         </div>
         <div className="profile-activity-line-actions">
@@ -152,7 +161,12 @@ export default function ProfileActivitiesSection({ user }) {
             {detail.organizer && <p><strong>Đơn vị:</strong> {detail.organizer}</p>}
             {detail.content && <p><strong>Nội dung:</strong> {detail.content}</p>}
             {detail.target_audience && <p><strong>Đối tượng:</strong> {detail.target_audience}</p>}
-            {detail.deadline && <p><strong>Deadline:</strong> {detail.deadline}</p>}
+            {detail.deadline && (
+              <p>
+                <strong>Deadline:</strong> {detail.deadline}
+                {renderDeadlineBadge(detail)}
+              </p>
+            )}
             {detail.link && (
               <p>
                 <strong>Link:</strong>{' '}

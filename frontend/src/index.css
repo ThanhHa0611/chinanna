@@ -2350,3 +2350,30 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
 .profile-activity-modal {
   width: min(100%, 560px);
 }
+
+.profile-activity-deadline-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.profile-activity-deadline-badge.is-expired {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.profile-activity-deadline-badge.is-warning {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.profile-activity-deadline-badge.is-urgent {
+  background: #fee2e2;
+  color: #b91c1c;
+}

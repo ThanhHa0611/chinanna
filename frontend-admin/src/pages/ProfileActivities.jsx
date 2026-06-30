@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api';
+import { getDeadlineBadge } from '../utils/profileActivities';
 
 const ACTIVITY_TYPES = ['Cuộc thi', 'NCKH', 'HĐNK', 'Hội thảo', 'Chương trình hè', 'Dự án', 'Khác'];
 const MAJORS = [
-  'Kinh tế',
-  'Kỹ thuật',
-  'Logistics',
+  'Kinh tế & Logistics',
   'Truyền thông',
-  'Giáo dục',
-  'Ngôn ngữ',
+  'Ngôn ngữ & Giáo dục',
   'Y sinh',
   'Nghệ thuật',
   'Xã hội học',
+  'Quan hệ quốc tế',
+  'Luật',
   'Khác',
 ];
 
@@ -27,6 +27,7 @@ function emptyForm() {
     content: '',
     attachment_url: '',
     suitable_majors: [],
+    suitable_majors_other: '',
   };
 }
 
@@ -81,11 +82,13 @@ export default function ProfileActivities() {
   const toggleMajor = (major) => {
     setForm((prev) => {
       const has = prev.suitable_majors.includes(major);
+      const suitable_majors = has
+        ? prev.suitable_majors.filter((item) => item !== major)
+        : [...prev.suitable_majors, major];
       return {
         ...prev,
-        suitable_majors: has
-          ? prev.suitable_majors.filter((item) => item !== major)
-          : [...prev.suitable_majors, major],
+        suitable_majors,
+        suitable_majors_other: major === 'Khác' && has ? '' : prev.suitable_majors_other,
       };
     });
   };
@@ -100,6 +103,7 @@ export default function ProfileActivities() {
         ...prev,
         ...parsed,
         suitable_majors: parsed.suitable_majors || [],
+        suitable_majors_other: parsed.suitable_majors_other || '',
       }));
       setMessage('Đã phân tích mô tả. Bạn kiểm tra lại rồi đăng.');
     } catch (err) {
@@ -183,6 +187,14 @@ export default function ProfileActivities() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const renderDeadlineBadge = (activity) => {
+    const badge = getDeadlineBadge(activity?.deadline, activity?.deadline_badge);
+    if (!badge) return null;
+    return (
+      <span className={`profile-activity-deadline-badge is-${badge.variant}`}>{badge.label}</span>
+    );
   };
 
   if (loading) return <p className="loader">Đang tải...</p>;
@@ -277,6 +289,16 @@ export default function ProfileActivities() {
                 </label>
               ))}
             </div>
+            {form.suitable_majors.includes('Khác') && (
+              <label>
+                Ngành khác (ghi rõ)
+                <input
+                  value={form.suitable_majors_other}
+                  onChange={(e) => updateForm('suitable_majors_other', e.target.value)}
+                  placeholder="Ví dụ: Kiến trúc, Du lịch..."
+                />
+              </label>
+            )}
           </div>
           <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={saving}>
             Đăng hoạt động
@@ -293,6 +315,7 @@ export default function ProfileActivities() {
             {activities.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.activity_name} ({item.registration_count || 0} báo danh)
+                {item.deadline ? ` · ${item.deadline}` : ''}
               </option>
             ))}
           </select>
@@ -303,7 +326,22 @@ export default function ProfileActivities() {
             <p>
               <strong>{selectedActivity.activity_name}</strong> · {selectedActivity.registration_count || 0} báo
               danh
+              {selectedActivity.deadline && (
+                <>
+                  {' '}
+                  · Deadline {selectedActivity.deadline}
+                  {renderDeadlineBadge(selectedActivity)}
+                </>
+              )}
             </p>
+            {(selectedActivity.suitable_majors || []).length > 0 && (
+              <p className="muted">
+                Ngành phù hợp: {(selectedActivity.suitable_majors || []).join(', ')}
+                {selectedActivity.suitable_majors_other
+                  ? ` (${selectedActivity.suitable_majors_other})`
+                  : ''}
+              </p>
+            )}
             <div className="table-wrap">
               <table>
                 <thead>

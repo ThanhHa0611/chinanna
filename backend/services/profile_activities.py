@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from bson import ObjectId
 
@@ -23,17 +24,25 @@ PROFILE_ACTIVITY_TYPES = (
 )
 
 PROFILE_ACTIVITY_MAJOR_OPTIONS = (
-    "Kinh tế",
-    "Kỹ thuật",
-    "Logistics",
+    "Kinh tế & Logistics",
     "Truyền thông",
-    "Giáo dục",
-    "Ngôn ngữ",
+    "Ngôn ngữ & Giáo dục",
     "Y sinh",
     "Nghệ thuật",
     "Xã hội học",
+    "Quan hệ quốc tế",
+    "Luật",
     "Khác",
 )
+
+VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
+
+_LEGACY_MAJOR_MAP = {
+    "Kinh tế": "Kinh tế & Logistics",
+    "Logistics": "Kinh tế & Logistics",
+    "Giáo dục": "Ngôn ngữ & Giáo dục",
+    "Ngôn ngữ": "Ngôn ngữ & Giáo dục",
+}
 
 _TYPE_KEYWORDS = [
     ("Cuộc thi", ("cuộc thi", "competition", "contest", "thi ")),
@@ -45,22 +54,43 @@ _TYPE_KEYWORDS = [
 ]
 
 _MAJOR_KEYWORDS = {
-    "Kinh tế": ("kinh tế", "kinh te", "business", "finance", "marketing", "accounting"),
-    "Kỹ thuật": ("kỹ thuật", "ki thuat", "kĩ thuật", "engineering", "it", "ai", "data"),
-    "Logistics": ("logistics", "supply chain", "chuỗi cung ứng", "xuất nhập khẩu"),
+    "Kinh tế & Logistics": (
+        "kinh tế",
+        "kinh te",
+        "business",
+        "finance",
+        "marketing",
+        "accounting",
+        "logistics",
+        "supply chain",
+        "chuỗi cung ứng",
+        "xuất nhập khẩu",
+    ),
     "Truyền thông": ("truyền thông", "truyen thong", "media", "content", "pr"),
-    "Giáo dục": ("giáo dục", "giao duc", "education", "sư phạm"),
-    "Ngôn ngữ": ("ngôn ngữ", "ngon ngu", "language", "translation"),
-    "Y sinh": ("y sinh", "medicine", "biomedical", "healthcare", "pharma"),
+    "Ngôn ngữ & Giáo dục": (
+        "giáo dục",
+        "giao duc",
+        "education",
+        "sư phạm",
+        "ngôn ngữ",
+        "ngon ngu",
+        "language",
+        "translation",
+    ),
+    "Y sinh": ("y sinh", "medicine", "biomedical", "healthcare", "pharma", "dược", "duoc"),
     "Nghệ thuật": ("nghệ thuật", "nghe thuat", "design", "music", "art"),
     "Xã hội học": ("xã hội", "xa hoi", "social", "humanities", "psychology"),
+    "Quan hệ quốc tế": ("quan hệ quốc tế", "quan he quoc te", "international relations"),
+    "Luật": ("luật", "luat", "law", "legal"),
 }
 
 _MAJOR_ALIASES = {
-    "kinh_te": "Kinh tế",
-    "giao_duc": "Giáo dục",
+    "kinh_te": "Kinh tế & Logistics",
+    "giao_duc": "Ngôn ngữ & Giáo dục",
     "truyen_thong": "Truyền thông",
+    "quan_he_quoc_te": "Quan hệ quốc tế",
     "duoc": "Y sinh",
+    "khac": "Khác",
 }
 
 
@@ -110,6 +140,44 @@ def _extract_type(text: str) -> str:
     return "Khác"
 
 
+def _normalize_major_label(raw: str) -> str | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    if value in PROFILE_ACTIVITY_MAJOR_OPTIONS:
+        return value
+    return _LEGACY_MAJOR_MAP.get(value)
+
+
+def _parse_deadline_date(deadline: str):
+    normalized = _normalize_date_text(deadline)
+    if not normalized:
+        return None
+    parts = normalized.split("/")
+    if len(parts) != 3:
+        return None
+    try:
+        day, month, year = int(parts[0]), int(parts[1]), int(parts[2])
+        return datetime(year, month, day, tzinfo=VN_TZ).date()
+    except ValueError:
+        return None
+
+
+def get_deadline_badge(deadline: str) -> dict | None:
+    deadline_date = _parse_deadline_date(deadline)
+    if not deadline_date:
+        return None
+    today = datetime.now(VN_TZ).date()
+    days_left = (deadline_date - today).days
+    if days_left < 0:
+        return {"label": "Hết hạn", "variant": "expired"}
+    if days_left <= 3:
+        return {"label": "Còn 3 ngày", "variant": "urgent"}
+    if days_left <= 7:
+        return {"label": "Còn 7 ngày", "variant": "warning"}
+    return None
+
+
 def _extract_majors(text: str) -> list[str]:
     lowered = (text or "").lower()
     majors: list[str] = []
@@ -150,9 +218,12 @@ def sanitize_profile_activity_input(data: dict, *, parsed_fallback: dict | None 
         majors = parsed_fallback.get("suitable_majors") or []
     cleaned_majors: list[str] = []
     for major in majors:
-        value = str(major or "").strip()
-        if value in PROFILE_ACTIVITY_MAJOR_OPTIONS and value not in cleaned_majors:
-            cleaned_majors.append(value)
+        normalized = _normalize_major_label(str(major or ""))
+        if normalized and normalized not in cleaned_majors:
+            cleaned_majors.append(normalized)
+    other = str(data.get("suitable_majors_other") or "").strip()
+    if "Khác" not in cleaned_majors:
+        other = ""
     activity_type = (data.get("activity_type") or parsed_fallback.get("activity_type") or "Khác").strip()
     if activity_type not in PROFILE_ACTIVITY_TYPES:
         activity_type = "Khác"
@@ -169,6 +240,7 @@ def sanitize_profile_activity_input(data: dict, *, parsed_fallback: dict | None 
         "content": str(data.get("content") or parsed_fallback.get("content") or "").strip(),
         "attachment_url": str(data.get("attachment_url") or "").strip(),
         "suitable_majors": cleaned_majors,
+        "suitable_majors_other": other,
     }
 
 
@@ -209,6 +281,23 @@ def _mentee_major_values(mentee: dict) -> set[str]:
     return values
 
 
+def _mentee_free_text(mentee: dict) -> str:
+    parts = [
+        mentee.get("apply_direction", ""),
+        mentee.get("mentor_apply_direction", ""),
+        mentor_apply_direction_label(mentee.get("mentor_apply_direction", "")),
+    ]
+    return " | ".join(str(item or "").lower() for item in parts)
+
+
+def _matches_other_major(activity: dict, mentee: dict) -> bool:
+    other = (activity.get("suitable_majors_other") or "").strip().lower()
+    if not other:
+        return "Khác" in _mentee_major_values(mentee)
+    mentee_text = _mentee_free_text(mentee)
+    return other in mentee_text
+
+
 def format_activity_feed_line(activity: dict, mentee: dict | None = None) -> str:
     line = (activity.get("activity_name") or "").strip() or "Hoạt động hồ sơ"
     details = []
@@ -226,11 +315,20 @@ def format_activity_feed_line(activity: dict, mentee: dict | None = None) -> str
 
 
 def activity_matches_mentee_major(activity: dict, mentee: dict) -> bool:
-    suitable = set(activity.get("suitable_majors") or [])
+    suitable = {
+        normalized
+        for major in (activity.get("suitable_majors") or [])
+        if (normalized := _normalize_major_label(major))
+    }
     if not suitable:
         return False
     mentee_majors = _mentee_major_values(mentee)
-    return bool(suitable.intersection(mentee_majors))
+    standard_suitable = suitable - {"Khác"}
+    if standard_suitable.intersection(mentee_majors):
+        return True
+    if "Khác" in suitable:
+        return _matches_other_major(activity, mentee)
+    return False
 
 
 def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidden: bool = False) -> dict:
@@ -251,6 +349,7 @@ def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidd
         "content": doc.get("content", ""),
         "attachment_url": doc.get("attachment_url", ""),
         "suitable_majors": doc.get("suitable_majors", []),
+        "suitable_majors_other": doc.get("suitable_majors_other", ""),
         "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else "",
         "updated_at": doc.get("updated_at").isoformat() if doc.get("updated_at") else "",
         "read": bool(state.get("read_at")),
@@ -260,6 +359,7 @@ def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidd
         "group_response_note": state.get("group_response_note", ""),
         "highlight_star": activity_matches_mentee_major(doc, mentee),
         "registration_count": registration_count,
+        "deadline_badge": get_deadline_badge(doc.get("deadline", "")),
     }
     payload["feed_line"] = format_activity_feed_line(payload, mentee)
     return payload
@@ -280,10 +380,12 @@ def serialize_admin_profile_activity(doc: dict) -> dict:
         "content": doc.get("content", ""),
         "attachment_url": doc.get("attachment_url", ""),
         "suitable_majors": doc.get("suitable_majors", []),
+        "suitable_majors_other": doc.get("suitable_majors_other", ""),
         "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else "",
         "updated_at": doc.get("updated_at").isoformat() if doc.get("updated_at") else "",
         "registration_count": len(registrations),
         "groups": doc.get("groups", []),
+        "deadline_badge": get_deadline_badge(doc.get("deadline", "")),
     }
 
 
