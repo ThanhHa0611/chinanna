@@ -151,6 +151,9 @@ export const api = {
   ackMissingDocumentsReminder: () =>
     request('/api/documents/apply/ack-missing-reminder', { method: 'POST' }),
 
+  ackProfileInfoReminder: () =>
+    request('/api/auth/ack-profile-reminder', { method: 'POST' }),
+
   uploadApplyDocument: async (docId, file) => {
     const token = localStorage.getItem('token');
     const formData = new FormData();

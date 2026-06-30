@@ -737,3 +737,60 @@ def admin_update_mentee_mentor_info(mentee_id: str):
     fresh = users.find_one({"_id": ObjectId(mentee_id)})
     return jsonify(serialize_admin_mentee_detail(fresh, admin))
 
+
+@app.post("/api/admin/mentees/<mentee_id>/profile/remind")
+@with_db
+def admin_remind_profile_info(mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    mentee, error = get_mentee_for_admin(admin, mentee_id)
+    if error:
+        return error
+
+    from services.profile_info import (
+        get_missing_profile_field_keys,
+        serialize_profile_info_reminder,
+    )
+
+    missing_keys = get_missing_profile_field_keys(mentee)
+    if not missing_keys:
+        return jsonify({"detail": "Mentee đã điền đủ thông tin cá nhân"}), 400
+
+    now = datetime.now(timezone.utc)
+    reminder = {
+        "field_keys": missing_keys,
+        "message": PROFILE_INFO_REMINDER_MESSAGE,
+        "mentee_unread": True,
+        "sent_at": now,
+        "sent_by": str(admin["_id"]),
+    }
+    from bson import ObjectId
+
+    users.update_one({"_id": ObjectId(mentee_id)}, {"$set": {"profile_info_reminder": reminder}})
+
+    labels = [PROFILE_INFO_FIELD_LABELS.get(key, key) for key in missing_keys]
+    log_mentor_activity(
+        admin,
+        "profile_info_reminder",
+        f"Nhắc nhở bổ sung thông tin cá nhân — {mentee.get('email', mentee_id)}: {', '.join(labels)}",
+        mentee_id=mentee_id,
+    )
+    if is_l2_mentor_admin(admin):
+        push_l2_mentor_activity(
+            mentee_id,
+            admin,
+            "info",
+            "profile_info_reminder",
+            f"Nhắc mentee bổ sung thông tin: {', '.join(labels)}",
+        )
+
+    return jsonify({
+        "message": "Đã gửi nhắc nhở tới mentee",
+        "profile_info_reminder": serialize_profile_info_reminder({**mentee, "profile_info_reminder": reminder}),
+    })
+

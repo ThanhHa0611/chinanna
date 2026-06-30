@@ -34,6 +34,17 @@ FEEDBACK_STATUS_PENDING = "chờ xử lí"
 FEEDBACK_STATUS_DONE = "đã xử lí"
 FEEDBACK_MENTEE_RECEIVED = "Mentor đã nhận được tin nhắn của bạnn rùii"
 APPLY_MISSING_REMINDER_MESSAGE = "Bạn cần làm các loại giấy tờ sau"
+PROFILE_INFO_REMINDER_MESSAGE = "Vui lòng hoàn thiện thông tin cá nhân bạn nhé"
+PROFILE_INFO_FIELD_LABELS = {
+    "full_name": "Họ tên",
+    "zalo_phone": "Số Zalo",
+    "date_of_birth": "Ngày sinh",
+    "scholarship_system": "App học bổng",
+    "apply_degree_level": "Hệ apply",
+    "parent_email": "Email phụ huynh",
+    "apply_clone_email": "Email clone",
+    "apply_clone_password": "Pass clone",
+}
 ADMIN_STATUS_PENDING = "pending"
 ADMIN_STATUS_APPROVED = "approved"
 ADMIN_STATUS_REJECTED = "rejected"

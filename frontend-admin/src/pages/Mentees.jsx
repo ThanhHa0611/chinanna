@@ -379,6 +379,7 @@ export default function Mentees() {
   const [selectedRemindIds, setSelectedRemindIds] = useState([]);
   const [selectedApproveIds, setSelectedApproveIds] = useState([]);
   const [reminderSending, setReminderSending] = useState(false);
+  const [profileReminderSending, setProfileReminderSending] = useState(false);
   const [bulkApproving, setBulkApproving] = useState(false);
   const [deletingMentee, setDeletingMentee] = useState(false);
   const [docDownloadSettings, setDocDownloadSettings] = useState({});
@@ -954,6 +955,38 @@ export default function Mentees() {
       setError(err.message);
     } finally {
       setReminderSending(false);
+    }
+  };
+
+  const handleSendProfileInfoReminder = async () => {
+    if (!selectedMentee) return;
+    const missingCount = selectedMentee.missing_profile_fields?.length || 0;
+    if (missingCount === 0) {
+      setError('Mentee đã điền đủ thông tin cá nhân.');
+      return;
+    }
+    if (!window.confirm('Gửi nhắc nhở cho mentee bổ sung thông tin cá nhân?')) {
+      return;
+    }
+
+    setProfileReminderSending(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.remindProfileInfo(selectedMentee.id);
+      setMessage(result.message || 'Đã gửi nhắc nhở tới mentee.');
+      setSelectedMentee((prev) =>
+        prev
+          ? {
+              ...prev,
+              profile_info_reminder: result.profile_info_reminder || prev.profile_info_reminder,
+            }
+          : prev,
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setProfileReminderSending(false);
     }
   };
 
@@ -2029,6 +2062,39 @@ export default function Mentees() {
                           </button>
                         )}
                       </div>
+                      {(selectedMentee.missing_profile_fields?.length > 0 ||
+                        selectedMentee.profile_info_reminder) && (
+                        <div className="mentee-profile-reminder-block">
+                          {selectedMentee.missing_profile_fields?.length > 0 && (
+                            <>
+                              <p className="muted">
+                                Thiếu thông tin:{' '}
+                                {selectedMentee.missing_profile_fields
+                                  .map((field) => field.label)
+                                  .join(', ')}
+                              </p>
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                disabled={profileReminderSending}
+                                onClick={handleSendProfileInfoReminder}
+                              >
+                                {profileReminderSending
+                                  ? 'Đang gửi...'
+                                  : 'Nhắc bổ sung thông tin'}
+                              </button>
+                            </>
+                          )}
+                          {selectedMentee.profile_info_reminder?.sent_at && (
+                            <p className="muted">
+                              Đã gửi nhắc nhở
+                              {selectedMentee.profile_info_reminder.unread
+                                ? ' (mentee chưa xem)'
+                                : ''}
+                            </p>
+                          )}
+                        </div>
+                      )}
                       <div className="mentee-info-grid">
                         <div>
                           <span className="info-label">Họ tên</span>

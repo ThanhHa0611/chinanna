@@ -310,6 +310,8 @@ function MenteeProfile() {
   const [missingReminder, setMissingReminder] = useState(null);
   const [missingReminderUnread, setMissingReminderUnread] = useState(false);
   const [missingReminderExpanded, setMissingReminderExpanded] = useState(true);
+  const [profileInfoReminder, setProfileInfoReminder] = useState(null);
+  const [profileInfoReminderUnread, setProfileInfoReminderUnread] = useState(false);
   const [generalFeedbackUnread, setGeneralFeedbackUnread] = useState(0);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
@@ -372,6 +374,8 @@ function MenteeProfile() {
     setTerm3LanguageSemester(user?.term3_2027_language_semester || '');
     setParentEmail(user?.parent_email || '');
     setZaloPhone(user?.zalo_phone || '');
+    setProfileInfoReminder(user?.profile_info_reminder || null);
+    setProfileInfoReminderUnread(Boolean(user?.profile_info_reminder_unread));
   }, [user]);
 
   useEffect(() => {
@@ -414,6 +418,22 @@ function MenteeProfile() {
     }
     saveCollapsedMissingReminder(signature);
     setMissingReminderExpanded(false);
+  };
+
+  const handleProfileInfoReminderMarkSeen = async () => {
+    if (!profileInfoReminder || !profileInfoReminderUnread) return;
+    try {
+      const data = await api.ackProfileInfoReminder();
+      setProfileInfoReminder(data.profile_info_reminder || null);
+      setProfileInfoReminderUnread(Boolean(data.profile_info_reminder_unread));
+      updateUser({
+        ...user,
+        profile_info_reminder: data.profile_info_reminder,
+        profile_info_reminder_unread: data.profile_info_reminder_unread,
+      });
+    } catch {
+      // ignore
+    }
   };
 
   useEffect(() => {
@@ -1446,6 +1466,37 @@ function MenteeProfile() {
 
           <div className="profile-card">
             <h3>Thông tin cá nhân</h3>
+            {profileInfoReminder && (
+              <div
+                className={`profile-missing-reminder${
+                  profileInfoReminderUnread ? ' profile-missing-reminder-unread' : ''
+                }`}
+                role="status"
+              >
+                <div className="profile-missing-reminder-head">
+                  <strong>
+                    {profileInfoReminder.message ||
+                      'Vui lòng hoàn thiện thông tin cá nhân bạn nhé'}
+                  </strong>
+                  {profileInfoReminderUnread && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm profile-mark-seen-btn"
+                      onClick={handleProfileInfoReminderMarkSeen}
+                    >
+                      Đã xem
+                    </button>
+                  )}
+                </div>
+                {profileInfoReminder.items?.length > 0 && (
+                  <ul>
+                    {profileInfoReminder.items.map((item) => (
+                      <li key={item.key}>{item.label}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             <form onSubmit={handleProfileSubmit} className="auth-form">
               <label>
                 Họ và tên

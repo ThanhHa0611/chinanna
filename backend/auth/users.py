@@ -34,6 +34,7 @@ from auth.login_tracking import (
 def user_response(user: dict) -> dict:
     from services.admins import is_thanh_ha_mentee
     from services.apply_documents import apply_degree_level_label, term3_2027_language_semester_label
+    from services.profile_info import profile_info_reminder_unread, serialize_profile_info_reminder
 
     role = user.get("role") or ROLE_MENTEE
     payload = {
@@ -61,6 +62,9 @@ def user_response(user: dict) -> dict:
     if role == ROLE_PARENT:
         payload["linked_mentee_id"] = str(user.get("linked_mentee_id", ""))
         payload["linked_mentee_name"] = user.get("linked_mentee_name", "")
+    if role == ROLE_MENTEE:
+        payload["profile_info_reminder"] = serialize_profile_info_reminder(user)
+        payload["profile_info_reminder_unread"] = profile_info_reminder_unread(user)
     return payload
 
 

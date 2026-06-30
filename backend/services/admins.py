@@ -422,6 +422,13 @@ def serialize_admin_mentee_detail(user: dict, admin: dict | None = None) -> dict
                     include_superadmin_flags=bool(admin and is_super_admin(admin)),
                 ),
             }
+    from services.profile_info import (
+        missing_profile_field_items,
+        serialize_profile_info_reminder,
+    )
+
+    summary["missing_profile_fields"] = missing_profile_field_items(user)
+    summary["profile_info_reminder"] = serialize_profile_info_reminder(user)
     return summary
 
 

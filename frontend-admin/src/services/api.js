@@ -314,6 +314,11 @@ export const api = {
       body: JSON.stringify({ doc_ids: docIds }),
     }),
 
+  remindProfileInfo: (menteeId) =>
+    request(`/api/admin/mentees/${menteeId}/profile/remind`, {
+      method: 'POST',
+    }),
+
   approveSelectedMenteeDocuments: (menteeId, docIds) =>
     request(`/api/admin/mentees/${menteeId}/documents/approve-selected`, {
       method: 'POST',

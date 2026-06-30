@@ -339,6 +339,10 @@ def update_profile():
                 title=f"{updated.get('full_name') or updated.get('username', 'Mentee')} cập nhật hồ sơ",
                 description="Mentee cập nhật: " + ", ".join(changed_labels),
             )
+    from services.profile_info import sync_profile_info_reminder
+
+    sync_profile_info_reminder(ObjectId(user["_id"]))
+    updated = users.find_one({"_id": ObjectId(user["_id"])}) or updated
     return jsonify(user_response(updated))
 
 
@@ -372,6 +376,33 @@ def change_password():
         }},
     )
     return jsonify({"message": "Đổi mật khẩu thành công"})
+
+
+@app.post("/api/auth/ack-profile-reminder")
+@with_db
+def mentee_ack_profile_reminder():
+    user, error_response = get_authenticated_user()
+    if error_response:
+        return error_response
+
+    user, error_response = require_mentee_account(user)
+    if error_response:
+        return error_response
+
+    from bson import ObjectId
+
+    users.update_one(
+        {"_id": ObjectId(user["_id"])},
+        {"$set": {"profile_info_reminder.mentee_unread": False}},
+    )
+    fresh = users.find_one({"_id": ObjectId(user["_id"])}) or user
+    from services.profile_info import profile_info_reminder_unread, serialize_profile_info_reminder
+
+    return jsonify({
+        "message": "Đã xem",
+        "profile_info_reminder": serialize_profile_info_reminder(fresh),
+        "profile_info_reminder_unread": profile_info_reminder_unread(fresh),
+    })
 
 
 @app.post("/api/auth/logout")
