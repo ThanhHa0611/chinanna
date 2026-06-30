@@ -209,12 +209,21 @@ def sync_apply_inbox_view(mentee_id: str, doc_id: str):
         record_inbox_view(mentor_inbox, task)
 
 
-def sync_apply_inbox_confirm(mentee_id: str, doc_id: str, *, via: str = "app"):
+def sync_apply_inbox_confirm(mentee_id: str, doc_id: str, *, via: str = "app", admin=None):
     from inbox_tasks import confirm_inbox_task
+    from services.admins import admin_display_name
 
     task = find_pending_apply_inbox_task(mentee_id, doc_id)
     if task:
-        confirm_inbox_task(mentor_inbox, task_id=str(task["_id"]), via=via)
+        processed_by = str(admin["_id"]) if admin and admin.get("_id") else ""
+        processed_by_name = admin_display_name(admin) if admin else ""
+        confirm_inbox_task(
+            mentor_inbox,
+            task_id=str(task["_id"]),
+            via=via,
+            processed_by=processed_by,
+            processed_by_name=processed_by_name,
+        )
 
 
 def sync_apply_inbox_schedule(mentee_id: str, doc_id: str, *, reminder_at: datetime):

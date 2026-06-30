@@ -154,8 +154,23 @@ def format_reminder_hint(next_reminder_at) -> str:
     return f"nhắc dự kiến {local.day}/{local.month}/{local.year}"
 
 
+def resolve_inbox_processed_by_name(doc: dict) -> str:
+    stored = (doc.get("processed_by_name") or "").strip()
+    if stored:
+        return stored
+    return (doc.get("mentor_name") or "").strip()
+
+
+def format_processed_by_label(doc: dict) -> str:
+    name = resolve_inbox_processed_by_name(doc)
+    return f"Xử lí bởi {name}" if name else ""
+
+
 def format_task_status_line(doc: dict) -> str:
     if doc.get("status") == "done":
+        processor_label = format_processed_by_label(doc)
+        if processor_label:
+            return f"Đã xử lí · {processor_label}"
         return "Đã xử lí"
     if not doc.get("viewed_at"):
         return "Chưa xem"
@@ -164,6 +179,22 @@ def format_task_status_line(doc: dict) -> str:
     if reminder:
         parts.append(reminder)
     return " · ".join(parts)
+
+
+def _daily_summary_sort_key(item: dict) -> tuple:
+    is_done = item.get("status") == "done" or item.get("is_processed")
+    group = 1 if is_done else 0
+    if is_done:
+        ts = _parse_dt(item.get("processed_at")) or _parse_dt(item.get("created_at"))
+    else:
+        ts = _parse_dt(item.get("created_at"))
+    ts_rank = -(ts.timestamp()) if ts else 0
+    return (group, ts_rank)
+
+
+def sort_daily_summary_items(items: list[dict]) -> list[dict]:
+    """Pending/unprocessed first, processed last; newest first within each group."""
+    return sorted(items, key=_daily_summary_sort_key)
 
 
 def _vn_day_start_from_dt(dt: datetime) -> datetime:
@@ -228,6 +259,8 @@ def serialize_inbox_task(doc: dict, *, base_url: str = "") -> dict:
         "display_state": display_state,
         "processed_at": doc["processed_at"].isoformat() if doc.get("processed_at") else "",
         "processed_via": doc.get("processed_via", ""),
+        "processed_by": doc.get("processed_by", ""),
+        "processed_by_name": resolve_inbox_processed_by_name(doc) if doc.get("status") == "done" else "",
         "created_at": doc["created_at"].isoformat() if doc.get("created_at") else "",
         "next_reminder_at": doc["next_reminder_at"].isoformat() if doc.get("next_reminder_at") else "",
         "reminder_interval_hours": doc.get("reminder_interval_hours", DEFAULT_REMINDER_HOURS),
@@ -297,6 +330,8 @@ def create_mentor_inbox_task(
         "created_at": now,
         "processed_at": None,
         "processed_via": "",
+        "processed_by": "",
+        "processed_by_name": "",
         "next_reminder_at": now + timedelta(hours=reminder_hours),
         "reminder_interval_hours": reminder_hours,
         "last_reminder_at": None,
@@ -381,19 +416,23 @@ def list_inbox_for_admin(collection, admin: dict, *, limit: int = 80, base_url: 
 
 def enrich_daily_summary_item(item: dict) -> dict:
     is_processed = item.get("status") == "done"
+    processed_by_name = resolve_inbox_processed_by_name(item) if is_processed else ""
+    processed_by_label = format_processed_by_label(item) if is_processed else ""
     return {
         **item,
         "action_line": format_mentee_action_line(item),
         "is_processed": is_processed,
         "status_label": "Đã xử lí" if is_processed else "Chưa xử lí",
         "status_line": format_task_status_line(item),
+        "processed_by_name": processed_by_name,
+        "processed_by_label": processed_by_label,
         "scheduled_at": item.get("next_reminder_at") or "",
     }
 
 
 def build_daily_summary(items: list[dict]) -> dict:
     today_label = format_date_vn_line(_now())
-    summary_items = [enrich_daily_summary_item(item) for item in items]
+    summary_items = sort_daily_summary_items([enrich_daily_summary_item(item) for item in items])
     pending_count = sum(1 for item in summary_items if not item.get("is_processed"))
     return {
         "date_label": today_label,
@@ -497,7 +536,7 @@ def list_inbox_for_day(
 def build_archive_day_summary(items: list[dict], date_key: str) -> dict:
     day_start = _vn_day_start_from_key(date_key)
     date_label = format_date_vn_line(day_start) if day_start else date_key
-    summary_items = [enrich_daily_summary_item(item) for item in items]
+    summary_items = sort_daily_summary_items([enrich_daily_summary_item(item) for item in items])
     pending_count = sum(1 for item in summary_items if not item.get("is_processed"))
     return {
         "date": date_key,
@@ -527,7 +566,15 @@ def ensure_stale_pending_daily_reminders(collection) -> int:
     return result.modified_count
 
 
-def confirm_inbox_task(collection, *, task_id=None, confirm_token=None, via: str = "app") -> dict | None:
+def confirm_inbox_task(
+    collection,
+    *,
+    task_id=None,
+    confirm_token=None,
+    via: str = "app",
+    processed_by: str = "",
+    processed_by_name: str = "",
+) -> dict | None:
     from bson import ObjectId
     from bson.errors import InvalidId
 
@@ -543,20 +590,18 @@ def confirm_inbox_task(collection, *, task_id=None, confirm_token=None, via: str
         return doc
 
     now = _now()
-    collection.update_one(
-        {"_id": doc["_id"]},
-        {
-            "$set": {
-                "status": "done",
-                "processed_at": now,
-                "processed_via": via,
-                "next_reminder_at": None,
-            }
-        },
-    )
-    doc["status"] = "done"
-    doc["processed_at"] = now
-    doc["processed_via"] = via
+    processor_name = (processed_by_name or "").strip() or (doc.get("mentor_name") or "").strip()
+    processor_id = (processed_by or "").strip()
+    patch = {
+        "status": "done",
+        "processed_at": now,
+        "processed_via": via,
+        "processed_by": processor_id,
+        "processed_by_name": processor_name,
+        "next_reminder_at": None,
+    }
+    collection.update_one({"_id": doc["_id"]}, {"$set": patch})
+    doc.update(patch)
     return doc
 
 

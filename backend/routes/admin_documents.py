@@ -332,7 +332,7 @@ def admin_bulk_approve_documents(mentee_id: str):
     users.update_one({"_id": ObjectId(mentee["_id"])}, {"$set": updates, "$unset": unset_fields})
 
     for doc_id in doc_ids:
-        sync_apply_inbox_confirm(mentee_id, doc_id, via="app")
+        sync_apply_inbox_confirm(mentee_id, doc_id, via="app", admin=admin)
 
     labels = [APPLY_DOC_LABELS.get(doc_id, doc_id) for doc_id in doc_ids]
     notify_mentee_mentor_activity(
@@ -455,7 +455,7 @@ def admin_mark_mentee_document_processed(mentee_id: str, doc_id: str):
             "$unset": {f"apply_documents.{doc_id}.scheduled_process_at": ""},
         },
     )
-    sync_apply_inbox_confirm(mentee_id, doc_id, via="app")
+    sync_apply_inbox_confirm(mentee_id, doc_id, via="app", admin=admin)
 
     fresh = users.find_one({"_id": ObjectId(mentee["_id"])}) or mentee
     fresh_record = (fresh.get("apply_documents") or {}).get(doc_id) or {}
@@ -707,7 +707,7 @@ def admin_review_apply_document(mentee_id: str, doc_id: str):
         }
 
     users.update_one({"_id": mentee_oid}, {"$set": updates, "$unset": {f"apply_documents.{doc_id}.scheduled_process_at": ""}})
-    sync_apply_inbox_confirm(mentee_id, doc_id, via="app")
+    sync_apply_inbox_confirm(mentee_id, doc_id, via="app", admin=admin)
 
     doc_label = APPLY_DOC_LABELS.get(doc_id, doc_id)
     profile_url = os.getenv("MENTEE_PROFILE_URL", "http://localhost:5173/profile").strip()

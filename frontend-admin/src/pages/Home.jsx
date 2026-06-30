@@ -272,6 +272,7 @@ export default function Home() {
     const statusLine =
       item.status_line ||
       (isDone ? 'Đã xử lí' : isViewed ? 'Đã xem · chưa xử lí' : 'Chưa xem');
+    const processedByLabel = item.processed_by_label || item.processed_by_name || '';
     const reminderDate = reminderDrafts[item.id] ?? vnTomorrowDateInputValue();
 
     return (
@@ -281,6 +282,9 @@ export default function Home() {
           <span className={`daily-summary-status-line daily-summary-badge ${statusClass}`}>
             {statusLine}
           </span>
+          {isDone && processedByLabel && !statusLine.includes(processedByLabel) && (
+            <span className="daily-summary-processed-by">{processedByLabel}</span>
+          )}
         </div>
         {!readOnly && !isDone && (
           <div className="daily-summary-actions-inline">

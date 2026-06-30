@@ -142,7 +142,13 @@ def admin_inbox_confirm(task_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    task = confirm_inbox_task(mentor_inbox, task_id=task_id, via="app")
+    task = confirm_inbox_task(
+        mentor_inbox,
+        task_id=task_id,
+        via="app",
+        processed_by=str(admin["_id"]),
+        processed_by_name=admin_display_name(admin),
+    )
     if not task:
         return jsonify({"detail": "Không tìm thấy công việc"}), 404
     apply_inbox_confirm_side_effects(task)

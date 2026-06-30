@@ -3103,6 +3103,10 @@ html.device-phone .home-inbox-actions .btn {
   background: #f3f4f6;
 }
 
+.daily-summary-row.is-done {
+  background: #f0fff4;
+}
+
 .daily-summary-main {
   flex: 1;
   min-width: min(100%, 12rem);
@@ -3118,6 +3122,14 @@ html.device-phone .home-inbox-actions .btn {
   margin-top: 0.25rem;
   font-size: 0.78rem;
   font-weight: 600;
+}
+
+.daily-summary-processed-by {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.76rem;
+  color: #276749;
+  font-weight: 500;
 }
 
 .daily-summary-badge.is-viewed {
