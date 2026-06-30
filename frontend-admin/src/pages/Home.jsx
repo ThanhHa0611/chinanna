@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import MenteeFilterDropdown from '../components/MenteeFilterDropdown';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { formatDateTime } from '../utils/formatDateTime';
 import { isLevel1MentorAccount } from '../utils/mentorDisplay';
 import { matchesNameSearch } from '../utils/searchByName';
 import { countMenteesNeedingAttention } from '../utils/menteeAttention';
@@ -72,8 +71,6 @@ export default function Home() {
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [inboxViewer, setInboxViewer] = useState(null);
 
-  const canSeeProcessor = Boolean(admin?.is_super_admin || isLevel1MentorAccount(admin));
-
   useEffect(() => {
     Promise.all([api.getStats(), api.getMentees(), api.getFeedback(), api.getInbox()])
       .then(([statsData, menteeData, feedbackData, inboxData]) => {
@@ -92,11 +89,6 @@ export default function Home() {
   const unreadFeedback = useMemo(
     () => feedback.filter((item) => item.mentor_unread || item.status === 'chờ xử lí'),
     [feedback],
-  );
-
-  const preferredSchoolsUnread = useMemo(
-    () => mentees.filter((item) => item.preferred_schools_note_unread),
-    [mentees],
   );
 
   const doneFeedback = useMemo(
@@ -526,17 +518,6 @@ export default function Home() {
         </div>
       )}
 
-      {menteeAttentionCount > 0 && (
-        <div className="panel-card alert-card">
-          <p>
-            Có <strong>{menteeAttentionCount}</strong> mentee có thông báo mới cần xử lí.
-          </p>
-          <Link to="/mentees" className="btn btn-primary btn-sm">
-            Xem mentee
-          </Link>
-        </div>
-      )}
-
       {stats?.pending_access_requests_count > 0 && (
         <div className="panel-card alert-card">
           <p>
@@ -549,18 +530,6 @@ export default function Home() {
           </p>
           <Link to="/access-requests" className="btn btn-primary btn-sm">
             Xem yêu cầu
-          </Link>
-        </div>
-      )}
-
-      {preferredSchoolsUnread.length > 0 && (
-        <div className="panel-card alert-card">
-          <p>
-            Có <strong>{preferredSchoolsUnread.length}</strong> mentee cập nhật ghi chú trường ưa
-            thích.
-          </p>
-          <Link to="/mentees" className="btn btn-primary btn-sm">
-            Xem mentee
           </Link>
         </div>
       )}
@@ -579,17 +548,28 @@ export default function Home() {
 
       <div className="panel-card home-section">
         <div className="home-section-head">
-          <div>
-            <h3>Tổng quan mentee</h3>
-            <p className="muted home-section-note">
-              Chỉ xem thông tin mentee. Chỉnh phân loại tại Quản lý mentee.
-            </p>
-          </div>
+          <button
+            type="button"
+            className="home-section-collapse-trigger"
+            onClick={() => toggleSection('mentees')}
+            aria-expanded={!collapsedSections.mentees}
+          >
+            <div>
+              <h3>Tổng quan mentee</h3>
+              <p className="muted home-section-note">
+                Chỉ xem thông tin mentee. Chỉnh phân loại tại Quản lý mentee.
+              </p>
+            </div>
+            <span className="daily-summary-toggle">
+              {collapsedSections.mentees ? 'Mở rộng' : 'Thu gọn'}
+            </span>
+          </button>
           <Link to="/mentees" className="home-section-link">
             Quản lý mentee →
           </Link>
         </div>
-        {mentees.length === 0 ? (
+        {!collapsedSections.mentees &&
+          (mentees.length === 0 ? (
           <p className="muted">Chưa có mentee nào.</p>
         ) : (
           <>
@@ -699,70 +679,7 @@ export default function Home() {
               </div>
             )}
           </>
-        )}
-      </div>
-
-      <div className="home-feedback-grid">
-        <div className="panel-card home-section">
-          <div className="home-section-head">
-            <h3>Chưa xử lí</h3>
-            <span className="home-section-count">{unreadFeedback.length} tin chưa đọc</span>
-          </div>
-          {unreadFeedback.length === 0 ? (
-            <p className="muted">Không có tin nhắn chưa đọc.</p>
-          ) : (
-            <div className="home-feedback-list">
-              {unreadFeedback.map((item) => (
-                <div key={item.id} className="home-feedback-item home-feedback-item-unread">
-                  <div className="home-feedback-item-head">
-                    <strong>{item.username}</strong>
-                    <span className="muted"> · {item.email}</span>
-                  </div>
-                  <p className="home-feedback-content">{item.content}</p>
-                  <p className="muted home-feedback-time">{formatDateTime(item.created_at)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          {unreadFeedback.length > 0 && (
-            <Link to="/feedback" className="btn btn-outline btn-sm home-feedback-action">
-              Xử lí phản hồi →
-            </Link>
-          )}
-        </div>
-
-        <div className="panel-card home-section">
-          <div className="home-section-head">
-            <h3>Đã xử lí</h3>
-            <span className="home-section-count">{doneFeedback.length} tin</span>
-          </div>
-          {doneFeedback.length === 0 ? (
-            <p className="muted">Chưa có phản hồi đã xử lí.</p>
-          ) : (
-            <div className="home-feedback-list">
-              {doneFeedback.slice(0, 12).map((item) => (
-                <div key={item.id} className="home-feedback-item">
-                  <div className="home-feedback-item-head">
-                    <strong>{item.username}</strong>
-                    <span className="status-pill status-done">đã xử lí</span>
-                  </div>
-                  <p className="home-feedback-content">{item.content}</p>
-                  {item.admin_reply && (
-                    <p className="home-feedback-reply">
-                      <strong>Trả lời:</strong> {item.admin_reply}
-                    </p>
-                  )}
-                  <p className="muted home-feedback-time">
-                    {formatDateTime(item.processed_at || item.updated_at || item.created_at)}
-                    {canSeeProcessor && item.processed_by_name
-                      ? ` · Xử lí bởi ${item.processed_by_name}`
-                      : ''}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+          ))}
       </div>
 
       <div className="quick-links">
