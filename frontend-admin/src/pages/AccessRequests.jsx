@@ -18,7 +18,16 @@ export default function AccessRequests() {
   const [revokeTarget, setRevokeTarget] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const accessSearchFields = ['full_name', 'username', 'email', 'zalo_phone'];
+  const accessSearchFields = [
+    'full_name',
+    'username',
+    'email',
+    'zalo_phone',
+    'mentee_name',
+    'old_ip',
+    'new_ip',
+    'warning_message',
+  ];
 
   const filteredRequests = useMemo(
     () => requests.filter((item) => matchesNameSearch(item, searchQuery, accessSearchFields)),
@@ -55,10 +64,14 @@ export default function AccessRequests() {
     setMessage('');
     setError('');
     try {
-      const result = await api.reviewAccessRequest(item.id, {
+      const body = {
         status,
         request_type: item.request_type,
-      });
+      };
+      if (item.request_type === 'mentee_login_ip') {
+        body.user_id = item.user_id;
+      }
+      const result = await api.reviewAccessRequest(item.id, body);
       setMessage(result.message);
       loadData();
     } catch (err) {
@@ -66,6 +79,12 @@ export default function AccessRequests() {
     } finally {
       setProcessingId(null);
     }
+  };
+
+  const formatIpLocation = (ip, location) => {
+    if (!ip && !location) return '—';
+    if (ip && location) return `${ip} · ${location}`;
+    return ip || location || '—';
   };
 
   const handleRevoke = async () => {
@@ -101,7 +120,7 @@ export default function AccessRequests() {
       <div className="page-head">
         <h2>Cấp quyền</h2>
         <p>
-          Duyệt đăng ký mentee và mentor — {branchLabel}
+          Duyệt đăng ký mentee, mentor và đăng nhập IP mới — {branchLabel}
         </p>
       </div>
 
@@ -201,12 +220,13 @@ export default function AccessRequests() {
               <table>
                 <thead>
                   <tr>
-                    <th>Quyền xin</th>
-                    <th>Email</th>
-                    <th>Tên đăng nhập</th>
-                    <th>Số Zalo</th>
+                    <th>Loại</th>
+                    <th>Cảnh báo</th>
+                    <th>Họ tên mentee</th>
+                    <th>IP & vị trí cũ</th>
+                    <th>IP & vị trí mới</th>
+                    <th>Email / Zalo</th>
                     <th>Team</th>
-                    <th>Họ tên / Vị trí</th>
                     <th>Yêu cầu lúc</th>
                     <th>Thao tác</th>
                   </tr>
@@ -214,22 +234,59 @@ export default function AccessRequests() {
                 <tbody>
                   {filteredRequests.map((req) => {
                     const rowKey = `${req.request_type}-${req.id}`;
-                    const roleClass =
-                      req.request_type === 'mentee' ? 'role-badge-mentee' : 'role-badge-mentor';
+                    const isLoginIp = req.request_type === 'mentee_login_ip';
+                    const isMenteeReg = req.request_type === 'mentee';
+                    const roleClass = isLoginIp
+                      ? 'role-badge-login'
+                      : isMenteeReg
+                        ? 'role-badge-mentee'
+                        : 'role-badge-mentor';
                     return (
-                      <tr key={rowKey}>
+                      <tr key={rowKey} className={isLoginIp ? 'access-row-login-ip' : ''}>
                         <td>
                           <span className={`role-badge ${roleClass}`}>{req.role_label}</span>
                         </td>
-                        <td>{req.email}</td>
-                        <td>{req.username}</td>
-                        <td>{req.request_type === 'mentee' ? req.zalo_phone || '—' : '—'}</td>
-                        <td>{formatLevel1MentorLine(req.team) || req.team || '—'}</td>
                         <td>
-                          {req.request_type === 'mentee'
-                            ? req.registration_location_label || '—'
-                            : req.full_name || '—'}
+                          {isLoginIp ? (
+                            <div className="access-login-warning">
+                              <strong>{req.warning_message || 'Đăng nhập từ IP mới'}</strong>
+                              {req.device_label && (
+                                <span className="muted">{req.device_label}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
                         </td>
+                        <td>
+                          {isLoginIp
+                            ? req.mentee_name || req.full_name || '—'
+                            : isMenteeReg
+                              ? req.full_name || '—'
+                              : req.full_name || req.username || '—'}
+                        </td>
+                        <td>
+                          {isLoginIp
+                            ? formatIpLocation(req.old_ip, req.old_location_label)
+                            : isMenteeReg
+                              ? req.registration_location_label || '—'
+                              : '—'}
+                        </td>
+                        <td>
+                          {isLoginIp
+                            ? formatIpLocation(req.new_ip, req.new_location_label)
+                            : '—'}
+                        </td>
+                        <td>
+                          <div>{req.email || '—'}</div>
+                          {isMenteeReg && req.zalo_phone && (
+                            <span className="muted">Zalo: {req.zalo_phone}</span>
+                          )}
+                          {isLoginIp && req.zalo_phone && (
+                            <span className="muted">Zalo: {req.zalo_phone}</span>
+                          )}
+                        </td>
+                        <td>{formatLevel1MentorLine(req.team) || req.team || '—'}</td>
                         <td>{formatDateTime(req.requested_at)}</td>
                         <td className="action-cell">
                           <button

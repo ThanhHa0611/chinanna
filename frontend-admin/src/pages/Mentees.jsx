@@ -317,14 +317,10 @@ function computeSectionSignatures(mentee) {
 }
 
 function computeSectionAlerts(mentee, isSuperAdmin, isLevel1 = false) {
-  const parent = mentee.parent_account;
-  const pendingLogin =
-    (mentee.pending_login_requests_count || 0) > 0 ||
-    (parent?.pending_login_requests_count || 0) > 0;
   const l2Alert = (sectionKey) => isLevel1 && getUnreadL2Activity(mentee, sectionKey).length > 0;
   return {
     info: false,
-    device: pendingLogin || (isSuperAdmin && mentee.login_anomaly_unread) || l2Alert('device'),
+    device: l2Alert('device'),
     documents:
       (mentee.unread_documents_count || 0) > 0 ||
       Boolean(mentee.preferred_schools_note_unread) ||
@@ -391,7 +387,6 @@ export default function Mentees() {
   const [commentNote, setCommentNote] = useState('');
   const [commentStatus, setCommentStatus] = useState('cần chỉnh sửa');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
-  const [approvingLoginId, setApprovingLoginId] = useState('');
   const [selectedDownloadIds, setSelectedDownloadIds] = useState([]);
   const [selectedRemindIds, setSelectedRemindIds] = useState([]);
   const [selectedApproveIds, setSelectedApproveIds] = useState([]);
@@ -1593,22 +1588,6 @@ export default function Mentees() {
     }
   };
 
-  const handleApproveLogin = async (userId, requestId) => {
-    const key = `${userId}:${requestId}`;
-    setApprovingLoginId(key);
-    setError('');
-    setMessage('');
-    try {
-      const result = await api.approveLoginRequest(userId, requestId);
-      setMessage(result.message || 'Đã duyệt đăng nhập.');
-      await refreshAfterView();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setApprovingLoginId('');
-    }
-  };
-
   const renderMenteeFeedbackPanel = () => (
     <div className="mentee-feedback-panel">
       {menteeFeedback.length === 0 ? (
@@ -1728,12 +1707,6 @@ export default function Mentees() {
     return (
       <div className="login-tracking-panel">
         <h4>{title}</h4>
-        {(tracking.login_anomaly || isSuperAdmin) && tracking.login_anomaly && (
-          <div className="login-anomaly-banner" role="alert">
-            Cảnh báo: đã có {tracking.login_unique_device_count || 0} thiết bị và{' '}
-            {tracking.login_unique_ip_count || 0} IP đăng nhập.
-          </div>
-        )}
         <div className="mentee-info-grid login-tracking-summary">
           <div>
             <span className="info-label">Số thiết bị</span>
@@ -1758,35 +1731,6 @@ export default function Mentees() {
                   {event.device_label && (
                     <span className="muted login-event-device">{event.device_label}</span>
                   )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {tracking.pending_login_requests?.length > 0 && (
-          <div className="pending-login-block">
-            <span className="info-label">Chờ duyệt đăng nhập</span>
-            <ul className="pending-login-list">
-              {tracking.pending_login_requests.map((item) => (
-                <li key={item.id}>
-                  <div>
-                    <strong>{item.device_label || 'Thiết bị mới'}</strong>
-                    <span className="muted">
-                      IP: {item.ip || '—'}
-                      {item.requested_at ? ` · ${formatDateTime(item.requested_at)}` : ''}
-                    </span>
-                    <span className="muted">
-                      Vị trí: {formatLocation(item.location_label, item.latitude, item.longitude)}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    disabled={approvingLoginId === `${userId}:${item.id}`}
-                    onClick={() => handleApproveLogin(userId, item.id)}
-                  >
-                    {approvingLoginId === `${userId}:${item.id}` ? 'Đang duyệt...' : 'Duyệt'}
-                  </button>
                 </li>
               ))}
             </ul>
@@ -1950,12 +1894,6 @@ export default function Mentees() {
     ? [
         `${selectedMentee.login_unique_device_count ?? 0} thiết bị`,
         `${selectedMentee.login_unique_ip_count ?? 0} IP`,
-        (selectedMentee.pending_login_requests_count || 0) > 0
-          ? `${selectedMentee.pending_login_requests_count} chờ duyệt`
-          : null,
-        (selectedMentee.parent_account?.pending_login_requests_count || 0) > 0
-          ? `${selectedMentee.parent_account.pending_login_requests_count} phụ huynh chờ duyệt`
-          : null,
       ]
         .filter(Boolean)
         .join(' · ')

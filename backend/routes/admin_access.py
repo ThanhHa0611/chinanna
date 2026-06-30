@@ -51,93 +51,29 @@ def admin_approve_login_request(user_id: str, request_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
+    response = apply_mentee_login_ip_review(
+        admin,
+        user_id,
+        request_id,
+        {"status": ADMIN_STATUS_APPROVED},
+    )
+    if response.status_code != 200:
+        return response
+
     from bson import ObjectId
 
     try:
         user_oid = ObjectId(user_id)
     except Exception:
-        return jsonify({"detail": "Tài khoản không hợp lệ"}), 400
+        return response
 
-    target_user = users.find_one({"_id": user_oid})
-    if not target_user:
-        return jsonify({"detail": "Tài khoản không tồn tại"}), 404
-
-    subject_mentee = target_user
-    if target_user.get("role") == ROLE_PARENT:
-        subject_mentee, error = get_linked_mentee_for_parent(target_user)
-        if error:
-            return error
-
-    mentor_filter = mentee_filter_for_admin(admin)
-    if mentor_filter and subject_mentee.get("mentor") != mentor_filter.get("mentor"):
-        return jsonify({"detail": "Không có quyền duyệt tài khoản này"}), 403
-
-    pending = list(target_user.get("pending_login_requests") or [])
-    matched = next(
-        (
-            entry
-            for entry in pending
-            if entry.get("id") == request_id and entry.get("status") == LOGIN_REQUEST_PENDING
-        ),
-        None,
+    target_user = users.find_one({"_id": user_oid}) or {}
+    payload = response.get_json()
+    payload["login_tracking"] = serialize_login_tracking(
+        target_user,
+        include_superadmin_flags=False,
     )
-    if not matched:
-        return jsonify({"detail": "Yêu cầu đăng nhập không tồn tại hoặc đã xử lý"}), 404
-
-    now = datetime.now(timezone.utc)
-    approved_ips = set(target_user.get("approved_login_ips") or [])
-    approved_devices = set(target_user.get("approved_login_devices") or [])
-    approved_ips.add(matched.get("ip", ""))
-    approved_devices.add(matched.get("device_id", ""))
-    matched["status"] = LOGIN_REQUEST_APPROVED
-    matched["approved_at"] = now
-    matched["approved_by"] = str(admin["_id"])
-
-    still_pending = any(entry.get("status") == LOGIN_REQUEST_PENDING for entry in pending)
-    users.update_one(
-        {"_id": user_oid},
-        {
-            "$set": {
-                "pending_login_requests": pending,
-                "approved_login_ips": sorted(filter(None, approved_ips)),
-                "approved_login_devices": sorted(filter(None, approved_devices)),
-                "pending_login_unread": still_pending,
-            },
-        },
-    )
-
-    account_label = "phụ huynh" if target_user.get("role") == ROLE_PARENT else "mentee"
-    log_mentor_activity(
-        admin,
-        "login_approve",
-        f"Duyệt đăng nhập {account_label} {target_user.get('email', user_id)} "
-        f"(IP {matched.get('ip', '')})",
-        mentee_id=str(subject_mentee["_id"]),
-    )
-    if is_l2_mentor_admin(admin):
-        push_l2_mentor_activity(
-            str(subject_mentee["_id"]),
-            admin,
-            "device",
-            "login_approve",
-            f"Duyệt đăng nhập {account_label} (IP {matched.get('ip', '') or '—'})",
-        )
-
-    fresh = users.find_one({"_id": user_oid}) or target_user
-    if target_user.get("role") == ROLE_PARENT:
-        return jsonify(
-            {
-                "message": "Đã duyệt thiết bị/IP cho phụ huynh.",
-                "login_tracking": serialize_login_tracking(fresh, include_superadmin_flags=False),
-            },
-        )
-
-    return jsonify(
-        {
-            "message": "Đã duyệt thiết bị/IP cho mentee.",
-            "login_tracking": serialize_login_tracking(fresh, include_superadmin_flags=False),
-        },
-    )
+    return jsonify(payload)
 
 
 @app.get("/api/admin/access-requests")
@@ -243,6 +179,12 @@ def admin_review_access(request_id):
 
     data = request.get_json(silent=True) or {}
     request_type = (data.get("request_type") or "mentor").strip().lower()
+    if request_type == "mentee_login_ip":
+        user_id = (data.get("user_id") or "").strip()
+        if not user_id:
+            return jsonify({"detail": "Thiếu mã tài khoản mentee"}), 400
+        return apply_mentee_login_ip_review(admin, user_id, request_id, data)
+
     if request_type == "mentee":
         return apply_mentee_registration_review(admin, request_id, data)
 

@@ -2751,6 +2751,28 @@ td.apply-progress-tone-black .apply-progress-select {
   border: 1px solid #fca5a5;
 }
 
+.role-badge-login {
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+}
+
+.access-login-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-width: 16rem;
+}
+
+.access-login-warning strong {
+  color: #b45309;
+  font-size: 0.9rem;
+}
+
+.access-row-login-ip td {
+  vertical-align: top;
+}
+
 body.screen-protected-mentor {
   user-select: text;
   -webkit-user-select: text;

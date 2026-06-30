@@ -73,6 +73,54 @@ def count_pending_login_requests(user: dict) -> int:
     return len(serialize_pending_login_requests(user))
 
 
+def format_location_label(
+    *,
+    location_label: str = "",
+    latitude: float | None = None,
+    longitude: float | None = None,
+    last_location: str = "",
+    last_latitude: float | None = None,
+    last_longitude: float | None = None,
+) -> str:
+    label = (location_label or last_location or "").strip()
+    if label:
+        return label
+    lat = latitude if latitude is not None else last_latitude
+    lng = longitude if longitude is not None else last_longitude
+    if lat is not None and lng is not None:
+        return f"{lat:.5f}, {lng:.5f}"
+    return ""
+
+
+def get_primary_known_ip_info(user: dict) -> dict:
+    approved_ips = set(user.get("approved_login_ips") or [])
+    login_ips = list(user.get("login_ips") or [])
+    candidates = [entry for entry in login_ips if entry.get("ip") in approved_ips]
+    if not candidates:
+        candidates = login_ips
+
+    if not candidates:
+        return {"ip": "", "location_label": ""}
+
+    def sort_key(entry: dict) -> datetime:
+        seen = entry.get("last_seen")
+        if isinstance(seen, datetime):
+            if seen.tzinfo is None:
+                return seen.replace(tzinfo=timezone.utc)
+            return seen
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+    latest = max(candidates, key=sort_key)
+    return {
+        "ip": latest.get("ip", ""),
+        "location_label": format_location_label(
+            last_location=latest.get("last_location", ""),
+            last_latitude=latest.get("last_latitude"),
+            last_longitude=latest.get("last_longitude"),
+        ),
+    }
+
+
 def get_login_context() -> tuple[str, str, str]:
     ip = get_client_ip()
     user_agent = request.headers.get("User-Agent", "")

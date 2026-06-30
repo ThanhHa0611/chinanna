@@ -363,8 +363,6 @@ def mentee_needs_attention(summary: dict, admin: dict | None = None) -> bool:
         return True
     if summary.get("preferred_schools_note_unread"):
         return True
-    if (summary.get("pending_login_requests_count") or 0) > 0:
-        return True
     if (summary.get("unread_feedback_count") or 0) > 0:
         return True
     if (summary.get("apply_progress_pending_count") or 0) > 0:
@@ -376,8 +374,6 @@ def mentee_needs_attention(summary: dict, admin: dict | None = None) -> bool:
     if admin and is_thanh_ha_l1_mentor(admin):
         if summary.get("hdnk_nckh_l1_unread") or summary.get("hdnk_nckh_reminder_unread"):
             return True
-    if admin and is_super_admin(admin) and summary.get("login_anomaly_unread"):
-        return True
     return False
 
 

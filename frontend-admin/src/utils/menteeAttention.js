@@ -27,9 +27,6 @@ export function menteeAttentionReasons(mentee, { isSuperAdmin = false, isLevel1 
   if (mentee.preferred_schools_note_unread) {
     reasons.push('Trường ưa thích mới');
   }
-  if ((mentee.pending_login_requests_count || 0) > 0) {
-    reasons.push('Chờ duyệt đăng nhập');
-  }
   if ((mentee.unread_feedback_count || 0) > 0) {
     reasons.push('Tin phản hồi chưa xử lí');
   }
@@ -54,9 +51,6 @@ export function menteeAttentionReasons(mentee, { isSuperAdmin = false, isLevel1 
   }
   if (!isLevel1 && mentee.apply_progress_l2_unread) {
     reasons.push('Mentor cấp 1 cập nhật tiến độ');
-  }
-  if (isSuperAdmin && mentee.login_anomaly_unread) {
-    reasons.push('Cảnh báo đăng nhập bất thường');
   }
   return reasons;
 }
