@@ -1,68 +1,59 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { HDNK_NCKH_AWARD_LEVELS } from '../data/hdnkNckh';
-
-const PROGRESS_OPTIONS = [
-  { value: 'in_progress', label: 'Đang tiến hành' },
-  { value: 'completed', label: 'Đã xong' },
-];
-
-function buildDraft(keeptrack) {
-  return {
-    start_date: keeptrack?.start_date || '',
-    progress_status: keeptrack?.progress_status || 'in_progress',
-    has_award: Boolean(keeptrack?.has_award),
-    award_level: keeptrack?.award_level || '',
-  };
-}
 
 export default function ActivityKeeptrackBar({
   keeptrack,
-  onSave,
+  onComplete,
+  onAbandon,
   saving = false,
   disabled = false,
 }) {
-  const [draft, setDraft] = useState(() => buildDraft(keeptrack));
-
-  useEffect(() => {
-    setDraft(buildDraft(keeptrack));
-  }, [keeptrack?.start_date, keeptrack?.progress_status, keeptrack?.has_award, keeptrack?.award_level]);
+  const [showPrizeStep, setShowPrizeStep] = useState(false);
+  const [hasAward, setHasAward] = useState(false);
+  const [awardLevel, setAwardLevel] = useState('');
 
   if (!keeptrack?.active) return null;
 
-  const updateDraft = (key, value) => {
-    setDraft((prev) => {
-      const next = { ...prev, [key]: value };
-      if (key === 'progress_status' && value !== 'completed') {
-        next.has_award = false;
-        next.award_level = '';
-      }
-      if (key === 'has_award' && !value) {
-        next.award_level = '';
-      }
-      return next;
-    });
-  };
-
-  const handleSave = () => {
-    onSave?.({
-      start_date: draft.start_date,
-      progress_status: draft.progress_status,
-      has_award: draft.progress_status === 'completed' ? draft.has_award : false,
-      award_level: draft.progress_status === 'completed' && draft.has_award ? draft.award_level : '',
-    });
-  };
-
-  const reviewStatus = keeptrack.review_status || '';
+  const isAbandonPending = keeptrack.abandon_status === 'pending';
+  const isDisabled = disabled || saving || isAbandonPending;
   const reviewMessage = keeptrack.review_message || '';
+  const reviewStatus = keeptrack.abandon_status || '';
+
+  const resetPrizeStep = () => {
+    setShowPrizeStep(false);
+    setHasAward(false);
+    setAwardLevel('');
+  };
+
+  const handleCompleteClick = () => {
+    if (isDisabled) return;
+    setShowPrizeStep(true);
+  };
+
+  const handleConfirmComplete = () => {
+    if (hasAward && !awardLevel) return;
+    onComplete?.({
+      has_award: hasAward,
+      award_level: hasAward ? awardLevel : '',
+    });
+    resetPrizeStep();
+  };
+
+  const handleAbandon = () => {
+    if (isDisabled) return;
+    if (!window.confirm('Gửi yêu cầu từ bỏ hoạt động này cho mentor xác nhận?')) return;
+    onAbandon?.({});
+  };
 
   return (
-    <div className="profile-activity-keeptrack">
+    <div className="profile-activity-keeptrack profile-activity-keeptrack--active">
       <div className="profile-activity-keeptrack-head">
         <span className="profile-activity-keeptrack-icon" aria-hidden="true">
           🍀
         </span>
         <strong>Đang tiến hành</strong>
       </div>
+
       {reviewMessage && (
         <p
           className={`profile-activity-keeptrack-status${
@@ -72,53 +63,59 @@ export default function ActivityKeeptrackBar({
           {reviewMessage}
         </p>
       )}
-      <div className="profile-activity-keeptrack-grid">
-        <label>
-          Tên
-          <input type="text" value={keeptrack.display_name || ''} readOnly />
-        </label>
-        <label>
-          Ngày bắt đầu
-          <input
-            type="date"
-            value={draft.start_date}
-            disabled={disabled}
-            onChange={(e) => updateDraft('start_date', e.target.value)}
-          />
-        </label>
-        <label>
-          Trạng thái
-          <select
-            value={draft.progress_status}
-            disabled={disabled}
-            onChange={(e) => updateDraft('progress_status', e.target.value)}
-          >
-            {PROGRESS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {draft.progress_status === 'completed' && (
-          <>
-            <label className="profile-activity-keeptrack-checkbox">
+
+      <div className="profile-activity-keeptrack-fields">
+        <div className="profile-activity-keeptrack-field">
+          <span className="profile-activity-keeptrack-label">Tên cuộc thi</span>
+          <span className="profile-activity-keeptrack-value">{keeptrack.display_name || '—'}</span>
+        </div>
+        <div className="profile-activity-keeptrack-field">
+          <span className="profile-activity-keeptrack-label">Ngày bắt đầu</span>
+          <span className="profile-activity-keeptrack-value">{keeptrack.start_date || '—'}</span>
+        </div>
+        <div className="profile-activity-keeptrack-field">
+          <span className="profile-activity-keeptrack-label">Tiến độ</span>
+          <span className="profile-activity-keeptrack-value">
+            {keeptrack.progress_label || 'Đang tiến hành'}
+          </span>
+        </div>
+      </div>
+
+      {showPrizeStep && (
+        <div className="profile-activity-keeptrack-prize">
+          <p className="profile-activity-keeptrack-prize-title">Có giải thưởng không?</p>
+          <div className="profile-activity-keeptrack-prize-options">
+            <label className="profile-activity-keeptrack-prize-choice">
               <input
-                type="checkbox"
-                checked={draft.has_award}
-                disabled={disabled}
-                onChange={(e) => updateDraft('has_award', e.target.checked)}
+                type="radio"
+                name={`prize-${keeptrack.display_name}`}
+                checked={!hasAward}
+                onChange={() => {
+                  setHasAward(false);
+                  setAwardLevel('');
+                }}
               />
-              Có giải thưởng không
+              Không có giải
             </label>
-            <label>
-              Hạng giải
+            <label className="profile-activity-keeptrack-prize-choice">
+              <input
+                type="radio"
+                name={`prize-${keeptrack.display_name}`}
+                checked={hasAward}
+                onChange={() => setHasAward(true)}
+              />
+              Có giải
+            </label>
+          </div>
+          {hasAward && (
+            <label className="profile-activity-keeptrack-field">
+              <span className="profile-activity-keeptrack-label">Hạng giải</span>
               <select
-                value={draft.award_level}
-                disabled={disabled || !draft.has_award}
-                onChange={(e) => updateDraft('award_level', e.target.value)}
+                value={awardLevel}
+                onChange={(e) => setAwardLevel(e.target.value)}
+                className="profile-activity-keeptrack-select"
               >
-                <option value="">—</option>
+                <option value="">— Chọn hạng giải —</option>
                 {(keeptrack.award_level_options || HDNK_NCKH_AWARD_LEVELS).map((option) => (
                   <option key={option} value={option}>
                     {option}
@@ -126,19 +123,48 @@ export default function ActivityKeeptrackBar({
                 ))}
               </select>
             </label>
-          </>
-        )}
-      </div>
-      <div className="profile-activity-keeptrack-actions">
-        <button
-          type="button"
-          className="btn btn-primary btn-sm"
-          disabled={saving || disabled}
-          onClick={handleSave}
-        >
-          {saving ? 'Đang lưu...' : 'Lưu tiến độ'}
-        </button>
-      </div>
+          )}
+          <div className="profile-activity-keeptrack-actions">
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              disabled={saving}
+              onClick={resetPrizeStep}
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={saving || (hasAward && !awardLevel)}
+              onClick={handleConfirmComplete}
+            >
+              {saving ? 'Đang lưu...' : 'Xác nhận hoàn thành'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!showPrizeStep && (
+        <div className="profile-activity-keeptrack-actions">
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={isDisabled}
+            onClick={handleCompleteClick}
+          >
+            Hoàn thành
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            disabled={isDisabled}
+            onClick={handleAbandon}
+          >
+            {saving ? 'Đang gửi...' : 'Từ bỏ'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

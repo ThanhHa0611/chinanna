@@ -203,6 +203,7 @@ export default function ProfileActivities() {
   const [addToGroupTargets, setAddToGroupTargets] = useState({});
   const [keeptrackReviews, setKeeptrackReviews] = useState([]);
   const [selectedKeeptrackReviews, setSelectedKeeptrackReviews] = useState([]);
+  const [abandonRequests, setAbandonRequests] = useState([]);
   const [finalizeSuccessByGroup, setFinalizeSuccessByGroup] = useState({});
   const [leaderPickerVisible, setLeaderPickerVisible] = useState({});
   const [leaderTargets, setLeaderTargets] = useState({});
@@ -264,8 +265,13 @@ export default function ProfileActivities() {
     setKeeptrackReviews(data.items || []);
   };
 
+  const loadAbandonRequests = async () => {
+    const data = await api.getProfileActivityKeeptrackAbandonRequests();
+    setAbandonRequests(data.items || []);
+  };
+
   useEffect(() => {
-    Promise.all([loadActivities(), loadKeeptrackReviews()])
+    Promise.all([loadActivities(), loadKeeptrackReviews(), loadAbandonRequests()])
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
@@ -715,7 +721,7 @@ export default function ProfileActivities() {
     setError('');
     try {
       await api.viewProfileActivityKeeptrackReview(item.activity_id, item.mentee_id);
-      await Promise.all([loadKeeptrackReviews(), loadActivities()]);
+      await Promise.all([loadKeeptrackReviews(), loadAbandonRequests(), loadActivities()]);
       if (item.activity_id === selectedId) {
         await loadRegistrations(item.activity_id);
       }
@@ -737,7 +743,7 @@ export default function ProfileActivities() {
     setError('');
     try {
       await api.rejectProfileActivityKeeptrackReview(item.activity_id, item.mentee_id, { note });
-      await Promise.all([loadKeeptrackReviews(), loadActivities()]);
+      await Promise.all([loadKeeptrackReviews(), loadAbandonRequests(), loadActivities()]);
       if (item.activity_id === selectedId) {
         await loadRegistrations(item.activity_id);
       }
@@ -764,12 +770,49 @@ export default function ProfileActivities() {
     setError('');
     try {
       const result = await api.bulkViewProfileActivityKeeptrackReviews(items);
-      await Promise.all([loadKeeptrackReviews(), loadActivities()]);
+      await Promise.all([loadKeeptrackReviews(), loadAbandonRequests(), loadActivities()]);
       if (selectedId) {
         await loadRegistrations(selectedId);
       }
       setSelectedKeeptrackReviews([]);
       setMessage(result?.message || 'Đã đánh dấu đã xem hàng loạt.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleApproveAbandonRequest = async (item) => {
+    if (!window.confirm(`Đồng ý cho ${item.mentee_name || 'mentee'} từ bỏ hoạt động này?`)) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api.approveProfileActivityKeeptrackAbandon(item.activity_id, item.mentee_id);
+      await Promise.all([loadAbandonRequests(), loadActivities()]);
+      if (item.activity_id === selectedId) {
+        await loadRegistrations(item.activity_id);
+      }
+      setMessage('Đã đồng ý từ bỏ — hoạt động đã gỡ khỏi Keep track.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRejectAbandonRequest = async (item) => {
+    const note = window.prompt('Ghi chú từ chối (tuỳ chọn):', '') ?? '';
+    if (note === null) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api.rejectProfileActivityKeeptrackAbandon(item.activity_id, item.mentee_id, { note });
+      await Promise.all([loadAbandonRequests(), loadActivities()]);
+      if (item.activity_id === selectedId) {
+        await loadRegistrations(item.activity_id);
+      }
+      setMessage('Đã từ chối yêu cầu từ bỏ — mentee tiếp tục theo dõi hoạt động.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -880,6 +923,60 @@ export default function ProfileActivities() {
                           disabled={saving}
                         >
                           Đã xem
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {abandonRequests.length > 0 && (
+        <div className="panel-card profile-activity-pending-queue">
+          <h3>Yêu cầu từ bỏ hoạt động ({abandonRequests.length})</h3>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Mentee</th>
+                  <th>Hoạt động</th>
+                  <th>Ghi chú</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {abandonRequests.map((item) => (
+                  <tr key={`${item.activity_id}:${item.mentee_id}`}>
+                    <td>
+                      <div>{item.mentee_name || item.mentee_email || '—'}</div>
+                      {item.mentee_profile_summary && (
+                        <div className="profile-activity-keeptrack-mentee-summary">
+                          {item.mentee_profile_summary}
+                        </div>
+                      )}
+                    </td>
+                    <td>{item.activity_name}</td>
+                    <td>{item.note || '—'}</td>
+                    <td>
+                      <div className="action-cell">
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => handleRejectAbandonRequest(item)}
+                          disabled={saving}
+                        >
+                          Từ chối
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleApproveAbandonRequest(item)}
+                          disabled={saving}
+                        >
+                          Đồng ý
                         </button>
                       </div>
                     </td>

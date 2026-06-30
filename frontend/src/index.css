@@ -2532,9 +2532,14 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
 .profile-activity-keeptrack {
   margin-top: 0.75rem;
   padding: 0.75rem 0.9rem;
-  border: 1px solid #bbf7d0;
+  border: 1px solid #e5e7eb;
   border-radius: 10px;
-  background: #f0fdf4;
+  background: #fafafa;
+}
+
+.profile-activity-keeptrack--active {
+  border: 2px solid #dc2626;
+  background: #fff;
 }
 
 .profile-activity-keeptrack-head {
@@ -2542,6 +2547,7 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
   align-items: center;
   gap: 0.4rem;
   margin-bottom: 0.65rem;
+  color: #dc2626;
 }
 
 .profile-activity-keeptrack-status {
@@ -2560,6 +2566,63 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
 .profile-activity-keeptrack-icon {
   font-size: 1rem;
   line-height: 1;
+}
+
+.profile-activity-keeptrack-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.5rem 0.85rem;
+  margin-bottom: 0.65rem;
+}
+
+.profile-activity-keeptrack-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.profile-activity-keeptrack-label {
+  font-size: 0.78rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.profile-activity-keeptrack-value {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #111827;
+}
+
+.profile-activity-keeptrack-prize {
+  margin-top: 0.5rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed #fecaca;
+}
+
+.profile-activity-keeptrack-prize-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.profile-activity-keeptrack-prize-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.65rem;
+}
+
+.profile-activity-keeptrack-prize-choice {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.88rem;
+}
+
+.profile-activity-keeptrack-select {
+  width: 100%;
+  margin-top: 0.25rem;
 }
 
 .profile-activity-keeptrack-grid {
@@ -2587,6 +2650,9 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
 }
 
 .profile-activity-keeptrack-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-top: 0.65rem;
 }
 

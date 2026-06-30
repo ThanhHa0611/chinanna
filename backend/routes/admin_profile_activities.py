@@ -15,6 +15,7 @@ from services.profile_activities import (
     add_mentee_to_group,
     approve_pending_group,
     approve_pending_mentor_reject,
+    approve_keeptrack_abandon,
     approve_profile_activity,
     bulk_view_individual_keeptrack_reviews,
     create_profile_activity,
@@ -23,10 +24,12 @@ from services.profile_activities import (
     ProfileActivityGroupLeaderError,
     set_group_leader,
     list_pending_individual_keeptrack_reviews,
+    list_pending_keeptrack_abandon_requests,
     move_mentee_to_group,
     notify_group_assignment,
     parse_profile_activity_from_description,
     reject_individual_keeptrack_review,
+    reject_keeptrack_abandon,
     reject_pending_group,
     reject_pending_mentor_reject,
     reject_profile_activity,
@@ -598,3 +601,55 @@ def admin_bulk_view_keeptrack_reviews():
         return jsonify({"detail": "Thiếu danh sách cập nhật tiến độ."}), 400
     updated = bulk_view_individual_keeptrack_reviews(items, admin)
     return jsonify({"message": f"Đã đánh dấu đã xem {updated} cập nhật.", "updated_count": updated})
+
+
+@app.get("/api/admin/profile-activities/keeptrack-abandon-requests")
+@with_db
+def admin_list_keeptrack_abandon_requests():
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    items = list_pending_keeptrack_abandon_requests(admin)
+    return jsonify({"items": items, "total_pending_count": len(items)})
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/keeptrack-abandon/approve")
+@with_db
+def admin_approve_keeptrack_abandon(activity_id: str, mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    try:
+        approve_keeptrack_abandon(activity, mentee_id, admin)
+    except ProfileActivityKeeptrackError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify({"message": "Đã đồng ý từ bỏ — hoạt động đã gỡ khỏi Keep track"})
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/keeptrack-abandon/reject")
+@with_db
+def admin_reject_keeptrack_abandon(activity_id: str, mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    try:
+        reject_keeptrack_abandon(activity, mentee_id, admin, data.get("note", ""))
+    except ProfileActivityKeeptrackError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify({"message": "Đã từ chối yêu cầu từ bỏ — mentee tiếp tục theo dõi hoạt động"})

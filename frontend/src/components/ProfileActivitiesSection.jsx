@@ -83,13 +83,33 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
     setCurrentDay(data.current_day || null);
     setOtherDays(data.other_days || []);
     onUnviewedCountChange?.(data.unviewed_count ?? 0);
+    setError('');
   };
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    refresh()
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+    setError('');
+    api
+      .getProfileActivities()
+      .then((data) => {
+        if (cancelled) return;
+        setCurrentDay(data.current_day || null);
+        setOtherDays(data.other_days || []);
+        onUnviewedCountChange?.(data.unviewed_count ?? 0);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err.message || 'Không tải được hoạt động.');
+        setCurrentDay(null);
+        setOtherDays([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id]);
 
   const markViewed = async (itemId) => {
@@ -181,18 +201,41 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
     }
   };
 
-  const saveKeeptrack = async (itemId, body) => {
+  const patchActivityInFeed = (itemId, activityPatch) => {
+    const patchItem = (item) => (item.id === itemId ? { ...item, ...activityPatch } : item);
+    setCurrentDay((day) =>
+      day ? { ...day, items: (day.items || []).map(patchItem) } : day,
+    );
+    setOtherDays((days) =>
+      days.map((day) => ({ ...day, items: (day.items || []).map(patchItem) })),
+    );
+  };
+
+  const completeKeeptrack = async (itemId, body) => {
     setKeeptrackSaving((prev) => ({ ...prev, [itemId]: true }));
     try {
-      const result = await api.updateProfileActivityKeeptrack(itemId, body);
+      const result = await api.completeProfileActivityKeeptrack(itemId, body);
       if (result?.activity) {
-        const patchItem = (item) => (item.id === itemId ? { ...item, ...result.activity } : item);
-        setCurrentDay((day) =>
-          day ? { ...day, items: (day.items || []).map(patchItem) } : day,
-        );
-        setOtherDays((days) =>
-          days.map((day) => ({ ...day, items: (day.items || []).map(patchItem) })),
-        );
+        patchActivityInFeed(itemId, result.activity);
+      } else {
+        await refresh();
+      }
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setKeeptrackSaving((prev) => ({ ...prev, [itemId]: false }));
+    }
+  };
+
+  const abandonKeeptrack = async (itemId, body) => {
+    setKeeptrackSaving((prev) => ({ ...prev, [itemId]: true }));
+    try {
+      const result = await api.abandonProfileActivityKeeptrack(itemId, body);
+      if (result?.activity) {
+        patchActivityInFeed(itemId, result.activity);
+      } else {
+        await refresh();
       }
       setError('');
     } catch (err) {
@@ -239,7 +282,17 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
       item.participation_choice === 'individual' &&
       item.group_response_status === 'confirmed'
     ) {
+      if (item.keeptrack?.active) {
+        return (
+          <span className="muted">Đã báo danh (Cá nhân) — tiến độ đang theo dõi</span>
+        );
+      }
       return <span className="muted">Đã báo danh (Cá nhân)</span>;
+    }
+    if (item.registered && item.group_response_status === 'confirmed' && item.keeptrack?.active) {
+      return (
+        <span className="muted">Đã xác nhận nhóm — tiến độ đang theo dõi</span>
+      );
     }
     if (item.registered && item.participation_choice_label) {
       return <span className="muted">Đã báo danh ({item.participation_choice_label})</span>;
@@ -317,8 +370,8 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
               <ActivityKeeptrackBar
                 keeptrack={item.keeptrack}
                 saving={Boolean(keeptrackSaving[item.id])}
-                disabled={item.keeptrack?.review_status === 'pending'}
-                onSave={(body) => saveKeeptrack(item.id, body)}
+                onComplete={(body) => completeKeeptrack(item.id, body)}
+                onAbandon={(body) => abandonKeeptrack(item.id, body)}
               />
             )}
           </div>
@@ -422,6 +475,9 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
         ) : !expanded ? null : (
           <div className="profile-activities-days">
             <DayBlock day={currentDay} renderItem={renderItem} />
+            {!loading && !error && !currentDay?.items?.length && !otherItemCount && (
+              <p className="muted">Chưa có hoạt động nào.</p>
+            )}
             {otherDayCount > 0 && (
               <div className="profile-activities-other">
                 <button
@@ -436,9 +492,6 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
                   <DayBlock key={day.date_key} day={day} renderItem={renderItem} />
                 ))}
               </div>
-            )}
-            {!currentDay?.items?.length && !otherItemCount && (
-              <p className="muted">Chưa có hoạt động nào.</p>
             )}
           </div>
         )}

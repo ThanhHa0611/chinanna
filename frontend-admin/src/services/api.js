@@ -438,6 +438,21 @@ export const api = {
       body: JSON.stringify({ items }),
     }),
 
+  getProfileActivityKeeptrackAbandonRequests: () =>
+    request('/api/admin/profile-activities/keeptrack-abandon-requests'),
+
+  approveProfileActivityKeeptrackAbandon: (activityId, menteeId) =>
+    request(
+      `/api/admin/profile-activities/${activityId}/registrations/${menteeId}/keeptrack-abandon/approve`,
+      { method: 'POST' },
+    ),
+
+  rejectProfileActivityKeeptrackAbandon: (activityId, menteeId, body = {}) =>
+    request(
+      `/api/admin/profile-activities/${activityId}/registrations/${menteeId}/keeptrack-abandon/reject`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
   getMenteeRegistrations: () => request('/api/admin/mentee-registrations'),
 
   reviewMenteeRegistration: (id, body) =>

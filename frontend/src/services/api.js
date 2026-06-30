@@ -258,6 +258,18 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  completeProfileActivityKeeptrack: (activityId, body = {}) =>
+    request(`/api/profile-activities/${activityId}/keeptrack/complete`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  abandonProfileActivityKeeptrack: (activityId, body = {}) =>
+    request(`/api/profile-activities/${activityId}/keeptrack/abandon`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   openApplyDocumentFile: async (docId) => {
     const token = localStorage.getItem('token');
     const response = await fetch(`${API_BASE}/api/documents/apply/${docId}/file`, {

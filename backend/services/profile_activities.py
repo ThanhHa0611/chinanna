@@ -507,6 +507,14 @@ def _is_individual_participant(activity: dict, state: dict) -> bool:
     return choice == "individual" or mode == "individual"
 
 
+def _is_group_participant(activity: dict, state: dict) -> bool:
+    if not state.get("registered_at"):
+        return False
+    choice = state.get("participation_choice")
+    mode = _normalize_participation_mode(activity.get("participation_mode"))
+    return choice == "group" or mode == "group"
+
+
 def _individual_registration_approved(activity: dict, state: dict) -> bool:
     if not _is_individual_participant(activity, state):
         return False
@@ -516,6 +524,24 @@ def _individual_registration_approved(activity: dict, state: dict) -> bool:
     if pending_reject.get("approval_status") == PROFILE_ACTIVITY_APPROVAL_PENDING:
         return False
     return (state.get("group_response_status") or "").strip().lower() == "confirmed"
+
+
+def _group_registration_approved(activity: dict, state: dict, mentee_id: str) -> bool:
+    if not _is_group_participant(activity, state):
+        return False
+    if (state.get("group_response_status") or "").strip().lower() != "confirmed":
+        return False
+    pending_reject = state.get("mentor_reject_pending") or {}
+    if pending_reject.get("approval_status") == PROFILE_ACTIVITY_APPROVAL_PENDING:
+        return False
+    return _find_mentee_finalized_group(activity, mentee_id) is not None
+
+
+def _resolve_keeptrack_hdnk_fields(activity: dict, state: dict, mentee_id: str) -> tuple[str, str]:
+    if _is_individual_participant(activity, state):
+        return "cá nhân", ""
+    group = _find_mentee_display_group(activity, mentee_id, state)
+    return "nhóm Trơn Tru", (group or {}).get("group_name", "") or ""
 
 
 def _compose_keeptrack_category(activity: dict) -> str:
@@ -545,35 +571,33 @@ def _normalize_keeptrack(raw: dict | None) -> dict:
 
 def _serialize_keeptrack_for_feed(activity: dict, state: dict) -> dict | None:
     keeptrack = _normalize_keeptrack(state.get("keeptrack"))
-    pending = state.get("keeptrack_pending_review") or {}
-    last_reject = state.get("keeptrack_last_rejection") or {}
-    show_bar = keeptrack["active"] or pending.get("status") == "pending"
+    abandon_pending = state.get("keeptrack_abandon_pending") or {}
+    abandon_reject = state.get("keeptrack_abandon_last_rejection") or {}
+    show_bar = keeptrack["active"] or abandon_pending.get("status") == "pending"
     if not show_bar:
         return None
     payload = {
-        "active": keeptrack["active"] or pending.get("status") == "pending",
+        "active": keeptrack["active"],
         "display_name": _compose_keeptrack_category(activity),
         "start_date": keeptrack["start_date"],
-        "progress_status": keeptrack["progress_status"],
-        "progress_label": KEEPTRACK_UI_LABELS.get(keeptrack["progress_status"], ""),
+        "progress_status": keeptrack["progress_status"] or KEEPTRACK_PROGRESS_IN_PROGRESS,
+        "progress_label": KEEPTRACK_UI_LABELS.get(
+            keeptrack["progress_status"] or KEEPTRACK_PROGRESS_IN_PROGRESS,
+            "Đang tiến hành",
+        ),
         "has_award": keeptrack["has_award"],
         "award_level": keeptrack["award_level"],
         "award_level_options": ["giải 1", "giải 2", "giải 3", "khác"],
     }
-    if pending.get("status") == "pending":
-        submitted = pending.get("submitted_keeptrack") or {}
-        payload["review_status"] = "pending"
-        payload["review_message"] = "Đã gửi mentor — chờ xác nhận"
-        if submitted.get("start_date"):
-            payload["start_date"] = submitted["start_date"]
-        if submitted.get("progress_status"):
-            payload["progress_status"] = submitted["progress_status"]
-            payload["progress_label"] = KEEPTRACK_UI_LABELS.get(submitted["progress_status"], "")
-        payload["has_award"] = bool(submitted.get("has_award"))
-        payload["award_level"] = submitted.get("award_level") or ""
-    elif last_reject.get("rejected_at"):
-        payload["review_status"] = "rejected"
-        payload["review_message"] = (last_reject.get("note") or "").strip() or "Mentor đã từ chối cập nhật tiến độ."
+    if abandon_pending.get("status") == "pending":
+        payload["abandon_status"] = "pending"
+        payload["review_message"] = "Đã gửi yêu cầu từ bỏ — chờ mentor xác nhận"
+    elif abandon_reject.get("rejected_at"):
+        payload["abandon_status"] = "rejected"
+        payload["review_message"] = (
+            (abandon_reject.get("note") or "").strip()
+            or "Mentor từ chối yêu cầu từ bỏ — tiếp tục theo dõi hoạt động."
+        )
     return payload
 
 
@@ -597,6 +621,18 @@ def _find_hdnk_entry(entries: list[dict], entry_id: str) -> dict | None:
         if item.get("entry_id") == entry_id:
             return dict(item)
     return None
+
+
+def _remove_keeptrack_hdnk_entry(mentee: dict, state: dict) -> None:
+    keeptrack = _normalize_keeptrack(state.get("keeptrack"))
+    entry_id = keeptrack.get("hdnk_entry_id")
+    if entry_id:
+        _restore_mentee_hdnk_entry(mentee, entry_id, None)
+    state.pop("keeptrack", None)
+    state.pop("keeptrack_pending_review", None)
+    state.pop("keeptrack_last_rejection", None)
+    state.pop("keeptrack_abandon_pending", None)
+    state.pop("keeptrack_abandon_last_rejection", None)
 
 
 def _restore_mentee_hdnk_entry(mentee: dict, entry_id: str, previous_entry: dict | None) -> None:
@@ -688,9 +724,54 @@ def _upsert_mentee_hdnk_entry(
     return resolved_id
 
 
-def maybe_start_individual_keeptrack(activity: dict, mentee_id: str) -> dict:
+def _queue_keeptrack_mentor_review(
+    activity: dict,
+    state: dict,
+    mentee: dict,
+    submitted_keeptrack: dict,
+    *,
+    previous_keeptrack: dict | None = None,
+    previous_hdnk_entry: dict | None = None,
+) -> None:
+    now = datetime.now(timezone.utc)
+    state["keeptrack"] = submitted_keeptrack
+    state.pop("keeptrack_last_rejection", None)
+    state["keeptrack_pending_review"] = {
+        "review_id": str(uuid.uuid4()),
+        "submitted_at": now,
+        "status": "pending",
+        "previous_keeptrack": previous_keeptrack,
+        "previous_hdnk_entry": previous_hdnk_entry,
+        "submitted_keeptrack": submitted_keeptrack,
+        "viewed_at": None,
+        "viewed_by_admin_id": "",
+        "rejected_at": None,
+        "rejected_by_admin_id": "",
+        "reject_note": "",
+    }
+    activity_name = compose_activity_name(activity)
+    mentee_name = mentee.get("full_name") or mentee.get("username") or mentee.get("email", "")
+    notify_mentors_mentee_activity(
+        mentee,
+        action="profile_activity_keeptrack",
+        title=f"{mentee_name} cập nhật tiến độ hoạt động",
+        description=(
+            f"Hoạt động: {activity_name}. "
+            f"{_keeptrack_progress_description(submitted_keeptrack)}"
+        ),
+    )
+
+
+def _create_keeptrack_entry(
+    activity: dict,
+    mentee_id: str,
+    *,
+    participation_type: str,
+    zalo_group_name: str = "",
+    notify_mentor: bool = False,
+) -> dict:
     state = _get_mentee_state(activity, mentee_id)
-    if not state or not _individual_registration_approved(activity, state):
+    if not state:
         return activity
     keeptrack = _normalize_keeptrack(state.get("keeptrack"))
     if keeptrack.get("hdnk_entry_id") and keeptrack.get("progress_status"):
@@ -708,14 +789,15 @@ def maybe_start_individual_keeptrack(activity: dict, mentee_id: str) -> dict:
         entry_data={
             "start_date": start_date,
             "category": _compose_keeptrack_category(activity),
-            "participation_type": "cá nhân",
+            "participation_type": participation_type,
+            "zalo_group_name": zalo_group_name,
             "progress": KEEPTRACK_HDNK_PROGRESS_ACTIVE,
             "has_award": False,
             "award_level": "",
         },
         mentor_updated=True,
     )
-    state["keeptrack"] = {
+    submitted_keeptrack = {
         "active": True,
         "start_date": start_date,
         "progress_status": KEEPTRACK_PROGRESS_IN_PROGRESS,
@@ -724,11 +806,48 @@ def maybe_start_individual_keeptrack(activity: dict, mentee_id: str) -> dict:
         "hdnk_entry_id": entry_id,
         "synced_at": now,
     }
+    if notify_mentor:
+        _queue_keeptrack_mentor_review(
+            activity,
+            state,
+            mentee,
+            submitted_keeptrack,
+            previous_keeptrack=None,
+            previous_hdnk_entry=None,
+        )
+    else:
+        state["keeptrack"] = submitted_keeptrack
     profile_activities.update_one(
         {"_id": activity["_id"]},
         {"$set": {"mentee_states": activity.get("mentee_states", []), "updated_at": now}},
     )
     return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def maybe_start_individual_keeptrack(activity: dict, mentee_id: str) -> dict:
+    state = _get_mentee_state(activity, mentee_id)
+    if not state or not _individual_registration_approved(activity, state):
+        return activity
+    return _create_keeptrack_entry(
+        activity,
+        mentee_id,
+        participation_type="cá nhân",
+        notify_mentor=False,
+    )
+
+
+def maybe_start_group_keeptrack(activity: dict, mentee_id: str) -> dict:
+    state = _get_mentee_state(activity, mentee_id)
+    if not state or not _group_registration_approved(activity, state, mentee_id):
+        return activity
+    participation_type, zalo_group_name = _resolve_keeptrack_hdnk_fields(activity, state, mentee_id)
+    return _create_keeptrack_entry(
+        activity,
+        mentee_id,
+        participation_type=participation_type,
+        zalo_group_name=zalo_group_name,
+        notify_mentor=False,
+    )
 
 
 def update_activity_keeptrack(
@@ -784,13 +903,15 @@ def update_activity_keeptrack(
         if progress_status == KEEPTRACK_PROGRESS_COMPLETED
         else KEEPTRACK_HDNK_PROGRESS_ACTIVE
     )
+    participation_type, zalo_group_name = _resolve_keeptrack_hdnk_fields(activity, state, mentee_id)
     entry_id = _upsert_mentee_hdnk_entry(
         mentee,
         entry_id=keeptrack.get("hdnk_entry_id") or None,
         entry_data={
             "start_date": start_date,
             "category": _compose_keeptrack_category(activity),
-            "participation_type": "cá nhân",
+            "participation_type": participation_type,
+            "zalo_group_name": zalo_group_name,
             "progress": hdnk_progress,
             "has_award": has_award,
             "award_level": award_level,
@@ -834,6 +955,224 @@ def update_activity_keeptrack(
                 f"{_keeptrack_progress_description(submitted_keeptrack)}"
             ),
         )
+
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"mentee_states": activity.get("mentee_states", []), "updated_at": now}},
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def complete_activity_keeptrack(activity: dict, mentee_id: str, payload: dict) -> dict:
+    state = _get_mentee_state(activity, mentee_id)
+    if not state:
+        raise ProfileActivityKeeptrackError("Bạn chưa báo danh hoạt động này.")
+    keeptrack = _normalize_keeptrack(state.get("keeptrack"))
+    if not keeptrack["active"]:
+        raise ProfileActivityKeeptrackError("Hoạt động không còn trong trạng thái đang tiến hành.")
+    abandon_pending = state.get("keeptrack_abandon_pending") or {}
+    if abandon_pending.get("status") == "pending":
+        raise ProfileActivityKeeptrackError("Đang chờ mentor xử lý yêu cầu từ bỏ — không thể hoàn thành.")
+
+    has_award = bool(payload.get("has_award"))
+    award_level = (payload.get("award_level") or "").strip() if has_award else ""
+    if has_award and award_level not in {"giải 1", "giải 2", "giải 3", "khác"}:
+        raise ProfileActivityKeeptrackError("Cần chọn hạng giải.")
+
+    start_date = (keeptrack["start_date"] or "").strip()
+    if not start_date:
+        raise ProfileActivityKeeptrackError("Cần ngày bắt đầu.")
+
+    mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
+    if not mentee:
+        raise ProfileActivityKeeptrackError("Mentee không tồn tại.")
+
+    participation_type, zalo_group_name = _resolve_keeptrack_hdnk_fields(activity, state, mentee_id)
+    now = datetime.now(timezone.utc)
+    entry_id = _upsert_mentee_hdnk_entry(
+        mentee,
+        entry_id=keeptrack.get("hdnk_entry_id") or None,
+        entry_data={
+            "start_date": start_date,
+            "category": _compose_keeptrack_category(activity),
+            "participation_type": participation_type,
+            "zalo_group_name": zalo_group_name,
+            "progress": KEEPTRACK_HDNK_PROGRESS_DONE,
+            "has_award": has_award,
+            "award_level": award_level,
+        },
+        mentor_updated=False,
+    )
+    state["keeptrack"] = {
+        "active": False,
+        "start_date": start_date,
+        "progress_status": KEEPTRACK_PROGRESS_COMPLETED,
+        "has_award": has_award,
+        "award_level": award_level,
+        "hdnk_entry_id": entry_id,
+        "synced_at": now,
+    }
+    state.pop("keeptrack_abandon_pending", None)
+    state.pop("keeptrack_abandon_last_rejection", None)
+    state.pop("keeptrack_pending_review", None)
+    state.pop("keeptrack_last_rejection", None)
+
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"mentee_states": activity.get("mentee_states", []), "updated_at": now}},
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def request_keeptrack_abandon(activity: dict, mentee_id: str, note: str = "") -> dict:
+    state = _get_mentee_state(activity, mentee_id)
+    if not state:
+        raise ProfileActivityKeeptrackError("Bạn chưa báo danh hoạt động này.")
+    keeptrack = _normalize_keeptrack(state.get("keeptrack"))
+    if not keeptrack["active"]:
+        raise ProfileActivityKeeptrackError("Hoạt động không còn trong trạng thái đang tiến hành.")
+    abandon_pending = state.get("keeptrack_abandon_pending") or {}
+    if abandon_pending.get("status") == "pending":
+        raise ProfileActivityKeeptrackError("Yêu cầu từ bỏ đang chờ mentor xử lý.")
+
+    mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
+    if not mentee:
+        raise ProfileActivityKeeptrackError("Mentee không tồn tại.")
+
+    now = datetime.now(timezone.utc)
+    abandon_note = (note or "").strip()
+    state["keeptrack_abandon_pending"] = {
+        "request_id": str(uuid.uuid4()),
+        "status": "pending",
+        "requested_at": now,
+        "note": abandon_note,
+    }
+    state.pop("keeptrack_abandon_last_rejection", None)
+
+    activity_name = compose_activity_name(activity)
+    mentee_name = mentee.get("full_name") or mentee.get("username") or mentee.get("email", "")
+    notify_mentors_mentee_activity(
+        mentee,
+        action="profile_activity_keeptrack_abandon",
+        title=f"{mentee_name} yêu cầu từ bỏ hoạt động",
+        description=(
+            f"Hoạt động: {activity_name}."
+            + (f" Ghi chú: {abandon_note}" if abandon_note else "")
+        ),
+    )
+
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"mentee_states": activity.get("mentee_states", []), "updated_at": now}},
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def serialize_pending_keeptrack_abandon(activity: dict, state: dict, mentee: dict) -> dict | None:
+    pending = state.get("keeptrack_abandon_pending") or {}
+    if pending.get("status") != "pending":
+        return None
+    keeptrack = _normalize_keeptrack(state.get("keeptrack"))
+    mentee_id = state.get("mentee_id", "")
+    profile_parts = mentee_keeptrack_profile_summary_parts(mentee)
+    return {
+        "request_id": pending.get("request_id") or f"{activity['_id']}:{mentee_id}",
+        "activity_id": str(activity["_id"]),
+        "activity_name": compose_activity_name(activity),
+        "mentee_id": mentee_id,
+        "mentee_name": mentee.get("full_name") or mentee.get("username") or mentee.get("email", ""),
+        "mentee_email": mentee.get("email", ""),
+        "mentee_profile_summary": mentee_keeptrack_profile_summary_line(mentee),
+        "mentee_apply_system": profile_parts["apply_system"],
+        "mentee_apply_major": profile_parts["apply_major"],
+        "mentee_research_direction": profile_parts["research_direction"],
+        "mentee_apply_language": profile_parts["apply_language"],
+        "requested_at": pending.get("requested_at").isoformat() if pending.get("requested_at") else "",
+        "note": pending.get("note") or "",
+        "start_date": keeptrack.get("start_date") or "",
+        "progress_label": KEEPTRACK_UI_LABELS.get(keeptrack.get("progress_status") or "", "Đang tiến hành"),
+    }
+
+
+def list_pending_keeptrack_abandon_requests(admin: dict) -> list[dict]:
+    items: list[dict] = []
+    for activity in profile_activities.find(mentor_profile_activities_query(admin)).sort("updated_at", -1):
+        for state in activity.get("mentee_states", []):
+            if not state.get("registered_at"):
+                continue
+            mentee_id = state.get("mentee_id", "")
+            if not ObjectId.is_valid(mentee_id):
+                continue
+            mentee = users.find_one({"_id": ObjectId(mentee_id)})
+            if not mentee:
+                continue
+            row = serialize_pending_keeptrack_abandon(activity, state, mentee)
+            if row:
+                items.append(row)
+    items.sort(key=lambda item: item.get("requested_at") or "", reverse=True)
+    return items
+
+
+def _get_pending_keeptrack_abandon_state(activity: dict, mentee_id: str) -> tuple[dict, dict]:
+    state = _get_mentee_state(activity, mentee_id)
+    if not state:
+        raise ProfileActivityKeeptrackError("Mentee chưa báo danh hoạt động này.")
+    pending = state.get("keeptrack_abandon_pending") or {}
+    if pending.get("status") != "pending":
+        raise ProfileActivityKeeptrackError("Không có yêu cầu từ bỏ đang chờ xử lý.")
+    return state, pending
+
+
+def approve_keeptrack_abandon(activity: dict, mentee_id: str, admin: dict) -> dict:
+    state, _pending = _get_pending_keeptrack_abandon_state(activity, mentee_id)
+    mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
+    if not mentee:
+        raise ProfileActivityKeeptrackError("Mentee không tồn tại.")
+
+    _remove_keeptrack_hdnk_entry(mentee, state)
+    now = datetime.now(timezone.utc)
+    activity_name = compose_activity_name(activity)
+    notify_mentee_mentor_activity(
+        mentee,
+        action="profile_activity_keeptrack_abandon_approved",
+        title="Mentor đồng ý từ bỏ hoạt động",
+        description=f"Mentor đã đồng ý yêu cầu từ bỏ hoạt động '{activity_name}'.",
+        mentor_name=activity.get("mentor_name", ""),
+    )
+
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"mentee_states": activity.get("mentee_states", []), "updated_at": now}},
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def reject_keeptrack_abandon(activity: dict, mentee_id: str, admin: dict, note: str = "") -> dict:
+    state, _pending = _get_pending_keeptrack_abandon_state(activity, mentee_id)
+    mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
+    if not mentee:
+        raise ProfileActivityKeeptrackError("Mentee không tồn tại.")
+
+    now = datetime.now(timezone.utc)
+    reject_note = (note or "").strip()
+    state["keeptrack_abandon_last_rejection"] = {
+        "note": reject_note,
+        "rejected_at": now,
+        "rejected_by_admin_id": str(admin.get("_id", "")),
+    }
+    state.pop("keeptrack_abandon_pending", None)
+
+    activity_name = compose_activity_name(activity)
+    notify_mentee_mentor_activity(
+        mentee,
+        action="profile_activity_keeptrack_abandon_rejected",
+        title="Mentor từ chối yêu cầu từ bỏ",
+        description=(
+            f"Mentor đã từ chối yêu cầu từ bỏ hoạt động '{activity_name}'."
+            + (f" Ghi chú: {reject_note}" if reject_note else "")
+        ),
+        mentor_name=activity.get("mentor_name", ""),
+    )
 
     profile_activities.update_one(
         {"_id": activity["_id"]},
@@ -1640,6 +1979,14 @@ def register_for_activity(
     if effective_choice == "individual":
         maybe_start_individual_keeptrack(refreshed, mentee_id)
         refreshed = profile_activities.find_one({"_id": activity["_id"]}) or refreshed
+        activity_name = compose_activity_name(refreshed)
+        mentee_name = mentee.get("full_name") or mentee.get("username") or mentee.get("email", "")
+        notify_mentors_mentee_activity(
+            mentee,
+            action="profile_activity_register",
+            title=f"{mentee_name} báo danh hoạt động (cá nhân)",
+            description=f"Hoạt động: {activity_name}. Tiến độ đã tự động lưu vào Keep track.",
+        )
     return refreshed
 
 
@@ -1822,7 +2169,12 @@ def reject_pending_group(activity: dict, group_id: str) -> dict:
 
 def _apply_mentor_reject(activity: dict, mentee: dict, note: str = "") -> None:
     state = _get_or_create_state(activity, str(mentee["_id"]))
-    _clear_keeptrack_on_reject(state)
+    if _is_individual_participant(activity, state):
+        _remove_keeptrack_hdnk_entry(mentee, state)
+    else:
+        _clear_keeptrack_on_reject(state)
+    state.pop("keeptrack_abandon_pending", None)
+    state.pop("keeptrack_abandon_last_rejection", None)
     state["group_response_status"] = "rejected"
     state["group_response_note"] = (note or "").strip()
     state["group_response_at"] = datetime.now(timezone.utc)
@@ -1947,6 +2299,9 @@ def count_pending_actions_for_activity(activity: dict, admin: dict) -> int:
         pending_keeptrack = state.get("keeptrack_pending_review") or {}
         if pending_keeptrack.get("status") == "pending":
             count += 1
+        abandon_pending = state.get("keeptrack_abandon_pending") or {}
+        if abandon_pending.get("status") == "pending":
+            count += 1
 
     return count
 
@@ -2048,7 +2403,11 @@ def update_group_response(activity: dict, mentee: dict, status: str, note: str =
         {"_id": activity["_id"]},
         {"$set": {"mentee_states": activity.get("mentee_states", []), "updated_at": datetime.now(timezone.utc)}},
     )
-    return activity
+    refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    if response == "confirmed":
+        maybe_start_group_keeptrack(refreshed, mentee_id)
+        refreshed = profile_activities.find_one({"_id": activity["_id"]}) or refreshed
+    return refreshed
 
 
 def finalize_group_and_sync_hdnk(activity: dict, group_id: str, admin_name: str = "") -> dict:
@@ -2070,32 +2429,6 @@ def finalize_group_and_sync_hdnk(activity: dict, group_id: str, admin_name: str 
             state["group_response_status"] = "pending"
             state["group_response_note"] = ""
             state["group_response_at"] = None
-
-        entries = get_hdnk_nckh_entries_raw(mentee)
-        new_entry = normalize_hdnk_nckh_entry(
-            {
-                "start_date": now.astimezone().strftime("%Y-%m-%d"),
-                "category": activity.get("activity_name", ""),
-                "participation_type": "nhóm Trơn Tru" if len(member_ids) > 1 else "cá nhân",
-                "zalo_group_name": target_group.get("group_name", "") if len(member_ids) > 1 else "",
-                "progress": "mới tạo nhóm",
-                "has_award": False,
-            },
-        )
-        entries.insert(0, new_entry)
-        users.update_one(
-            {"_id": mentee["_id"]},
-            {
-                "$set": {
-                    "hdnk_nckh_entries": entries[:20],
-                    "hdnk_nckh_l1_unread": True,
-                    "hdnk_nckh_mentor_updated_at": now,
-                }
-            },
-        )
-        if state.get("participation_choice") != "individual" and _normalize_participation_mode(
-            activity.get("participation_mode")
-        ) != "individual":
             notify_mentee_mentor_activity(
                 mentee,
                 action="profile_activity_finalized",
