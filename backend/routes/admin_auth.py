@@ -67,6 +67,12 @@ def admin_login():
             }), 403
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
+    location, location_error = parse_login_location(data)
+    if location_error:
+        return jsonify({"detail": location_error, "location_required": True}), 403
+    set_request_login_location(location)
+    _record_admin_login_context(admin, location)
+
     log_mentor_activity(admin, "login", f"{admin.get('email')} đăng nhập hệ thống mentor")
 
     token = create_token(str(admin["_id"]), ROLE_ADMIN)
@@ -75,6 +81,153 @@ def admin_login():
         "token_type": "bearer",
         "admin": admin_response(admin),
     })
+
+
+def _safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _haversine_distance_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    from math import asin, cos, radians, sin, sqrt
+
+    r = 6371.0
+    dlat = radians(lat2 - lat1)
+    dlng = radians(lng2 - lng1)
+    a = (
+        sin(dlat / 2) ** 2
+        + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2
+    )
+    c = 2 * asin(sqrt(a))
+    return r * c
+
+
+def _location_matches_reference(
+    current_location: dict,
+    reference_location: dict,
+    tolerance_km: float,
+) -> bool:
+    cur_lat = _safe_float(current_location.get("latitude"))
+    cur_lng = _safe_float(current_location.get("longitude"))
+    ref_lat = _safe_float(reference_location.get("last_latitude"))
+    ref_lng = _safe_float(reference_location.get("last_longitude"))
+    if None not in (cur_lat, cur_lng, ref_lat, ref_lng):
+        return _haversine_distance_km(cur_lat, cur_lng, ref_lat, ref_lng) <= tolerance_km
+
+    cur_label = (current_location.get("location_label") or "").strip().lower()
+    ref_label = (reference_location.get("last_location") or "").strip().lower()
+    if cur_label and ref_label:
+        return cur_label == ref_label
+
+    return True
+
+
+def _record_admin_login_context(admin: dict, location: dict) -> None:
+    ip, device_id, device_label = get_login_context()
+    now = datetime.now(timezone.utc)
+    login_ips = list(admin.get("login_ips") or [])
+    login_devices = list(admin.get("login_devices") or [])
+
+    ip_entry = next((entry for entry in login_ips if entry.get("ip") == ip), None)
+    if ip_entry:
+        ip_entry["last_seen"] = now
+        ip_entry["count"] = ip_entry.get("count", 0) + 1
+    else:
+        ip_entry = {"ip": ip, "first_seen": now, "last_seen": now, "count": 1}
+        login_ips.append(ip_entry)
+    apply_location_fields(ip_entry, location, now)
+
+    device_entry = next(
+        (entry for entry in login_devices if entry.get("device_id") == device_id),
+        None,
+    )
+    if device_entry:
+        device_entry["last_seen"] = now
+        device_entry["count"] = device_entry.get("count", 0) + 1
+        device_entry["last_ip"] = ip
+        device_entry["label"] = device_label
+    else:
+        device_entry = {
+            "device_id": device_id,
+            "label": device_label,
+            "first_seen": now,
+            "last_seen": now,
+            "count": 1,
+            "last_ip": ip,
+        }
+        login_devices.append(device_entry)
+    apply_location_fields(device_entry, location, now)
+
+    admins.update_one(
+        {"_id": admin["_id"]},
+        {
+            "$set": {
+                "login_ips": login_ips,
+                "login_devices": login_devices,
+            },
+        },
+    )
+
+
+def _trusted_admin_context_matches(admin: dict, location: dict | None) -> bool:
+    ip, device_id, _device_label = get_login_context()
+    current_location = location or {}
+    if not current_location:
+        return False
+
+    login_ips = list(admin.get("login_ips") or [])
+    login_devices = list(admin.get("login_devices") or [])
+    ip_entry = next((entry for entry in login_ips if entry.get("ip") == ip), None)
+    device_entry = next((entry for entry in login_devices if entry.get("device_id") == device_id), None)
+    if not ip_entry or not device_entry:
+        return False
+
+    tolerance_km = _safe_float(os.getenv("TRUSTED_LOGIN_LOCATION_TOLERANCE_KM", "10")) or 10.0
+    return _location_matches_reference(current_location, ip_entry, tolerance_km) or _location_matches_reference(
+        current_location,
+        device_entry,
+        tolerance_km,
+    )
+
+
+@app.post("/api/admin/auth/auto-login")
+@with_db
+def admin_auto_login():
+    data = request.get_json(silent=True) or {}
+    email = data.get("email", "").strip().lower()
+    if not email:
+        return jsonify({"detail": "Email là bắt buộc"}), 400
+
+    location, location_error = parse_login_location(data)
+    if location_error:
+        return jsonify({"detail": location_error, "location_required": True}), 403
+    set_request_login_location(location)
+
+    admin = admins.find_one({"email": email})
+    if not admin:
+        return jsonify({"detail": "Không thể tự động đăng nhập"}), 401
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _trusted_admin_context_matches(admin, location):
+        return jsonify(
+            {
+                "detail": "Thiết bị/IP/vị trí chưa khớp với lần đăng nhập trước. Vui lòng đăng nhập bằng mật khẩu.",
+            },
+        ), 403
+
+    _record_admin_login_context(admin, location)
+    fresh_admin = admins.find_one({"_id": admin["_id"]}) or admin
+    token = create_token(str(fresh_admin["_id"]), ROLE_ADMIN)
+    return jsonify(
+        {
+            "access_token": token,
+            "token_type": "bearer",
+            "admin": admin_response(fresh_admin),
+            "auto_login": True,
+        },
+    )
 
 
 @app.post("/api/admin/auth/register")

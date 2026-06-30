@@ -103,6 +103,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  autoLogin: (body) =>
+    request('/api/admin/auth/auto-login', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   register: (body) =>
     request('/api/admin/auth/register', {
       method: 'POST',

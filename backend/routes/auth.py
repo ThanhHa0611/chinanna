@@ -205,6 +205,27 @@ def login():
     })
 
 
+@app.post("/api/auth/auto-login")
+@with_db
+def auto_login():
+    data = request.get_json(silent=True) or {}
+    email = data.get("email", "").strip().lower()
+    if not email:
+        return jsonify({"detail": "Email là bắt buộc"}), 400
+
+    location, location_error = parse_login_location(data)
+    if location_error:
+        return jsonify({"detail": location_error, "location_required": True}), 403
+    set_request_login_location(location)
+
+    user = users.find_one({"email": email})
+    if not user:
+        return jsonify({"detail": "Không thể tự động đăng nhập"}), 401
+
+    payload, status = create_trusted_auto_login_for_user(user)
+    return jsonify(payload), status
+
+
 @app.get("/api/auth/me")
 @with_db
 def get_me():

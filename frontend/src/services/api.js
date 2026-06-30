@@ -45,6 +45,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  autoLogin: (body) =>
+    request('/api/auth/auto-login', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   getMe: () => request('/api/auth/me'),
 
   updateProfile: (body) =>

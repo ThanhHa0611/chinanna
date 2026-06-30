@@ -25,6 +25,7 @@ from config import *
 from database import *
 from auth.login_tracking import (
     apply_location_fields,
+    device_label_from_user_agent,
     get_login_context,
     get_request_login_location,
     notify_login_security_event,
@@ -71,13 +72,16 @@ def user_response(user: dict) -> dict:
 
 def check_login_allowed(user: dict) -> tuple[bool, str]:
     ip, device_id, device_label = get_login_context()
-    approved_ips = set(user.get("approved_login_ips") or [])
-    approved_devices = set(user.get("approved_login_devices") or [])
-
     if not user.get("login_ips") and not user.get("login_devices"):
         return True, ""
 
-    if ip in approved_ips and device_id in approved_devices:
+    trusted, _reason = trusted_login_context_matches(
+        user,
+        ip=ip,
+        device_id=device_id,
+        location=get_request_login_location(),
+    )
+    if trusted:
         return True, ""
 
     upsert_pending_login_request(user, ip, device_id, device_label)
@@ -86,6 +90,138 @@ def check_login_allowed(user: dict) -> tuple[bool, str]:
         False,
         "Thiết bị hoặc IP mới chưa được mentor duyệt. Vui lòng liên hệ mentor để được cấp quyền đăng nhập.",
     )
+
+
+def _safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _haversine_distance_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    from math import asin, cos, radians, sin, sqrt
+
+    r = 6371.0
+    dlat = radians(lat2 - lat1)
+    dlng = radians(lng2 - lng1)
+    a = (
+        sin(dlat / 2) ** 2
+        + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2
+    )
+    c = 2 * asin(sqrt(a))
+    return r * c
+
+
+def _normalized_location_label(value: str) -> str:
+    return (value or "").strip().lower()
+
+
+def _location_matches_reference(
+    login_location: dict,
+    reference_location: dict,
+    tolerance_km: float,
+) -> bool:
+    login_lat = _safe_float(login_location.get("latitude"))
+    login_lng = _safe_float(login_location.get("longitude"))
+    ref_lat = _safe_float(reference_location.get("latitude"))
+    ref_lng = _safe_float(reference_location.get("longitude"))
+
+    if None not in (login_lat, login_lng, ref_lat, ref_lng):
+        return _haversine_distance_km(login_lat, login_lng, ref_lat, ref_lng) <= tolerance_km
+
+    login_label = _normalized_location_label(login_location.get("location_label", ""))
+    ref_label = _normalized_location_label(reference_location.get("location_label", ""))
+    if login_label and ref_label:
+        return login_label == ref_label
+
+    # Backward compatibility for accounts recorded before location metadata existed.
+    return True
+
+
+def trusted_login_context_matches(
+    user: dict,
+    *,
+    ip: str,
+    device_id: str,
+    location: dict | None,
+) -> tuple[bool, str]:
+    approved_ips = set(user.get("approved_login_ips") or [])
+    approved_devices = set(user.get("approved_login_devices") or [])
+    if ip not in approved_ips or device_id not in approved_devices:
+        return False, "ip_or_device_unapproved"
+
+    current_location = location or {}
+    if not current_location:
+        return False, "location_missing"
+
+    login_ips = list(user.get("login_ips") or [])
+    login_devices = list(user.get("login_devices") or [])
+    ip_entry = next((entry for entry in login_ips if entry.get("ip") == ip), None) or {}
+    device_entry = (
+        next((entry for entry in login_devices if entry.get("device_id") == device_id), None) or {}
+    )
+
+    tolerance_km = _safe_float(os.getenv("TRUSTED_LOGIN_LOCATION_TOLERANCE_KM", "10")) or 10.0
+    references = [
+        {
+            "latitude": ip_entry.get("last_latitude"),
+            "longitude": ip_entry.get("last_longitude"),
+            "location_label": ip_entry.get("last_location", ""),
+        },
+        {
+            "latitude": device_entry.get("last_latitude"),
+            "longitude": device_entry.get("last_longitude"),
+            "location_label": device_entry.get("last_location", ""),
+        },
+    ]
+
+    for ref in references:
+        if _location_matches_reference(current_location, ref, tolerance_km):
+            return True, ""
+
+    return False, "location_mismatch"
+
+
+def create_trusted_auto_login_for_user(user: dict) -> tuple[dict, int]:
+    from bson import ObjectId
+
+    role = user.get("role") or ROLE_MENTEE
+    if role not in (ROLE_MENTEE, ROLE_PARENT):
+        return {"detail": "Email hoặc mật khẩu không đúng"}, 401
+    if role == ROLE_MENTEE and not mentee_is_approved(user):
+        detail, flag = registration_block_message(user)
+        payload = {"detail": detail}
+        if flag:
+            payload[flag] = True
+        return payload, 403
+
+    ip, device_id, _device_label = get_login_context()
+    trusted, _reason = trusted_login_context_matches(
+        user,
+        ip=ip,
+        device_id=device_id,
+        location=get_request_login_location(),
+    )
+    if not trusted:
+        user_agent = request.headers.get("User-Agent", "")
+        device_label = device_label_from_user_agent(user_agent)
+        upsert_pending_login_request(user, ip, device_id, device_label)
+        notify_login_security_event(user, ip, device_id, device_label, projected=True)
+        return {
+            "detail": "Thiết bị/IP/vị trí chưa trùng ngữ cảnh đã duyệt. Vui lòng đăng nhập bằng mật khẩu để gửi yêu cầu duyệt mới.",
+            "login_blocked": True,
+        }, 403
+
+    record_successful_login(user)
+    fresh_user = users.find_one({"_id": ObjectId(user["_id"])}) or user
+    token = create_token(str(fresh_user["_id"]), role)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": user_response(fresh_user),
+        "auto_login": True,
+    }, 200
 
 
 def record_successful_login(user: dict) -> None:
