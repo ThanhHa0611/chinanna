@@ -1001,12 +1001,14 @@ def _clear_keeptrack_on_reject(state: dict) -> None:
         }
 
 
-def _find_mentee_notified_group(activity: dict, mentee_id: str) -> dict | None:
+def _find_mentee_finalized_group(activity: dict, mentee_id: str) -> dict | None:
     for group in activity.get("groups", []):
         if not group_is_approved(group) or _is_auto_solo_group(group):
             continue
+        if not group.get("finalized_at"):
+            continue
         mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
-        if mentee_id in mentee_ids and group.get("notification_sent_at"):
+        if mentee_id in mentee_ids:
             return group
     return None
 
@@ -1016,9 +1018,9 @@ def _find_mentee_display_group(activity: dict, mentee_id: str, state: dict) -> d
         return None
     if _normalize_participation_mode(activity.get("participation_mode")) == "individual":
         return None
-    notified = _find_mentee_notified_group(activity, mentee_id)
-    if notified:
-        return notified
+    finalized = _find_mentee_finalized_group(activity, mentee_id)
+    if finalized:
+        return finalized
     for group in activity.get("groups", []):
         if not group_is_approved(group) or _is_auto_solo_group(group):
             continue
@@ -1037,7 +1039,7 @@ def _mentee_requires_group_confirmation(activity: dict, mentee_id: str, state: d
         return False
     if (state.get("group_response_status") or "").strip().lower() != "pending":
         return False
-    return _find_mentee_notified_group(activity, mentee_id) is not None
+    return _find_mentee_finalized_group(activity, mentee_id) is not None
 
 
 def serialize_group_members_for_mentee(group: dict) -> list[dict]:
@@ -1234,7 +1236,7 @@ def _matches_other_major(activity: dict, mentee: dict) -> bool:
 
 
 def _mentee_has_notified_group_assignment(activity: dict, mentee_id: str) -> bool:
-    return _find_mentee_notified_group(activity, mentee_id) is not None
+    return _find_mentee_finalized_group(activity, mentee_id) is not None
 
 
 def _resolve_group_name_for_admin(activity: dict, mentee_id: str) -> str:
@@ -1349,11 +1351,11 @@ def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidd
     group_response_status = state.get("group_response_status")
     display_group = _find_mentee_display_group(doc, mentee_id, state)
     group_assignment_pending = _mentee_requires_group_confirmation(doc, mentee_id, state)
+    group_finalized = bool((display_group or {}).get("finalized_at"))
+    group_member_count = len((display_group or {}).get("mentee_ids") or []) if display_group else 0
     group_members: list[dict] = []
-    if (
-        display_group
-        and (group_response_status or "").strip().lower() == "confirmed"
-    ):
+    response_status = (group_response_status or "").strip().lower()
+    if display_group and (group_finalized or response_status == "confirmed"):
         group_members = serialize_group_members_for_mentee(display_group)
     payload = {
         "id": str(doc["_id"]),
@@ -1378,6 +1380,8 @@ def serialize_profile_activity_for_feed(doc: dict, mentee: dict, *, include_hidd
         "group_response_note": state.get("group_response_note", ""),
         "group_assignment_pending": group_assignment_pending,
         "group_name": (display_group or {}).get("group_name", "") if display_group else "",
+        "group_member_count": group_member_count,
+        "group_finalized": group_finalized,
         "group_members": group_members,
         "highlight_star": activity_matches_mentee_major(doc, mentee),
         "importance": _normalize_importance(doc.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE)),
@@ -1994,47 +1998,27 @@ def list_pending_l1_group_actions(activity: dict) -> list[dict]:
     return pending
 
 
-def _build_team_message(activity: dict, group: dict, member_profiles: list[dict]) -> str:
-    teammates = ", ".join(
-        f"{item.get('full_name') or item.get('username') or item.get('email')} ({item.get('zalo_phone') or 'chưa có Zalo'})"
-        for item in member_profiles
+
+def _build_finalize_group_notification(group: dict) -> tuple[str, str]:
+    group_name = (group.get("group_name") or "").strip() or "nhóm"
+    member_count = len(group.get("mentee_ids") or [])
+    title = f"Mentor đã phân bạn vào nhóm {group_name}"
+    description = (
+        f"Mentor đã phân bạn vào nhóm {group_name} bao gồm {member_count} thành viên (Xem)"
     )
-    return (
-        f"Bạn đã được xếp nhóm '{group.get('group_name')}' cho hoạt động "
-        f"'{activity.get('activity_name')}'. Thành viên: {teammates}."
-    )
+    return title, description
 
 
 def notify_group_assignment(activity: dict, group: dict) -> dict:
+    """Mark group as assigned internally; mentee notification happens on chốt nhóm."""
     if not group_is_approved(group) or _is_auto_solo_group(group):
         return activity
-    member_ids = [ObjectId(item) for item in group.get("mentee_ids", []) if ObjectId.is_valid(item)]
-    members = list(users.find({"_id": {"$in": member_ids}, "role": {"$ne": ROLE_PARENT}}))
-    message = _build_team_message(activity, group, members)
-    group_name = (group.get("group_name") or "").strip() or "nhóm"
-    for mentee in members:
-        state = _get_or_create_state(activity, str(mentee["_id"]))
-        if state.get("participation_choice") == "individual":
-            continue
-        if _normalize_participation_mode(activity.get("participation_mode")) == "individual":
-            continue
-        state["group_response_status"] = "pending"
-        state["group_response_note"] = ""
-        state["group_response_at"] = None
-        notify_mentee_mentor_activity(
-            mentee,
-            action="profile_activity_group",
-            title=f"Mentor mời bạn vào {group_name}",
-            description=message,
-            mentor_name=activity.get("mentor_name", ""),
-        )
     group["notification_sent_at"] = datetime.now(timezone.utc)
     profile_activities.update_one(
         {"_id": activity["_id"]},
         {
             "$set": {
                 "groups": activity.get("groups", []),
-                "mentee_states": activity.get("mentee_states", []),
                 "updated_at": datetime.now(timezone.utc),
             }
         },
@@ -2076,7 +2060,17 @@ def finalize_group_and_sync_hdnk(activity: dict, group_id: str, admin_name: str 
 
     now = datetime.now(timezone.utc)
     member_ids = [ObjectId(item) for item in target_group.get("mentee_ids", []) if ObjectId.is_valid(item)]
+    notify_title, notify_description = _build_finalize_group_notification(target_group)
     for mentee in users.find({"_id": {"$in": member_ids}, "role": {"$ne": ROLE_PARENT}}):
+        mentee_id = str(mentee["_id"])
+        state = _get_or_create_state(activity, mentee_id)
+        if state.get("participation_choice") != "individual" and _normalize_participation_mode(
+            activity.get("participation_mode")
+        ) != "individual":
+            state["group_response_status"] = "pending"
+            state["group_response_note"] = ""
+            state["group_response_at"] = None
+
         entries = get_hdnk_nckh_entries_raw(mentee)
         new_entry = normalize_hdnk_nckh_entry(
             {
@@ -2099,21 +2093,27 @@ def finalize_group_and_sync_hdnk(activity: dict, group_id: str, admin_name: str 
                 }
             },
         )
-        notify_mentee_mentor_activity(
-            mentee,
-            action="profile_activity_finalized",
-            title="Nhóm hoạt động đã chốt",
-            description=(
-                f"Mentor {admin_name or activity.get('mentor_name') or ''} đã chốt nhóm "
-                f"'{target_group.get('group_name')}' cho hoạt động '{activity.get('activity_name')}'."
-            ).strip(),
-            mentor_name=activity.get("mentor_name", ""),
-        )
+        if state.get("participation_choice") != "individual" and _normalize_participation_mode(
+            activity.get("participation_mode")
+        ) != "individual":
+            notify_mentee_mentor_activity(
+                mentee,
+                action="profile_activity_finalized",
+                title=notify_title,
+                description=notify_description,
+                mentor_name=activity.get("mentor_name", ""),
+            )
 
     target_group["finalized_at"] = now
     profile_activities.update_one(
         {"_id": activity["_id"]},
-        {"$set": {"groups": activity.get("groups", []), "updated_at": now}},
+        {
+            "$set": {
+                "groups": activity.get("groups", []),
+                "mentee_states": activity.get("mentee_states", []),
+                "updated_at": now,
+            }
+        },
     )
     return activity
 

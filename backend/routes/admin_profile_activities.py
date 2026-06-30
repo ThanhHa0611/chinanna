@@ -226,7 +226,7 @@ def admin_upsert_activity_group(activity_id: str):
     if requires_l1:
         response["message"] = "Đã gửi phân nhóm, chờ mentor cấp 1 duyệt trước khi mentee thấy."
     elif saved_group and group_is_approved(saved_group):
-        response["message"] = "Đã tạo nhóm — mentee sẽ nhận thông báo."
+        response["message"] = "Đã tạo nhóm — mentee sẽ nhận thông báo sau khi chốt nhóm."
     return jsonify(response)
 
 

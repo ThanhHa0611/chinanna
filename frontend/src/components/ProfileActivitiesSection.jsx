@@ -76,6 +76,7 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
   const [error, setError] = useState('');
   const [registerChoice, setRegisterChoice] = useState({});
   const [keeptrackSaving, setKeeptrackSaving] = useState({});
+  const [expandedGroupViews, setExpandedGroupViews] = useState({});
 
   const refresh = async () => {
     const data = await api.getProfileActivities();
@@ -209,11 +210,24 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
     );
   };
 
+  const toggleGroupMembersView = (itemId, event) => {
+    event?.stopPropagation?.();
+    setExpandedGroupViews((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
+  };
+
   const renderRegistrationStatus = (item) => {
     if (item.group_assignment_pending && item.group_name) {
+      const memberCount = item.group_member_count ?? item.group_members?.length ?? 0;
       return (
         <span className="muted profile-activity-group-invite-text">
-          Mentor mời bạn vào {item.group_name}
+          Mentor đã phân bạn vào nhóm {item.group_name} bao gồm {memberCount} thành viên{' '}
+          <button
+            type="button"
+            className="profile-activity-inline-link profile-activity-view-link"
+            onClick={(event) => toggleGroupMembersView(item.id, event)}
+          >
+            (Xem)
+          </button>
         </span>
       );
     }
@@ -236,13 +250,19 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
     return null;
   };
 
-  const renderGroupMembers = (item) => {
-    if (item.group_response_status !== 'confirmed' || !item.group_members?.length) {
+  const renderGroupMembers = (item, { forceShow = false } = {}) => {
+    const isConfirmed = item.group_response_status === 'confirmed';
+    const showExpanded = Boolean(expandedGroupViews[item.id]);
+    const shouldShow =
+      item.group_members?.length &&
+      (forceShow || isConfirmed || (item.group_assignment_pending && showExpanded));
+    if (!shouldShow) {
       return null;
     }
     return (
       <div className="profile-activity-group-members">
-        <p className="profile-activity-group-members-title">Nhóm bao gồm:</p>
+        {!isConfirmed && <p className="profile-activity-group-members-title">Thành viên nhóm:</p>}
+        {isConfirmed && <p className="profile-activity-group-members-title">Nhóm bao gồm:</p>}
         <ol className="profile-activity-group-members-list">
           {item.group_members.map((member) => (
             <li key={member.mentee_id}>
@@ -306,15 +326,12 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
         <div className="profile-activity-line-actions">
           {item.group_assignment_pending && (
             <div className="profile-activity-group-actions">
-              {!item.group_name && (
-                <p className="muted profile-activity-group-invite-text">Mentor mời bạn vào nhóm</p>
-              )}
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
                 onClick={() => respondGroup(item.id, 'confirmed')}
               >
-                Xác nhận
+                Đồng ý
               </button>
               <button
                 type="button"

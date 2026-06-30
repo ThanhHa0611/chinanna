@@ -2469,6 +2469,14 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
   margin: 0;
 }
 
+.profile-activity-view-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
 .profile-activity-group-members {
   margin-top: 0.45rem;
   padding: 0.55rem 0.65rem;
