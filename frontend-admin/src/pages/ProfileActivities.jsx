@@ -281,9 +281,23 @@ export default function ProfileActivities() {
 
   const handleCreateGroup = async () => {
     if (!selectedActivity) return;
-    const name = (groupName || '').trim();
+    let name = (groupName || '').trim();
     if (!name) {
-      setError('Vui lòng nhập hoặc gợi ý tên nhóm trước khi tạo.');
+      setSaving(true);
+      setError('');
+      try {
+        const data = await api.suggestProfileActivityGroupName(selectedActivity.id);
+        name = (data?.suggested_name || '').trim();
+        if (name) setGroupName(name);
+      } catch (err) {
+        setError(err.message);
+        setSaving(false);
+        return;
+      }
+      setSaving(false);
+    }
+    if (!name) {
+      setError('Vui lòng nhập tên nhóm trước khi tạo.');
       return;
     }
     if (!window.confirm(`Tạo nhóm "${name}" với ${selectedMentees.length} mentee đã chọn?`)) {
@@ -404,20 +418,6 @@ export default function ProfileActivities() {
     }
   };
 
-  const handleSuggestGroupName = async () => {
-    if (!selectedActivity) return;
-    setSaving(true);
-    setError('');
-    try {
-      const data = await api.suggestProfileActivityGroupName(selectedActivity.id);
-      setGroupName(data?.suggested_name || '');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleAddMenteeToGroup = async (menteeId) => {
     if (!selectedActivity) return;
     const groupId = addToGroupTargets[menteeId];
@@ -503,22 +503,6 @@ export default function ProfileActivities() {
       return 'Chờ phân nhóm';
     }
     return '—';
-  };
-
-  const handleNotifyGroup = async (groupId) => {
-    if (!selectedActivity) return;
-    setSaving(true);
-    setError('');
-    try {
-      await api.notifyProfileActivityGroup(selectedActivity.id, groupId);
-      await loadActivities();
-      await loadRegistrations(selectedActivity.id);
-      setMessage('Đã gửi thông báo nhóm.');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
   };
 
   const handleFinalizeGroup = async (groupId) => {
@@ -993,14 +977,6 @@ export default function ProfileActivities() {
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
               />
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                onClick={handleSuggestGroupName}
-                disabled={saving}
-              >
-                Gợi ý tên
-              </button>
               <button type="button" className="btn btn-outline btn-sm" onClick={handleCreateGroup} disabled={saving}>
                 Tạo nhóm
               </button>
@@ -1040,14 +1016,6 @@ export default function ProfileActivities() {
                         </button>
                       </>
                     )}
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={() => handleNotifyGroup(group.group_id)}
-                      disabled={saving || groupPending}
-                    >
-                      Gửi thông báo nhóm
-                    </button>
                     <button
                       type="button"
                       className="btn btn-primary btn-sm"
