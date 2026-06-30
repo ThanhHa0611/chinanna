@@ -500,12 +500,15 @@ def update_hdnk_nckh():
     users.update_one({"_id": ObjectId(user["_id"])}, {"$set": set_fields})
     fresh = users.find_one({"_id": ObjectId(user["_id"])}) or user
     if changed:
-        notify_mentors_mentee_activity(
-            fresh,
-            action="hdnk_nckh_update",
-            title=f"{fresh.get('full_name') or fresh.get('username', 'Mentee')} cập nhật HDNK + NCKH",
-            description="Mentee vừa cập nhật bảng Keep track HDNK + NCKH.",
-        )
+        try:
+            notify_mentors_mentee_activity(
+                fresh,
+                action="hdnk_nckh_update",
+                title=f"{fresh.get('full_name') or fresh.get('username', 'Mentee')} cập nhật HDNK + NCKH",
+                description="Mentee vừa cập nhật bảng Keep track HDNK + NCKH.",
+            )
+        except Exception:
+            pass
     return jsonify(serialize_hdnk_nckh_payload(fresh, for_mentee=True))
 
 

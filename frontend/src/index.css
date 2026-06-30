@@ -1709,9 +1709,13 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
 }
 
 .hdnk-nckh-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
   gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
+  -webkit-overflow-scrolling: touch;
 }
 
 .hdnk-nckh-grid label {
@@ -1719,11 +1723,22 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
   flex-direction: column;
   gap: 0.35rem;
   font-size: 0.88rem;
+  flex: 0 0 auto;
+  min-width: 8.5rem;
+}
+
+.hdnk-nckh-grid label.hdnk-nckh-field-category {
+  min-width: 11rem;
+}
+
+.hdnk-nckh-grid label.hdnk-nckh-field-zalo {
+  min-width: 10rem;
 }
 
 .hdnk-nckh-grid input,
 .hdnk-nckh-grid select {
   width: 100%;
+  min-width: 0;
   padding: 0.45rem 0.55rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1732,14 +1747,28 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
 
 .hdnk-nckh-award-field {
   display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  min-width: 10rem;
+}
+
+.hdnk-nckh-award-field select {
+  min-width: 7.5rem;
+}
+
+.hdnk-nckh-award-field select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .hdnk-nckh-checkbox {
   flex-direction: row !important;
   align-items: center;
   gap: 0.45rem !important;
+  min-width: 5.5rem;
+  white-space: nowrap;
 }
 
 .hdnk-nckh-actions,

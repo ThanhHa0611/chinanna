@@ -133,7 +133,7 @@ export default function HdnkNckhSection() {
                 />
               </label>
 
-              <label>
+              <label className="hdnk-nckh-field-category">
                 Hạng mục tham gia
                 <input
                   type="text"
@@ -159,7 +159,7 @@ export default function HdnkNckhSection() {
               </label>
 
               {entry.participation_type === 'nhóm Trơn Tru' && (
-                <label>
+                <label className="hdnk-nckh-field-zalo">
                   Tên nhóm Zalo
                   <input
                     type="text"
@@ -194,19 +194,19 @@ export default function HdnkNckhSection() {
                   />
                   Có giải
                 </label>
-                {entry.has_award && (
-                  <select
-                    value={entry.award_level}
-                    onChange={(e) => updateEntry(index, 'award_level', e.target.value)}
-                  >
-                    <option value="">Chọn giải</option>
-                    {HDNK_NCKH_AWARD_LEVELS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                <select
+                  value={entry.award_level}
+                  disabled={!entry.has_award}
+                  onChange={(e) => updateEntry(index, 'award_level', e.target.value)}
+                  aria-label="Chọn giải"
+                >
+                  <option value="">Chọn giải</option>
+                  {HDNK_NCKH_AWARD_LEVELS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
