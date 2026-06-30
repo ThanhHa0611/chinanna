@@ -191,11 +191,41 @@ export const api = {
       method: 'POST',
     }),
 
+  resolveInboxFileUrl(viewUrl) {
+    if (!viewUrl) {
+      return '';
+    }
+    try {
+      const parsed = new URL(viewUrl, window.location.origin);
+      const token = parsed.searchParams.get('token');
+      if (token) {
+        return `${API_BASE}/api/email/inbox/file?token=${encodeURIComponent(token)}`;
+      }
+      if (parsed.pathname.includes('/api/email/inbox/view')) {
+        return `${API_BASE}${parsed.pathname.replace('/view', '/file')}${parsed.search}`;
+      }
+    } catch {
+      // Fall through to string replacement below.
+    }
+    const rewritten = viewUrl.replace('/inbox/view', '/inbox/file').replace('/view?', '/file?');
+    if (rewritten.startsWith('http')) {
+      try {
+        const parsed = new URL(rewritten);
+        if (parsed.pathname.startsWith('/api/')) {
+          return `${API_BASE}${parsed.pathname}${parsed.search}`;
+        }
+      } catch {
+        return rewritten;
+      }
+    }
+    return rewritten.startsWith('/') ? `${API_BASE}${rewritten}` : rewritten;
+  },
+
   async fetchInboxFileFromViewUrl(viewUrl) {
     if (!viewUrl) {
       throw new Error('Không có file để xem');
     }
-    const fileUrl = viewUrl.replace('/view?', '/file?');
+    const fileUrl = this.resolveInboxFileUrl(viewUrl);
     const response = await fetch(fileUrl);
     if (!response.ok) {
       const text = await response.text().catch(() => '');
@@ -204,8 +234,36 @@ export const api = {
     const blob = await response.blob();
     return {
       url: URL.createObjectURL(blob),
-      mimeType: blob.type || response.headers.get('Content-Type') || '',
+      mimeType: blob.type || response.headers.get('Content-Type') || 'application/pdf',
     };
+  },
+
+  async fetchInboxDocumentPreview(item) {
+    const docId = (item?.doc_id || '').trim();
+    const menteeId = (item?.mentee_id || '').trim();
+    const viewUrl = (item?.view_url || '').trim();
+    const hasUploadFile = Boolean(docId && docId !== 'personal-declaration');
+
+    if (docId === 'personal-declaration' && menteeId) {
+      return this.fetchMenteeDocumentPreview(menteeId, docId);
+    }
+
+    if (viewUrl && hasUploadFile) {
+      try {
+        return await this.fetchInboxFileFromViewUrl(viewUrl);
+      } catch (inboxError) {
+        if (menteeId && docId) {
+          return this.fetchMenteeDocumentPreview(menteeId, docId);
+        }
+        throw inboxError;
+      }
+    }
+
+    if (menteeId && docId) {
+      return this.fetchMenteeDocumentPreview(menteeId, docId);
+    }
+
+    throw new Error('Không có file để xem');
   },
 
   async fetchMenteeDocumentPreview(menteeId, docId) {

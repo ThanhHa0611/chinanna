@@ -5,7 +5,6 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { isLevel1MentorAccount } from '../utils/mentorDisplay';
 import { matchesNameSearch } from '../utils/searchByName';
-import { countMenteesNeedingAttention } from '../utils/menteeAttention';
 import {
   APPLY_DEGREE_FILTER_OPTIONS,
   APPLY_DIRECTION_FILTER_OPTIONS,
@@ -27,8 +26,6 @@ function term3LanguageShortDisplay(mentee) {
   return term3LanguageSemesterLabel(mentee?.term3_2027_language_semester) || '—';
 }
 
-const NO_FILE_INBOX_DOC_IDS = new Set(['personal-declaration']);
-
 function formatDateInputInVn(date) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(date);
 }
@@ -45,7 +42,13 @@ function reminderAtIsoFromDateInput(dateStr) {
 
 function inboxItemHasFile(item) {
   const docId = (item?.doc_id || '').trim();
-  return Boolean(docId && !NO_FILE_INBOX_DOC_IDS.has(docId));
+  if (!docId) {
+    return false;
+  }
+  if (docId === 'personal-declaration') {
+    return Boolean((item?.mentee_id || '').trim());
+  }
+  return true;
 }
 
 export default function Home() {
@@ -59,7 +62,8 @@ export default function Home() {
   const [directionFilter, setDirectionFilter] = useState('all');
   const [termFilter, setTermFilter] = useState('all');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
   const [inboxItems, setInboxItems] = useState([]);
   const [dailySummary, setDailySummary] = useState(null);
   const [archiveDays, setArchiveDays] = useState([]);
@@ -82,14 +86,9 @@ export default function Home() {
         setArchiveDays(inboxData?.archive_days || []);
         setInboxPendingCount(inboxData?.pending_count || 0);
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => setLoadError(err.message))
       .finally(() => setLoading(false));
   }, []);
-
-  const unreadFeedback = useMemo(
-    () => feedback.filter((item) => item.mentor_unread || item.status === 'chờ xử lí'),
-    [feedback],
-  );
 
   const doneFeedback = useMemo(
     () => feedback.filter((item) => item.status === 'đã xử lí'),
@@ -148,15 +147,6 @@ export default function Home() {
     ],
   );
 
-  const menteeAttentionOptions = {
-    isSuperAdmin: Boolean(admin?.is_super_admin),
-    isLevel1: isLevel1MentorAccount(admin),
-  };
-  const menteeAttentionCount = useMemo(
-    () => countMenteesNeedingAttention(mentees, menteeAttentionOptions),
-    [mentees, admin],
-  );
-
   const hdnkAttentionMentees = useMemo(
     () =>
       isThanhHaL1
@@ -188,7 +178,7 @@ export default function Home() {
       const data = await api.getInboxArchiveDay(dateKey);
       setArchiveView(data);
     } catch (err) {
-      setError(err.message);
+      setActionError(err.message);
     } finally {
       setArchiveLoading(false);
     }
@@ -203,20 +193,15 @@ export default function Home() {
 
   const handleViewInbox = async (item) => {
     setInboxSavingId(item.id);
-    setError('');
-    let previewUrl = '';
+    setActionError('');
     try {
       if (inboxItemHasFile(item)) {
-        const preview =
-          item.mentee_id && item.doc_id
-            ? await api.fetchMenteeDocumentPreview(item.mentee_id, item.doc_id)
-            : await api.fetchInboxFileFromViewUrl(item.view_url);
-        previewUrl = preview.url;
+        const preview = await api.fetchInboxDocumentPreview(item);
         setInboxViewer({
           title: item.title || item.action_line || item.summary_line || 'Xem nội dung',
           description: item.description || '',
           url: preview.url,
-          mimeType: preview.mimeType,
+          mimeType: preview.mimeType || 'application/pdf',
         });
       } else {
         setInboxViewer({
@@ -226,12 +211,18 @@ export default function Home() {
           mimeType: '',
         });
       }
+    } catch (err) {
+      setInboxViewer(null);
+      setActionError(err.message);
+      setInboxSavingId('');
+      return;
+    }
+
+    try {
       await api.viewInboxTask(item.id);
       await refreshInbox();
     } catch (err) {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      setInboxViewer(null);
-      setError(err.message);
+      setActionError(err.message || 'Không ghi nhận được trạng thái xem');
     } finally {
       setInboxSavingId('');
     }
@@ -243,7 +234,7 @@ export default function Home() {
       await api.confirmInboxTask(taskId);
       await refreshInbox();
     } catch (err) {
-      setError(err.message);
+      setActionError(err.message);
     } finally {
       setInboxSavingId('');
     }
@@ -258,7 +249,7 @@ export default function Home() {
       });
       await refreshInbox();
     } catch (err) {
-      setError(err.message);
+      setActionError(err.message);
     } finally {
       setInboxSavingId('');
     }
@@ -333,10 +324,12 @@ export default function Home() {
   };
 
   if (loading) return <p className="loader">Đang tải...</p>;
-  if (error) return <p className="form-error">{error}</p>;
+  if (loadError) return <p className="form-error">{loadError}</p>;
 
   return (
     <>
+      {actionError && <p className="form-error home-action-error">{actionError}</p>}
+
       <div className="page-head">
         <h2>Trang chủ · {admin?.mentor_name ? `Mentor ${admin.mentor_name}` : 'Dashboard'}</h2>
         <p>Tổng quan mentee, tiến độ apply và phản hồi</p>
@@ -348,8 +341,8 @@ export default function Home() {
           <strong className="stat-value">{stats?.mentee_count ?? 0}</strong>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Chưa xử lí</span>
-          <strong className="stat-value accent">{unreadFeedback.length}</strong>
+          <span className="stat-label">Việc chưa xử lí</span>
+          <strong className="stat-value accent">{inboxPendingCount ?? 0}</strong>
         </div>
         <div className="stat-card">
           <span className="stat-label">Đã xử lí</span>
@@ -365,18 +358,6 @@ export default function Home() {
           <div className="stat-card">
             <span className="stat-label">Chờ cấp quyền</span>
             <strong className="stat-value accent">{stats.pending_access_requests_count}</strong>
-          </div>
-        )}
-        {(menteeAttentionCount ?? 0) > 0 && (
-          <div className="stat-card">
-            <span className="stat-label">Mentee cần xử lí</span>
-            <strong className="stat-value accent">{menteeAttentionCount}</strong>
-          </div>
-        )}
-        {(inboxPendingCount ?? 0) > 0 && (
-          <div className="stat-card">
-            <span className="stat-label">Việc chưa xử lí</span>
-            <strong className="stat-value accent">{inboxPendingCount}</strong>
           </div>
         )}
       </div>
