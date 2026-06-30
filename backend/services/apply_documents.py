@@ -43,6 +43,8 @@ def apply_doc_upload_dir(user_id: str, doc_id: str) -> Path:
 
 
 def serialize_apply_document(doc_id: str, record: dict | None, user: dict | None = None) -> dict:
+    from services.misc import serialize_language_scores
+
     record = record or {}
     item = {
         "doc_id": doc_id,
@@ -92,6 +94,8 @@ def apply_document_has_content(doc_id: str, record: dict | None, user: dict | No
 
 
 def count_unread_apply_documents(user: dict) -> int:
+    from services.misc import is_apply_document_unread
+
     apply_docs = user.get("apply_documents") or {}
     unread = 0
     for doc_id in VALID_APPLY_DOC_IDS:
@@ -102,6 +106,8 @@ def count_unread_apply_documents(user: dict) -> int:
 
 
 def apply_missing_reminder_unread(user: dict) -> bool:
+    from services.misc import serialize_apply_missing_reminder
+
     reminder = serialize_apply_missing_reminder(user)
     return bool(reminder and reminder.get("unread"))
 
@@ -281,6 +287,8 @@ def serialize_supporting_materials_for_admin(user: dict) -> dict:
 
 
 def serialize_apply_document_for_admin(doc_id: str, record: dict | None, user: dict, mentee_id: str) -> dict:
+    from services.misc import is_apply_document_unread
+
     item = serialize_apply_document(doc_id, record, user)
     scholarship_system = normalize_scholarship_system(user.get("scholarship_system", ""))
     item["label"] = APPLY_DOC_LABELS.get(doc_id, doc_id)
