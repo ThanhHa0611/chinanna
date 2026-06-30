@@ -99,6 +99,60 @@ def admin_inbox_archive_day(date_key: str):
     return jsonify(summary)
 
 
+@app.get("/api/admin/inbox/<task_id>/file")
+@with_db
+def admin_inbox_task_file(task_id: str):
+    from bson import ObjectId
+    from bson.errors import InvalidId
+    from inbox_tasks import mentor_inbox_filter
+
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    try:
+        oid = ObjectId(task_id)
+    except InvalidId:
+        return jsonify({"detail": "Không tìm thấy công việc"}), 404
+
+    mentor_name = (admin.get("mentor_name") or "").strip()
+    filt = mentor_inbox_filter(admin, mentor_name)
+    filt["_id"] = oid
+    task = mentor_inbox.find_one(filt)
+    if not task:
+        return jsonify({"detail": "Không tìm thấy công việc"}), 404
+
+    doc_id = (task.get("doc_id") or "").strip()
+    mentee_id = (task.get("mentee_id") or "").strip()
+    if doc_id == "personal-declaration" and mentee_id:
+        mentee, error = get_mentee_for_admin(admin, mentee_id)
+        if error:
+            return error
+        declaration = mentee.get("personal_declaration") or {}
+        stored_name = (declaration.get("stored_name") or "").strip()
+        if not stored_name:
+            return jsonify({"detail": "Chưa có file kê khai docx trên hệ thống."}), 404
+        file_path = UPLOAD_ROOT / str(mentee["_id"]) / "personal-declaration" / stored_name
+        if not file_path.is_file():
+            return jsonify({"detail": "File kê khai không tồn tại."}), 404
+        return send_file(
+            file_path,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=False,
+            download_name=stored_name,
+        )
+
+    result, error = build_inbox_document_payload(task)
+    if error:
+        return jsonify({"detail": error}), 404
+
+    payload, download_name, mimetype = result
+    return make_inline_file_response(payload, download_name, mimetype)
+
+
 @app.post("/api/admin/inbox/<task_id>/view")
 @with_db
 def admin_inbox_view(task_id: str):

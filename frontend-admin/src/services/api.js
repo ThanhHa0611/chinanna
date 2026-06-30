@@ -251,37 +251,57 @@ export const api = {
     };
   },
 
+  async fetchInboxTaskDocumentPreview(taskId) {
+    const token = localStorage.getItem('admin_token');
+    const response = await fetch(`${API_BASE}/api/admin/inbox/${taskId}/file`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || 'Không mở được file');
+    }
+    const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
+    if (contentType.includes('text/html')) {
+      throw new Error('Không mở được file');
+    }
+    const blob = await response.blob();
+    return {
+      url: URL.createObjectURL(blob),
+      mimeType: blob.type || response.headers.get('Content-Type') || 'application/pdf',
+    };
+  },
+
   async fetchInboxDocumentPreview(item) {
+    const taskId = (item?.id || '').trim();
     const docId = (item?.doc_id || '').trim();
     const menteeId = (item?.mentee_id || '').trim();
-    const viewUrl = (item?.view_url || '').trim();
-    const fileUrl = (item?.file_url || '').trim();
-    const inboxFileUrl = fileUrl || viewUrl;
+    const inboxFileUrl = (item?.file_url || item?.view_url || '').trim();
 
     if (docId === 'personal-declaration' && menteeId) {
       return this.fetchMenteeDocumentPreview(menteeId, docId);
     }
 
+    const attempts = [];
+    if (taskId) {
+      attempts.push(() => this.fetchInboxTaskDocumentPreview(taskId));
+    }
     if (menteeId && docId) {
+      attempts.push(() => this.fetchMenteeDocumentPreview(menteeId, docId));
+    }
+    if (inboxFileUrl) {
+      attempts.push(() => this.fetchInboxFileFromViewUrl(inboxFileUrl));
+    }
+
+    let lastError = null;
+    for (const attempt of attempts) {
       try {
-        return await this.fetchMenteeDocumentPreview(menteeId, docId);
-      } catch (adminError) {
-        if (inboxFileUrl) {
-          try {
-            return await this.fetchInboxFileFromViewUrl(inboxFileUrl);
-          } catch {
-            throw adminError;
-          }
-        }
-        throw adminError;
+        return await attempt();
+      } catch (err) {
+        lastError = err;
       }
     }
 
-    if (inboxFileUrl) {
-      return await this.fetchInboxFileFromViewUrl(inboxFileUrl);
-    }
-
-    throw new Error('Không có file để xem');
+    throw lastError || new Error('Không có file để xem');
   },
 
   async fetchMenteeDocumentPreview(menteeId, docId) {
