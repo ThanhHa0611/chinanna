@@ -60,6 +60,8 @@ if (apiUrl) console.log('VITE_API_URL:', apiUrl);
 console.log('Paths:', paths);
 console.log('');
 
+run('node scripts/ensure-rollup-native.mjs', root);
+
 if (existsSync(outDir)) rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 

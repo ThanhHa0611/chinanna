@@ -137,12 +137,24 @@ def register():
             "Mentor sẽ duyệt trước khi bạn có thể đăng nhập."
         )
 
+    _notify_l1_after_registration(mentee_id)
+
     return jsonify({
         "message": message,
         "status": ADMIN_STATUS_PENDING,
         "mentor": mentor,
         "id": str(mentee_id),
     }), 201
+
+
+def _notify_l1_after_registration(mentee_id):
+    from bson import ObjectId
+
+    from services.mentee_l1_email import notify_l1_mentee_registration
+
+    mentee = users.find_one({"_id": ObjectId(mentee_id)})
+    if mentee:
+        notify_l1_mentee_registration(mentee)
 
 
 @app.post("/api/auth/login")
@@ -365,4 +377,32 @@ def change_password():
 @app.post("/api/auth/logout")
 def logout():
     return jsonify({"message": "Đăng xuất thành công"})
+
+
+@app.post("/api/auth/forgot-password")
+@with_db
+def mentee_forgot_password():
+    data = request.get_json(silent=True) or {}
+    from services.password_reset import ACCOUNT_MENTEE, request_password_reset_otp
+
+    payload, status = request_password_reset_otp(
+        email=data.get("email", ""),
+        account_type=ACCOUNT_MENTEE,
+    )
+    return jsonify(payload), status
+
+
+@app.post("/api/auth/reset-password")
+@with_db
+def mentee_reset_password():
+    data = request.get_json(silent=True) or {}
+    from services.password_reset import ACCOUNT_MENTEE, reset_password_with_otp
+
+    payload, status = reset_password_with_otp(
+        email=data.get("email", ""),
+        otp=data.get("otp", ""),
+        new_password=data.get("new_password", ""),
+        account_type=ACCOUNT_MENTEE,
+    )
+    return jsonify(payload), status
 

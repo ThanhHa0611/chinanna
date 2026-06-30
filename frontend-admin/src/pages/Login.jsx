@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import BrandMark from '../components/BrandMark';
+import ForgotPasswordForm from '../components/ForgotPasswordForm';
 import LocationPermissionBlock from '../components/LocationPermissionBlock';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
 import { LOCATION_REQUIRED_MESSAGE, requestLoginLocation } from '../utils/loginLocation';
 
 export default function Login() {
@@ -14,6 +16,7 @@ export default function Login() {
   const [locationError, setLocationError] = useState('');
   const [locationPayload, setLocationPayload] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   if (admin) {
     return <Navigate to="/" replace />;
@@ -38,6 +41,25 @@ export default function Login() {
       setSubmitting(false);
     }
   };
+
+  if (showForgotPassword) {
+    return (
+      <div className="center-page">
+        <div className="auth-shell">
+          <div className="auth-brand">
+            <BrandMark subtitle="Mentor Trơn Tru" />
+          </div>
+          <div className="auth-card">
+            <ForgotPasswordForm
+              requestOtp={api.requestForgotPasswordOtp}
+              resetPassword={api.resetPasswordWithOtp}
+              onBack={() => setShowForgotPassword(false)}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="center-page">
@@ -74,6 +96,15 @@ export default function Login() {
                 autoComplete="current-password"
               />
             </label>
+            <p className="auth-forgot-row">
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setShowForgotPassword(true)}
+              >
+                Quên mật khẩu?
+              </button>
+            </p>
             {error && <p className="form-error">{error}</p>}
             <button type="submit" className="btn btn-primary btn-full" disabled={submitting}>
               {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}

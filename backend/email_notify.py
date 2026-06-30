@@ -48,7 +48,43 @@ def mentor_snooze_links_text(snooze_urls: list[dict] | None) -> str:
 
 def smtp_configured() -> bool:
 
-    return bool(SMTP_USER and SMTP_PASSWORD and ADMIN_NOTIFY_EMAIL)
+    return bool(SMTP_USER and SMTP_PASSWORD)
+
+
+
+def send_password_reset_otp_email(
+    *,
+    to_email: str,
+    otp: str,
+    account_label: str,
+    expire_minutes: int,
+) -> bool:
+    subject = f"[{account_label}] Mã OTP đặt lại mật khẩu"
+    text_body = (
+        f"Bạn vừa yêu cầu đặt lại mật khẩu trên hệ thống {account_label}.\n\n"
+        f"Mã OTP: {otp}\n"
+        f"Mã có hiệu lực trong {expire_minutes} phút.\n\n"
+        "Nếu bạn không yêu cầu, hãy bỏ qua email này.\n\n"
+        "— Hệ thống Phong Van"
+    )
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 480px;">
+      <h2 style="color: #eb2233; margin-top: 0;">Đặt lại mật khẩu</h2>
+      <p>Bạn vừa yêu cầu đặt lại mật khẩu trên <strong>{account_label}</strong>.</p>
+      <p style="font-size: 1.75rem; letter-spacing: 0.35rem; font-weight: 700; color: #111;">
+        {otp}
+      </p>
+      <p style="color: #666;">Mã có hiệu lực trong <strong>{expire_minutes} phút</strong>.</p>
+      <p style="color: #888; font-size: 0.9rem;">Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>
+    </div>
+    """
+    return send_email(
+        to_email=to_email,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+    )
+
 
 
 
@@ -100,6 +136,70 @@ def send_email(*, to_email: str, subject: str, text_body: str, html_body: str | 
 
 
 
+
+
+def send_l1_mentee_request_email(
+    *,
+    to_email: str,
+    subject: str,
+    title: str,
+    description: str,
+    details: list[tuple[str, str]],
+    approve_url: str = "",
+    reject_url: str = "",
+    admin_page_url: str = "",
+) -> bool:
+    rows_text = "\n".join(f"{label}: {value}" for label, value in details)
+    text_body = (
+        f"{title}\n\n"
+        f"{description}\n\n"
+        f"{rows_text}\n\n"
+        + (f"Dong y: {approve_url}\n" if approve_url else "")
+        + (f"Tu choi: {reject_url}\n" if reject_url else "")
+        + (f"Mo app mentor: {admin_page_url}\n" if admin_page_url else "")
+        + "\n— He thong Phong Van"
+    )
+
+    detail_rows = "".join(
+        f"<tr><td style='padding:4px 12px 4px 0;'><strong>{label}</strong></td>"
+        f"<td>{value or '—'}</td></tr>"
+        for label, value in details
+    )
+    action_buttons = ""
+    if approve_url and reject_url:
+        action_buttons = f"""
+      <p style="margin-top: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
+        <a href="{approve_url}"
+           style="background:#059669;color:#fff;padding:12px 18px;text-decoration:none;border-radius:8px;font-weight:600;">
+          ✓ Đồng ý
+        </a>
+        <a href="{reject_url}"
+           style="background:#eb2233;color:#fff;padding:12px 18px;text-decoration:none;border-radius:8px;font-weight:600;">
+          ✕ Từ chối
+        </a>
+      </p>
+      <p style="font-size: 0.85rem; color: #666; margin-top: 0.75rem;">
+        Bấm trực tiếp trong email — link có hiệu lực 7 ngày, dùng một lần.
+      </p>
+        """
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+      <h2 style="color: #eb2233;">{title}</h2>
+      <p>{description}</p>
+      <table style="border-collapse: collapse;">{detail_rows}</table>
+      {action_buttons}
+      <p style="margin-top: 1.25rem;">
+        <a href="{admin_page_url}" style="color:#eb2233;font-weight:600;">Mở app mentor</a>
+      </p>
+    </div>
+    """
+    return send_email(
+        to_email=to_email,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+    )
 
 
 def send_admin_access_request_email(

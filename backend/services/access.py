@@ -69,6 +69,65 @@ def apply_access_review(target: dict, reviewer: dict, decision: str):
     return verb
 
 
+def handle_email_admin_access_action(action_key: str, decision: str):
+    from flask import request
+
+    from services.inbox import email_action_urls, render_email_action_page
+
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        return render_email_action_page(
+            title="Link không hợp lệ",
+            message="Thiếu mã xác thực trong link.",
+            success=False,
+        )
+
+    target = admins.find_one({f"email_action_tokens.{action_key}": token})
+    if not target:
+        return render_email_action_page(
+            title="Link không hợp lệ",
+            message="Link đã hết hạn hoặc không tồn tại.",
+            success=False,
+        )
+
+    tokens = target.get("email_action_tokens") or {}
+    expires_at = tokens.get("expires_at")
+    if expires_at:
+        if isinstance(expires_at, datetime) and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < datetime.now(timezone.utc):
+            return render_email_action_page(
+                title="Link đã hết hạn",
+                message="Vui lòng duyệt trực tiếp trên app mentor.",
+                success=False,
+            )
+
+    if target.get("status") != ADMIN_STATUS_PENDING:
+        return render_email_action_page(
+            title="Đã xử lý trước đó",
+            message=f"Tài khoản {target.get('email', '')} đã được xử lý.",
+            success=True,
+        )
+
+    reviewer = admins.find_one({"email": ADMIN_NOTIFY_EMAIL}) or admins.find_one(
+        {"email": {"$in": SUPER_ADMIN_EMAILS}}
+    )
+    if not reviewer:
+        reviewer = {"email": ADMIN_NOTIFY_EMAIL, "mentor_name": ""}
+
+    verb = apply_access_review(target, reviewer, decision)
+    urls = email_action_urls(tokens)
+    return render_email_action_page(
+        title="Đã xử lý yêu cầu mentor",
+        message=(
+            f"Đã <strong>{verb}</strong> tài khoản mentor "
+            f"<strong>{target.get('email', '')}</strong>. "
+            f'Bạn có thể <a href="{urls.get("admin_page", "")}" style="color:#eb2233;font-weight:600;">mở app mentor</a>.'
+        ),
+        success=True,
+    )
+
+
 def mentee_admin_list_query(admin: dict) -> dict:
     query = mentee_users_query(mentee_filter_for_admin(admin))
     query.update(approved_mentee_status_filter())

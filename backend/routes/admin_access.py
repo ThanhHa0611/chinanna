@@ -279,11 +279,15 @@ def admin_review_access(request_id):
 @app.get("/api/admin/access-requests/email/approve")
 @with_db
 def email_approve_access_request():
-    return _handle_email_access_action("approve", ADMIN_STATUS_APPROVED)
+    from services.access import handle_email_admin_access_action
+
+    return handle_email_admin_access_action("approve", ADMIN_STATUS_APPROVED)
 
 
 @app.get("/api/admin/access-requests/email/reject")
 @with_db
 def email_reject_access_request():
-    return _handle_email_access_action("reject", ADMIN_STATUS_REJECTED)
+    from services.access import handle_email_admin_access_action
+
+    return handle_email_admin_access_action("reject", ADMIN_STATUS_REJECTED)
 

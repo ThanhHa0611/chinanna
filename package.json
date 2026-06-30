@@ -9,6 +9,7 @@
     "frontend-superadmin"
   ],
   "scripts": {
+    "postinstall": "node scripts/ensure-rollup-native.mjs",
     "build": "node scripts/build-all-frontends.mjs vercel",
     "build:public": "node scripts/build-all-frontends.mjs public",
     "vercel-build": "node scripts/build-all-frontends.mjs vercel",
@@ -20,6 +21,7 @@
     "node": ">=18"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "4.62.2"
+    "@rollup/rollup-linux-x64-gnu": "4.62.2",
+    "@rollup/rollup-linux-x64-musl": "4.62.2"
   }
 }

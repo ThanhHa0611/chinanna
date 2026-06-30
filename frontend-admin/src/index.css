@@ -938,6 +938,31 @@ a:hover {
   font-size: 0.88rem;
 }
 
+.auth-forgot-row {
+  margin: -0.35rem 0 0.5rem;
+  text-align: right;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.forgot-password-panel .forgot-password-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.35rem;
+}
+
+.forgot-password-panel .auth-subtitle {
+  margin-bottom: 1rem;
+}
+
 .btn {
   border: none;
   border-radius: 10px;

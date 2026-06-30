@@ -3,7 +3,7 @@
   "version": 2,
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "deploy/vercel-out",
-  "installCommand": "rm -rf node_modules frontend/node_modules frontend-admin/node_modules frontend-superadmin/node_modules && npm install --include=optional",
+  "installCommand": "node scripts/ci-npm-install.mjs",
   "framework": null,
   "rewrites": [
     {

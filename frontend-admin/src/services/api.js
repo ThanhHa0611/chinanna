@@ -113,6 +113,18 @@ export const api = {
 
   logout: () => request('/api/admin/auth/logout', { method: 'POST' }),
 
+  requestForgotPasswordOtp: (email) =>
+    request('/api/admin/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPasswordWithOtp: (body) =>
+    request('/api/admin/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   changePassword: (body) =>
     request('/api/admin/auth/password', {
       method: 'PATCH',

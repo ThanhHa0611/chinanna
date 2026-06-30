@@ -20,6 +20,7 @@ admins = db["Admin"]
 mentor_activities = db["Mentor"]
 mentor_inbox = db["mentor_inbox"]
 feedback_app = db["feedback app"]
+password_reset_otps = db["password_reset_otps"]
 def ensure_db():
     global _db_initialized
     if not _db_initialized:
@@ -32,6 +33,8 @@ def ensure_db():
         mentor_inbox.create_index("view_token")
         mentor_inbox.create_index("confirm_token")
         mentor_inbox.create_index([("status", 1), ("next_reminder_at", 1)])
+        password_reset_otps.create_index([("email", 1), ("account_type", 1)], unique=True)
+        password_reset_otps.create_index("expires_at", expireAfterSeconds=0)
         _db_initialized = True
 
 def with_db(func):

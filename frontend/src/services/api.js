@@ -61,6 +61,18 @@ export const api = {
 
   logout: () => request('/api/auth/logout', { method: 'POST' }),
 
+  requestForgotPasswordOtp: (email) =>
+    request('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPasswordWithOtp: (body) =>
+    request('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   getFeedback: () => request('/api/feedback'),
 
   submitFeedback: (body) =>

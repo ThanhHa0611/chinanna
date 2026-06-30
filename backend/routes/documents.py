@@ -404,6 +404,9 @@ def mentee_update_apply_progress():
             title=f"{user.get('full_name') or user.get('username', 'Mentee')} cập nhật tiến độ apply",
             description=f"Mentee gửi chỉnh sửa dòng {rows_label} chờ mentor duyệt.",
         )
+        from services.mentee_l1_email import notify_l1_mentee_apply_progress_edit
+
+        notify_l1_mentee_apply_progress_edit(user, submitted_row_nums)
 
     users.update_one(
         {"_id": ObjectId(user["_id"])},

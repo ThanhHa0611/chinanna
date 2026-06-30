@@ -46,6 +46,7 @@ def create_app():
     import routes.email_actions  # noqa: F401
     import routes.feedback  # noqa: F401
     import routes.health  # noqa: F401
+    import routes.l1_email_actions  # noqa: F401
     import routes.misc  # noqa: F401
     import routes.parent  # noqa: F401
     import routes.superadmin  # noqa: F401

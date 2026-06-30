@@ -236,3 +236,31 @@ def admin_change_password():
     )
     return jsonify({"message": "Đổi mật khẩu thành công"})
 
+
+@app.post("/api/admin/auth/forgot-password")
+@with_db
+def admin_forgot_password():
+    data = request.get_json(silent=True) or {}
+    from services.password_reset import ACCOUNT_MENTOR, request_password_reset_otp
+
+    payload, status = request_password_reset_otp(
+        email=data.get("email", ""),
+        account_type=ACCOUNT_MENTOR,
+    )
+    return jsonify(payload), status
+
+
+@app.post("/api/admin/auth/reset-password")
+@with_db
+def admin_reset_password():
+    data = request.get_json(silent=True) or {}
+    from services.password_reset import ACCOUNT_MENTOR, reset_password_with_otp
+
+    payload, status = reset_password_with_otp(
+        email=data.get("email", ""),
+        otp=data.get("otp", ""),
+        new_password=data.get("new_password", ""),
+        account_type=ACCOUNT_MENTOR,
+    )
+    return jsonify(payload), status
+
