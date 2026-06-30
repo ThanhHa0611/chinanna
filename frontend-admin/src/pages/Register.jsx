@@ -68,7 +68,15 @@ export default function Register() {
             </label>
             <label>
               Họ tên
-              <input type="text" value={form.full_name} onChange={handleChange('full_name')} />
+              <input
+                type="text"
+                value={form.full_name}
+                onChange={handleChange('full_name')}
+                placeholder="Họ và tên trong hộ chiếu (có dấu)"
+              />
+              <span className="field-hint">
+                Bắt buộc: họ và tên trong hộ chiếu, có dấu.
+              </span>
             </label>
             <label>
               Mentor cấp 1
