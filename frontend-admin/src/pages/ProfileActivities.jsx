@@ -253,8 +253,8 @@ export default function ProfileActivities() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [createFormCollapsed, setCreateFormCollapsed] = useState(false);
-  const [manageFormCollapsed, setManageFormCollapsed] = useState(false);
+  const [createFormCollapsed, setCreateFormCollapsed] = useState(true);
+  const [manageFormCollapsed, setManageFormCollapsed] = useState(true);
   const [moveTargets, setMoveTargets] = useState({});
   const [addToGroupTargets, setAddToGroupTargets] = useState({});
   const [keeptrackReviews, setKeeptrackReviews] = useState([]);
@@ -1443,13 +1443,12 @@ export default function ProfileActivities() {
             {progressTrackingExpanded ? 'Thu gọn' : 'Mở rộng'}
           </span>
         </button>
-        <div className="daily-summary-body">
-          {progressTrackingExpanded ? (
-            progressTracking.length > 0 ? (
+        {progressTrackingExpanded && (
+          <div className="daily-summary-body">
+            {progressTracking.length > 0 ? (
               <div className="profile-activity-progress-activities">
                 {progressTracking.map((activityBlock) => {
                   const expanded = isProgressActivityExpanded(activityBlock.activity_id);
-                  const rowCount = activityBlock.rows?.length || 0;
                   return (
                     <div
                       key={activityBlock.activity_id}
@@ -1468,7 +1467,7 @@ export default function ProfileActivities() {
                           {expanded ? 'Thu gọn' : 'Mở rộng'}
                         </span>
                       </button>
-                      {expanded ? (
+                      {expanded && (
                         <div className="profile-activity-progress-activity-body">
                           <div className="table-wrap">
                             <table className="profile-activity-progress-table">
@@ -1492,10 +1491,6 @@ export default function ProfileActivities() {
                             </table>
                           </div>
                         </div>
-                      ) : (
-                        <p className="profile-activity-progress-activity-collapsed muted">
-                          {rowCount} dòng tiến độ — bấm Mở rộng để xem
-                        </p>
                       )}
                     </div>
                   );
@@ -1506,15 +1501,9 @@ export default function ProfileActivities() {
                 Chưa có tiến độ nào được theo dõi. Tiến độ sẽ xuất hiện sau khi mentee báo danh và bắt
                 đầu keep track.
               </p>
-            )
-          ) : (
-            <p className="profile-activity-progress-empty muted">
-              {progressTrackingRowCount > 0
-                ? `${progressTrackingRowCount} dòng tiến độ — bấm Mở rộng để xem`
-                : 'Chưa có tiến độ nào được theo dõi.'}
-            </p>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="panel-card daily-summary-panel">
