@@ -219,6 +219,32 @@ export default function ProfileActivities() {
 
   const selectedParticipationLabel = participationModeDisplayLabel(selectedActivity);
 
+  const registrationByMenteeId = useMemo(() => {
+    const map = new Map();
+    for (const item of registrations) {
+      map.set(item.mentee_id, item);
+    }
+    return map;
+  }, [registrations]);
+
+  const approvedGroups = useMemo(
+    () =>
+      (selectedActivity?.groups || []).filter(
+        (group) => group.approval_status !== 'pending_l1_approval',
+      ),
+    [selectedActivity?.groups],
+  );
+
+  const unassignedRegistrations = useMemo(() => {
+    const assigned = new Set();
+    for (const group of selectedActivity?.groups || []) {
+      for (const menteeId of group.mentee_ids || []) {
+        assigned.add(menteeId);
+      }
+    }
+    return registrations.filter((item) => !assigned.has(item.mentee_id));
+  }, [registrations, selectedActivity?.groups]);
+
   const pendingActivities = useMemo(
     () => activities.filter((item) => item.approval_status === 'pending_l1_approval'),
     [activities],
@@ -620,15 +646,6 @@ export default function ProfileActivities() {
     }
   };
 
-  const findMenteeGroupId = (menteeId) => {
-    for (const group of selectedActivity?.groups || []) {
-      if ((group.mentee_ids || []).includes(menteeId)) {
-        return group.group_id;
-      }
-    }
-    return '';
-  };
-
   const renderParticipationCell = (item) => {
     if (item.participation_choice_label) {
       return item.participation_choice_label;
@@ -835,6 +852,194 @@ export default function ProfileActivities() {
       <span className={`profile-activity-approval-badge ${approvalBadgeClass(status)}`}>
         {label}
       </span>
+    );
+  };
+
+  const renderMenteeNameCell = (item) => (
+    <>
+      <div>{item.mentee_name}</div>
+      {item.mentee_profile_summary && (
+        <div className="profile-activity-keeptrack-mentee-summary">{item.mentee_profile_summary}</div>
+      )}
+    </>
+  );
+
+  const renderRejectRegistrationButton = (item) =>
+    !item.pending_l1_reject &&
+    item.response_display_status !== 'rejected' &&
+    item.response_display_status !== 'confirmed' ? (
+      <button
+        type="button"
+        className="btn btn-outline btn-sm"
+        onClick={() => handleRejectRegistration(item.mentee_id)}
+        disabled={saving}
+      >
+        Từ chối
+      </button>
+    ) : null;
+
+  const renderGroupMemberActions = (item, currentGroupId) => (
+    <div className="action-cell profile-activity-group-ops">
+      <button
+        type="button"
+        className="btn btn-outline btn-sm"
+        onClick={() => handleRemoveMenteeFromGroup(item.mentee_id, currentGroupId)}
+        disabled={saving}
+      >
+        Xóa khỏi nhóm
+      </button>
+      {approvedGroups.length > 1 && (
+        <>
+          <select
+            value={moveTargets[item.mentee_id] || ''}
+            onChange={(e) =>
+              setMoveTargets((prev) => ({
+                ...prev,
+                [item.mentee_id]: e.target.value,
+              }))
+            }
+          >
+            <option value="">Chuyển sang...</option>
+            {approvedGroups
+              .filter((group) => group.group_id !== currentGroupId)
+              .map((group) => (
+                <option key={group.group_id} value={group.group_id}>
+                  {group.group_name}
+                </option>
+              ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => handleMoveMenteeGroup(item.mentee_id)}
+            disabled={saving}
+          >
+            Chuyển
+          </button>
+        </>
+      )}
+    </div>
+  );
+
+  const renderUnassignedActions = (item) => (
+    <div className="action-cell profile-activity-group-ops">
+      {approvedGroups.length > 0 && (
+        <>
+          <select
+            value={addToGroupTargets[item.mentee_id] || ''}
+            onChange={(e) =>
+              setAddToGroupTargets((prev) => ({
+                ...prev,
+                [item.mentee_id]: e.target.value,
+              }))
+            }
+          >
+            <option value="">Thêm vào nhóm...</option>
+            {approvedGroups.map((group) => (
+              <option key={group.group_id} value={group.group_id}>
+                {group.group_name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => handleAddMenteeToGroup(item.mentee_id)}
+            disabled={saving}
+          >
+            Thêm
+          </button>
+        </>
+      )}
+      {renderRejectRegistrationButton(item)}
+    </div>
+  );
+
+  const renderGroupSectionHead = (group) => {
+    const groupPending = group.approval_status === 'pending_l1_approval';
+    const isFinalized = Boolean(group.finalized_at);
+    const showFinalizeSuccess = Boolean(finalizeSuccessByGroup[group.group_id]);
+    const showLeaderPicker =
+      !group.is_auto_solo &&
+      isFinalized &&
+      !group.leader_mentee_id &&
+      !showFinalizeSuccess &&
+      Boolean(leaderPickerVisible[group.group_id]);
+    const memberCount = (group.mentee_ids || []).length;
+
+    return (
+      <div className="profile-activity-registration-group-head">
+        <div className="profile-activity-registration-group-title">
+          <strong>{group.group_name}</strong> ({memberCount} thành viên)
+          {groupPending && (
+            <span className="profile-activity-approval-badge is-pending"> Chờ L1 duyệt</span>
+          )}
+          {group.is_auto_solo && <span className="muted"> — Cá nhân, không cần chốt nhóm</span>}
+          {showFinalizeSuccess && (
+            <span className="form-success group-finalize-success"> · Đã tạo nhóm thành công</span>
+          )}
+        </div>
+        <div className="action-cell">
+          {!isFinalized && !group.is_auto_solo && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => handleFinalizeGroup(group.group_id)}
+              disabled={saving || groupPending}
+            >
+              Chốt nhóm
+            </button>
+          )}
+          {canReview && groupPending && (
+            <>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => handleApproveGroupAction(selectedActivity.id, group.group_id)}
+                disabled={saving}
+              >
+                Duyệt nhóm
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => handleRejectGroupAction(selectedActivity.id, group.group_id)}
+                disabled={saving}
+              >
+                Từ chối
+              </button>
+            </>
+          )}
+          {showLeaderPicker && (
+            <>
+              <select
+                value={leaderTargets[group.group_id] || ''}
+                onChange={(e) =>
+                  setLeaderTargets((prev) => ({
+                    ...prev,
+                    [group.group_id]: e.target.value,
+                  }))
+                }
+              >
+                <option value="">Chọn nhóm trưởng...</option>
+                {(group.mentee_ids || []).map((menteeId) => (
+                  <option key={menteeId} value={menteeId}>
+                    {getMenteeDisplayName(menteeId)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => handleSetGroupLeader(group.group_id)}
+                disabled={saving || !(leaderTargets[group.group_id] || '')}
+              >
+                Chọn nhóm trưởng
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     );
   };
 
@@ -1274,247 +1479,108 @@ export default function ProfileActivities() {
             {selectedParticipationLabel && (
               <p className="muted">Hình thức tham gia: {selectedParticipationLabel}</p>
             )}
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th />
-                    <th>Tên</th>
-                    <th>Zalo</th>
-                    <th>Ngành apply</th>
-                    <th>Hình thức</th>
-                    <th>Nhóm</th>
-                    <th>Quản lý nhóm</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {registrations.map((item) => {
-                    const currentGroupId = findMenteeGroupId(item.mentee_id);
-                    const approvedGroups = (selectedActivity.groups || []).filter(
-                      (group) => group.approval_status !== 'pending_l1_approval',
-                    );
-                    return (
-                    <>
-                    <tr key={item.mentee_id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={selectedMentees.includes(item.mentee_id)}
-                          onChange={() => toggleMentee(item.mentee_id)}
-                        />
-                      </td>
-                      <td>{item.mentee_name}</td>
-                      <td>{item.zalo_phone || '—'}</td>
-                      <td>{item.apply_major || '—'}</td>
-                      <td>{renderParticipationCell(item)}</td>
-                      <td>{item.group_name || '—'}</td>
-                      <td>
-                        <div className="action-cell profile-activity-group-ops">
-                          {!currentGroupId && approvedGroups.length > 0 && (
-                            <>
-                              <select
-                                value={addToGroupTargets[item.mentee_id] || ''}
-                                onChange={(e) =>
-                                  setAddToGroupTargets((prev) => ({
-                                    ...prev,
-                                    [item.mentee_id]: e.target.value,
-                                  }))
-                                }
-                              >
-                                <option value="">Thêm vào nhóm...</option>
-                                {approvedGroups.map((group) => (
-                                  <option key={group.group_id} value={group.group_id}>
-                                    {group.group_name}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                className="btn btn-outline btn-sm"
-                                onClick={() => handleAddMenteeToGroup(item.mentee_id)}
-                                disabled={saving}
-                              >
-                                Thêm
-                              </button>
-                            </>
-                          )}
-                          {currentGroupId && (
-                            <button
-                              type="button"
-                              className="btn btn-outline btn-sm"
-                              onClick={() => handleRemoveMenteeFromGroup(item.mentee_id, currentGroupId)}
-                              disabled={saving}
-                            >
-                              Xóa khỏi nhóm
-                            </button>
-                          )}
-                          {currentGroupId && approvedGroups.length > 1 && (
-                            <>
-                              <select
-                                value={moveTargets[item.mentee_id] || ''}
-                                onChange={(e) =>
-                                  setMoveTargets((prev) => ({
-                                    ...prev,
-                                    [item.mentee_id]: e.target.value,
-                                  }))
-                                }
-                              >
-                                <option value="">Chuyển sang...</option>
-                                {approvedGroups
-                                  .filter((group) => group.group_id !== currentGroupId)
-                                  .map((group) => (
-                                    <option key={group.group_id} value={group.group_id}>
-                                      {group.group_name}
-                                    </option>
-                                  ))}
-                              </select>
-                              <button
-                                type="button"
-                                className="btn btn-outline btn-sm"
-                                onClick={() => handleMoveMenteeGroup(item.mentee_id)}
-                                disabled={saving}
-                              >
-                                Chuyển
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        {!item.pending_l1_reject &&
-                          item.response_display_status !== 'rejected' &&
-                          item.response_display_status !== 'confirmed' && (
-                            <button
-                              type="button"
-                              className="btn btn-outline btn-sm"
-                              onClick={() => handleRejectRegistration(item.mentee_id)}
-                              disabled={saving}
-                            >
-                              Từ chối
-                            </button>
-                          )}
-                      </td>
-                    </tr>
-                    </>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <div className="profile-activity-registrations">
+              {unassignedRegistrations.length > 0 && (
+                <div className="profile-activity-registration-group">
+                  <h4 className="profile-activity-registration-section-title">
+                    Chờ phân nhóm ({unassignedRegistrations.length})
+                  </h4>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th />
+                          <th>Tên</th>
+                          <th>Zalo</th>
+                          <th>Ngành apply</th>
+                          <th>Hình thức</th>
+                          <th>Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {unassignedRegistrations.map((item) => (
+                          <tr key={item.mentee_id}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={selectedMentees.includes(item.mentee_id)}
+                                onChange={() => toggleMentee(item.mentee_id)}
+                              />
+                            </td>
+                            <td>{renderMenteeNameCell(item)}</td>
+                            <td>{item.zalo_phone || '—'}</td>
+                            <td>{item.apply_major || '—'}</td>
+                            <td>{renderParticipationCell(item)}</td>
+                            <td>{renderUnassignedActions(item)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="action-cell">
+                    <input
+                      placeholder="Tên nhóm"
+                      value={groupName}
+                      onChange={(e) => setGroupName(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={handleCreateGroup}
+                      disabled={saving}
+                    >
+                      Tạo nhóm
+                    </button>
+                  </div>
+                </div>
+              )}
 
-            <div className="action-cell">
-              <input
-                placeholder="Tên nhóm"
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-              />
-              <button type="button" className="btn btn-outline btn-sm" onClick={handleCreateGroup} disabled={saving}>
-                Tạo nhóm
-              </button>
-            </div>
-
-            <div className="profile-activity-groups">
               {(selectedActivity.groups || []).map((group) => {
-              const groupPending = group.approval_status === 'pending_l1_approval';
-              const isFinalized = Boolean(group.finalized_at);
-              const showFinalizeSuccess = Boolean(finalizeSuccessByGroup[group.group_id]);
-              const showLeaderPicker =
-                !group.is_auto_solo &&
-                isFinalized &&
-                !group.leader_mentee_id &&
-                !showFinalizeSuccess &&
-                Boolean(leaderPickerVisible[group.group_id]);
-              return (
-                <div key={group.group_id} className="panel-card">
-                  <div className="group-head">
-                    <div className="group-head-title">
-                      <strong>{group.group_name}</strong> ({(group.mentee_ids || []).length} thành viên)
-                      {groupPending && (
-                        <span className="profile-activity-approval-badge is-pending">
-                          {' '}
-                          Chờ L1 duyệt
-                        </span>
-                      )}
-                      {group.is_auto_solo && (
-                        <span className="muted"> — Cá nhân, không cần chốt nhóm</span>
-                      )}
-                    </div>
-                    {!isFinalized && !group.is_auto_solo && (
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={() => handleFinalizeGroup(group.group_id)}
-                        disabled={saving || groupPending}
-                      >
-                        Chốt nhóm
-                      </button>
+                const groupMembers = (group.mentee_ids || [])
+                  .map((menteeId) => registrationByMenteeId.get(menteeId))
+                  .filter(Boolean);
+                if (!groupMembers.length && group.approval_status === 'pending_l1_approval') {
+                  return null;
+                }
+                return (
+                  <div key={group.group_id} className="profile-activity-registration-group">
+                    {renderGroupSectionHead(group)}
+                    {groupMembers.length > 0 && (
+                      <div className="table-wrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Tên</th>
+                              <th>Zalo</th>
+                              <th>Ngành apply</th>
+                              <th>Hình thức</th>
+                              <th>Thao tác</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {groupMembers.map((item) => (
+                              <tr key={item.mentee_id}>
+                                <td>
+                                  {renderMenteeNameCell(item)}
+                                  {group.leader_mentee_id === item.mentee_id && (
+                                    <div className="muted profile-activity-keeptrack-mentee-summary">
+                                      Nhóm trưởng
+                                    </div>
+                                  )}
+                                </td>
+                                <td>{item.zalo_phone || '—'}</td>
+                                <td>{item.apply_major || '—'}</td>
+                                <td>{renderParticipationCell(item)}</td>
+                                <td>{renderGroupMemberActions(item, group.group_id)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                   </div>
-                  {showFinalizeSuccess && (
-                    <p className="form-success group-finalize-success">Đã tạo nhóm thành công</p>
-                  )}
-                  {(group.mentee_ids || []).length > 0 && (
-                    <ol className="profile-activity-group-member-list">
-                      {(group.mentee_ids || []).map((menteeId) => (
-                        <li key={menteeId}>
-                          {getMenteeDisplayName(menteeId)}
-                          {group.leader_mentee_id === menteeId ? ' (nhóm trưởng)' : ''}
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                  {canReview && groupPending && (
-                    <div className="action-cell">
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={() => handleApproveGroupAction(selectedActivity.id, group.group_id)}
-                        disabled={saving}
-                      >
-                        Duyệt nhóm
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => handleRejectGroupAction(selectedActivity.id, group.group_id)}
-                        disabled={saving}
-                      >
-                        Từ chối
-                      </button>
-                    </div>
-                  )}
-                  {showLeaderPicker && (
-                    <div className="action-cell profile-activity-group-leader-picker">
-                      <select
-                        value={leaderTargets[group.group_id] || ''}
-                        onChange={(e) =>
-                          setLeaderTargets((prev) => ({
-                            ...prev,
-                            [group.group_id]: e.target.value,
-                          }))
-                        }
-                      >
-                        <option value="">Chọn nhóm trưởng...</option>
-                        {(group.mentee_ids || []).map((menteeId) => (
-                          <option key={menteeId} value={menteeId}>
-                            {getMenteeDisplayName(menteeId)}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={() => handleSetGroupLeader(group.group_id)}
-                        disabled={saving || !(leaderTargets[group.group_id] || '')}
-                      >
-                        Chọn nhóm trưởng
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
             </div>
           </div>
         )}

@@ -1630,6 +1630,7 @@ def serialize_admin_registration(activity: dict, state: dict, mentee: dict) -> d
     return {
         "mentee_id": mentee_id,
         "mentee_name": mentee.get("full_name") or mentee.get("username") or mentee.get("email", ""),
+        "mentee_profile_summary": mentee_keeptrack_profile_summary_line(mentee),
         "zalo_phone": mentee.get("zalo_phone", ""),
         "apply_major": mentor_apply_direction_label(mentee.get("mentor_apply_direction", ""))
         or mentee.get("apply_direction", ""),
