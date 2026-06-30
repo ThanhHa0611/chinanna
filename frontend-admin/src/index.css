@@ -3740,3 +3740,114 @@ html.device-phone .daily-summary-status {
   background: #fee2e2;
   color: #b91c1c;
 }
+
+.profile-activity-progress-panel {
+  margin-bottom: 1.25rem;
+}
+
+.profile-activity-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.profile-activity-progress-head h3 {
+  margin: 0;
+}
+
+.profile-activity-progress-empty {
+  margin: 0;
+  padding: 0.75rem 0;
+}
+
+.profile-activity-progress-activities {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profile-activity-progress-activity {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.profile-activity-progress-activity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  background: #fce7f3;
+  border-bottom: 1px solid #f9a8d4;
+}
+
+.profile-activity-progress-activity-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #9d174d;
+}
+
+.profile-activity-progress-activity-body {
+  padding: 0.5rem;
+}
+
+.profile-activity-progress-activity-collapsed {
+  margin: 0;
+  padding: 0.35rem 0.75rem 0.65rem;
+}
+
+.profile-activity-progress-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.profile-activity-progress-table th,
+.profile-activity-progress-table td {
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.55rem;
+  vertical-align: top;
+}
+
+.profile-activity-progress-table th {
+  background: rgba(244, 114, 182, 0.12);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.profile-activity-progress-type {
+  font-weight: 600;
+  white-space: nowrap;
+  width: 6.5rem;
+}
+
+.profile-activity-progress-group-name {
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+
+.profile-activity-progress-member + .profile-activity-progress-member {
+  margin-top: 0.2rem;
+}
+
+.profile-activity-progress-leader {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.profile-activity-progress-status.is-completed {
+  color: #15803d;
+}
+
+.profile-activity-progress-status.is-in-progress {
+  color: #b45309;
+}
+
+.profile-activity-progress-delete {
+  width: 4.5rem;
+  text-align: center;
+}

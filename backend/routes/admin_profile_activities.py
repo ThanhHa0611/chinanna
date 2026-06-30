@@ -27,6 +27,7 @@ from services.profile_activities import (
     set_group_leader,
     list_pending_individual_keeptrack_reviews,
     list_pending_keeptrack_abandon_requests,
+    list_progress_tracking_for_admin,
     move_mentee_to_group,
     notify_group_assignment,
     parse_profile_activity_from_description,
@@ -35,6 +36,7 @@ from services.profile_activities import (
     reject_pending_group,
     reject_pending_mentor_reject,
     reject_profile_activity,
+    remove_progress_tracking_row,
     remove_mentee_from_group,
     sanitize_profile_activity_input,
     serialize_admin_profile_activity,
@@ -679,3 +681,43 @@ def admin_reject_keeptrack_abandon(activity_id: str, mentee_id: str):
     except ProfileActivityKeeptrackError as exc:
         return jsonify({"detail": str(exc)}), 400
     return jsonify({"message": "Đã từ chối yêu cầu từ bỏ — mentee tiếp tục theo dõi hoạt động"})
+
+
+@app.get("/api/admin/profile-activities/progress-tracking")
+@with_db
+def admin_list_progress_tracking():
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activities = list_progress_tracking_for_admin(admin)
+    row_count = sum(len(item.get("rows") or []) for item in activities)
+    return jsonify({"activities": activities, "row_count": row_count})
+
+
+@app.delete("/api/admin/profile-activities/<activity_id>/progress-tracking")
+@with_db
+def admin_remove_progress_tracking_row(activity_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id)
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    try:
+        remove_progress_tracking_row(
+            activity,
+            row_type=data.get("type", ""),
+            group_id=data.get("group_id", ""),
+            mentee_id=data.get("mentee_id", ""),
+            admin=admin,
+        )
+    except ProfileActivityKeeptrackError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify({"message": "Đã gỡ khỏi bảng theo dõi tiến độ"})

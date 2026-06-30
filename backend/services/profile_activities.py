@@ -2579,3 +2579,245 @@ def set_group_leader(activity: dict, group_id: str, mentee_id: str) -> dict:
         {"$set": {"groups": activity.get("groups", []), "updated_at": now}},
     )
     return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def _has_progress_keeptrack(state: dict) -> bool:
+    raw = state.get("keeptrack")
+    if not raw:
+        return False
+    keeptrack = _normalize_keeptrack(raw)
+    if keeptrack.get("hdnk_entry_id"):
+        return True
+    return keeptrack.get("progress_status") in {
+        KEEPTRACK_PROGRESS_IN_PROGRESS,
+        KEEPTRACK_PROGRESS_COMPLETED,
+    }
+
+
+def _keeptrack_status_fields(state: dict) -> tuple[str, str, str]:
+    keeptrack = _normalize_keeptrack(state.get("keeptrack"))
+    status = keeptrack.get("progress_status") or KEEPTRACK_PROGRESS_IN_PROGRESS
+    label = KEEPTRACK_UI_LABELS.get(status, "Đang tiến hành")
+    return status, label, keeptrack.get("start_date") or ""
+
+
+def _aggregate_group_keeptrack_status(member_states: list[dict]) -> tuple[str, str, str]:
+    dates: list[str] = []
+    statuses: list[str] = []
+    for state in member_states:
+        if not _has_progress_keeptrack(state):
+            continue
+        status, _label, start_date = _keeptrack_status_fields(state)
+        statuses.append(status)
+        if start_date:
+            dates.append(start_date)
+    if not statuses:
+        return "", "", ""
+    agg_status = (
+        KEEPTRACK_PROGRESS_IN_PROGRESS
+        if any(item == KEEPTRACK_PROGRESS_IN_PROGRESS for item in statuses)
+        else KEEPTRACK_PROGRESS_COMPLETED
+    )
+    return agg_status, KEEPTRACK_UI_LABELS.get(agg_status, ""), min(dates) if dates else ""
+
+
+def _mentee_display_name(mentee: dict) -> str:
+    return mentee.get("full_name") or mentee.get("username") or mentee.get("email", "")
+
+
+def _build_progress_tracking_members(group: dict) -> list[dict]:
+    leader_id = str(group.get("leader_mentee_id") or "").strip()
+    member_ids = [str(item) for item in (group.get("mentee_ids") or []) if str(item)]
+    object_ids = [ObjectId(item) for item in member_ids if ObjectId.is_valid(item)]
+    users_by_id = {
+        str(user["_id"]): user
+        for user in users.find({"_id": {"$in": object_ids}, "role": {"$ne": ROLE_PARENT}})
+    }
+    ordered_ids = member_ids[:]
+    if leader_id and leader_id in ordered_ids:
+        ordered_ids = [leader_id] + [item for item in ordered_ids if item != leader_id]
+    members: list[dict] = []
+    for member_id in ordered_ids:
+        user = users_by_id.get(member_id)
+        if not user:
+            continue
+        members.append(
+            {
+                "mentee_id": member_id,
+                "name": _mentee_display_name(user),
+                "is_leader": member_id == leader_id,
+            }
+        )
+    return members
+
+
+def _group_qualifies_for_progress_tracking(group: dict) -> bool:
+    if not group_is_approved(group):
+        return False
+    if _is_auto_solo_group(group):
+        return False
+    return bool(group.get("mentee_ids"))
+
+
+def list_progress_tracking_for_admin(admin: dict) -> list[dict]:
+    activities_out: list[dict] = []
+    for activity in profile_activities.find(mentor_profile_activities_query(admin)).sort("updated_at", -1):
+        if not activity_visible_to_mentee(activity):
+            continue
+
+        states_by_id = {
+            str(state.get("mentee_id", "")): state
+            for state in activity.get("mentee_states", [])
+            if state.get("mentee_id")
+        }
+        rows: list[dict] = []
+        covered_mentee_ids: set[str] = set()
+
+        for group in activity.get("groups", []):
+            if not _group_qualifies_for_progress_tracking(group):
+                continue
+            member_ids = [str(item) for item in (group.get("mentee_ids") or []) if str(item)]
+            tracked_states = [
+                states_by_id[member_id]
+                for member_id in member_ids
+                if member_id in states_by_id and _has_progress_keeptrack(states_by_id[member_id])
+            ]
+            if not tracked_states:
+                continue
+            status, status_label, start_date = _aggregate_group_keeptrack_status(tracked_states)
+            if not status:
+                continue
+            members = _build_progress_tracking_members(group)
+            if not members:
+                continue
+            covered_mentee_ids.update(member_ids)
+            rows.append(
+                {
+                    "row_id": f"group:{group.get('group_id')}",
+                    "type": "group",
+                    "group_id": group.get("group_id", ""),
+                    "group_name": (group.get("group_name") or "").strip() or "Nhóm",
+                    "members": members,
+                    "start_date": start_date,
+                    "status": status,
+                    "status_label": status_label,
+                    "mentee_ids": [member["mentee_id"] for member in members],
+                    "finalized": bool(group.get("finalized_at")),
+                }
+            )
+
+        for state in activity.get("mentee_states", []):
+            if not state.get("registered_at"):
+                continue
+            mentee_id = str(state.get("mentee_id", ""))
+            if mentee_id in covered_mentee_ids:
+                continue
+            if not _is_individual_participant(activity, state):
+                continue
+            if not _has_progress_keeptrack(state):
+                continue
+            if not ObjectId.is_valid(mentee_id):
+                continue
+            mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
+            if not mentee:
+                continue
+            status, status_label, start_date = _keeptrack_status_fields(state)
+            rows.append(
+                {
+                    "row_id": f"individual:{mentee_id}",
+                    "type": "individual",
+                    "group_id": "",
+                    "group_name": "",
+                    "members": [
+                        {
+                            "mentee_id": mentee_id,
+                            "name": _mentee_display_name(mentee),
+                            "is_leader": False,
+                        }
+                    ],
+                    "start_date": start_date,
+                    "status": status,
+                    "status_label": status_label,
+                    "mentee_ids": [mentee_id],
+                    "finalized": True,
+                }
+            )
+
+        if rows:
+            activities_out.append(
+                {
+                    "activity_id": str(activity["_id"]),
+                    "activity_name": compose_activity_name(activity),
+                    "rows": rows,
+                }
+            )
+
+    return activities_out
+
+
+def remove_progress_tracking_row(
+    activity: dict,
+    *,
+    row_type: str,
+    group_id: str = "",
+    mentee_id: str = "",
+    admin: dict | None = None,
+) -> dict:
+    _ = admin  # reserved for future audit fields
+    row_type = (row_type or "").strip().lower()
+    now = datetime.now(timezone.utc)
+    activity_name = compose_activity_name(activity)
+
+    if row_type == "individual":
+        if not mentee_id:
+            raise ProfileActivityKeeptrackError("Thiếu mentee.")
+        state = _get_mentee_state(activity, mentee_id)
+        if not state or not _has_progress_keeptrack(state):
+            raise ProfileActivityKeeptrackError("Không có tiến độ để xóa.")
+        mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
+        if not mentee:
+            raise ProfileActivityKeeptrackError("Mentee không tồn tại.")
+        _remove_keeptrack_hdnk_entry(mentee, state)
+        notify_mentee_mentor_activity(
+            mentee,
+            action="profile_activity_keeptrack_removed",
+            title="Mentor đã gỡ tiến độ hoạt động",
+            description=(
+                f"Mentor đã gỡ hoạt động '{activity_name}' khỏi bảng theo dõi tiến độ."
+            ),
+            mentor_name=activity.get("mentor_name", ""),
+        )
+    elif row_type == "group":
+        group = _find_group(activity, group_id)
+        if not group:
+            raise ProfileActivityKeeptrackError("Nhóm không tồn tại.")
+        removed_any = False
+        group_name = (group.get("group_name") or "").strip() or "Nhóm"
+        for member_id in [str(item) for item in (group.get("mentee_ids") or []) if str(item)]:
+            state = _get_mentee_state(activity, member_id)
+            if not state or not _has_progress_keeptrack(state):
+                continue
+            mentee = users.find_one({"_id": ObjectId(member_id), "role": {"$ne": ROLE_PARENT}})
+            if not mentee:
+                continue
+            _remove_keeptrack_hdnk_entry(mentee, state)
+            notify_mentee_mentor_activity(
+                mentee,
+                action="profile_activity_keeptrack_removed",
+                title="Mentor đã gỡ tiến độ hoạt động",
+                description=(
+                    f"Mentor đã gỡ nhóm '{group_name}' khỏi bảng theo dõi tiến độ ({activity_name})."
+                ),
+                mentor_name=activity.get("mentor_name", ""),
+            )
+            removed_any = True
+        if not removed_any:
+            raise ProfileActivityKeeptrackError("Không có tiến độ để xóa.")
+    else:
+        raise ProfileActivityKeeptrackError("Loại dòng không hợp lệ.")
+
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"mentee_states": activity.get("mentee_states", []), "updated_at": now}},
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity

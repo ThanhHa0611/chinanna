@@ -103,6 +103,61 @@ function activityPickerLabel(item) {
   return label;
 }
 
+function progressTrackingStatusClass(status) {
+  if (status === 'completed') return 'is-completed';
+  return 'is-in-progress';
+}
+
+function ProgressTrackingRows({ rows, activityId, saving, onDelete }) {
+  return rows.flatMap((row) => {
+    const memberCount = row.members.length;
+    const typeLabel = row.type === 'group' ? 'Tên nhóm' : 'Cá nhân';
+    return row.members.map((member, index) => (
+      <tr key={`${row.row_id}:${member.mentee_id}`}>
+        {index === 0 && (
+          <td rowSpan={memberCount} className="profile-activity-progress-type">
+            {typeLabel}
+          </td>
+        )}
+        <td>
+          {row.type === 'group' && index === 0 && row.group_name && (
+            <div className="profile-activity-progress-group-name">{row.group_name}</div>
+          )}
+          <div className="profile-activity-progress-member">
+            {member.name || '—'}
+            {member.is_leader && (
+              <span className="profile-activity-progress-leader"> (nhóm trưởng)</span>
+            )}
+          </div>
+        </td>
+        {index === 0 && (
+          <>
+            <td rowSpan={memberCount}>{row.start_date || '—'}</td>
+            <td rowSpan={memberCount}>
+              <span
+                className={`profile-activity-progress-status ${progressTrackingStatusClass(row.status)}`}
+              >
+                {row.status_label || '—'}
+              </span>
+            </td>
+            <td rowSpan={memberCount} className="profile-activity-progress-delete">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => onDelete(activityId, row)}
+                disabled={saving}
+                title="Gỡ khỏi bảng theo dõi tiến độ"
+              >
+                Xóa
+              </button>
+            </td>
+          </>
+        )}
+      </tr>
+    ));
+  });
+}
+
 function ActivityPickerDropdown({ activities, value, onChange }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
@@ -204,6 +259,9 @@ export default function ProfileActivities() {
   const [keeptrackReviews, setKeeptrackReviews] = useState([]);
   const [selectedKeeptrackReviews, setSelectedKeeptrackReviews] = useState([]);
   const [abandonRequests, setAbandonRequests] = useState([]);
+  const [progressTracking, setProgressTracking] = useState([]);
+  const [progressTrackingExpanded, setProgressTrackingExpanded] = useState(true);
+  const [progressActivityExpanded, setProgressActivityExpanded] = useState({});
   const [finalizeSuccessByGroup, setFinalizeSuccessByGroup] = useState({});
   const [leaderPickerVisible, setLeaderPickerVisible] = useState({});
   const [leaderTargets, setLeaderTargets] = useState({});
@@ -260,6 +318,11 @@ export default function ProfileActivities() {
     return items;
   }, [activities]);
 
+  const progressTrackingRowCount = useMemo(
+    () => progressTracking.reduce((total, item) => total + (item.rows?.length || 0), 0),
+    [progressTracking],
+  );
+
   const composedName = useMemo(() => compose_activity_name(form), [
     form.activity_type,
     form.organizer,
@@ -296,8 +359,18 @@ export default function ProfileActivities() {
     setAbandonRequests(data.items || []);
   };
 
+  const loadProgressTracking = async () => {
+    const data = await api.getProfileActivityProgressTracking();
+    setProgressTracking(data.activities || []);
+  };
+
   useEffect(() => {
-    Promise.all([loadActivities(), loadKeeptrackReviews(), loadAbandonRequests()])
+    Promise.all([
+      loadActivities(),
+      loadKeeptrackReviews(),
+      loadAbandonRequests(),
+      loadProgressTracking(),
+    ])
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
@@ -825,7 +898,7 @@ export default function ProfileActivities() {
     setError('');
     try {
       await api.approveProfileActivityKeeptrackAbandon(item.activity_id, item.mentee_id);
-      await Promise.all([loadAbandonRequests(), loadActivities()]);
+      await Promise.all([loadAbandonRequests(), loadActivities(), loadProgressTracking()]);
       if (item.activity_id === selectedId) {
         await loadRegistrations(item.activity_id);
       }
@@ -849,6 +922,43 @@ export default function ProfileActivities() {
         await loadRegistrations(item.activity_id);
       }
       setMessage('Đã từ chối yêu cầu từ bỏ — mentee tiếp tục theo dõi hoạt động.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleProgressActivity = (activityId) => {
+    setProgressActivityExpanded((prev) => ({
+      ...prev,
+      [activityId]: prev[activityId] === false,
+    }));
+  };
+
+  const isProgressActivityExpanded = (activityId) => progressActivityExpanded[activityId] !== false;
+
+  const handleRemoveProgressTracking = async (activityId, row) => {
+    const label =
+      row.type === 'group'
+        ? `nhóm "${row.group_name || 'Nhóm'}"`
+        : row.members?.[0]?.name || 'mentee';
+    if (!window.confirm(`Gỡ ${label} khỏi bảng theo dõi tiến độ? Tiến độ HDNK của mentee cũng sẽ bị gỡ.`)) {
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.removeProfileActivityProgressTrackingRow(activityId, {
+        type: row.type,
+        group_id: row.group_id || '',
+        mentee_id: row.type === 'individual' ? row.mentee_ids?.[0] || '' : '',
+      });
+      await Promise.all([loadProgressTracking(), loadActivities()]);
+      if (activityId === selectedId) {
+        await loadRegistrations(activityId);
+      }
+      setMessage('Đã gỡ khỏi bảng theo dõi tiến độ.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1221,6 +1331,90 @@ export default function ProfileActivities() {
           </div>
         </div>
       )}
+
+      <div className="panel-card profile-activity-progress-panel">
+        <div className="profile-activity-progress-head">
+          <h3>Theo dõi tiến độ{progressTrackingRowCount > 0 ? ` (${progressTrackingRowCount})` : ''}</h3>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => setProgressTrackingExpanded((value) => !value)}
+            aria-expanded={progressTrackingExpanded}
+          >
+            {progressTrackingExpanded ? 'Thu gọn' : 'Mở rộng'}
+          </button>
+        </div>
+        {progressTrackingExpanded ? (
+          progressTracking.length > 0 ? (
+            <div className="profile-activity-progress-activities">
+              {progressTracking.map((activityBlock) => {
+                const expanded = isProgressActivityExpanded(activityBlock.activity_id);
+                const rowCount = activityBlock.rows?.length || 0;
+                return (
+                  <div
+                    key={activityBlock.activity_id}
+                    className="profile-activity-progress-activity"
+                  >
+                    <div className="profile-activity-progress-activity-head">
+                      <h4 className="profile-activity-progress-activity-title">
+                        {activityBlock.activity_name}
+                      </h4>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => toggleProgressActivity(activityBlock.activity_id)}
+                        aria-expanded={expanded}
+                      >
+                        {expanded ? 'Thu gọn' : 'Mở rộng'}
+                      </button>
+                    </div>
+                    {expanded ? (
+                      <div className="profile-activity-progress-activity-body">
+                        <div className="table-wrap">
+                          <table className="profile-activity-progress-table">
+                            <thead>
+                              <tr>
+                                <th>Loại</th>
+                                <th>Tên</th>
+                                <th>Ngày bắt đầu</th>
+                                <th>Trạng thái</th>
+                                <th>Xóa</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <ProgressTrackingRows
+                                rows={activityBlock.rows || []}
+                                activityId={activityBlock.activity_id}
+                                saving={saving}
+                                onDelete={handleRemoveProgressTracking}
+                              />
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="profile-activity-progress-activity-collapsed muted">
+                        {rowCount} dòng tiến độ — bấm Mở rộng để xem
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="profile-activity-progress-empty muted">
+              Chưa có tiến độ nào được theo dõi. Tiến độ sẽ xuất hiện sau khi mentee báo danh và bắt
+              đầu keep track.
+            </p>
+          )
+        ) : (
+          <p className="profile-activity-progress-empty muted">
+            {progressTrackingRowCount > 0
+              ? `${progressTrackingRowCount} dòng tiến độ — bấm Mở rộng để xem`
+              : 'Chưa có tiến độ nào được theo dõi.'}
+          </p>
+        )}
+      </div>
 
       {canReview && pendingGroupActions.length > 0 && (
         <div className="panel-card profile-activity-pending-queue">

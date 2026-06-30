@@ -458,6 +458,15 @@ export const api = {
       { method: 'POST', body: JSON.stringify(body) },
     ),
 
+  getProfileActivityProgressTracking: () =>
+    request('/api/admin/profile-activities/progress-tracking'),
+
+  removeProfileActivityProgressTrackingRow: (activityId, body) =>
+    request(`/api/admin/profile-activities/${activityId}/progress-tracking`, {
+      method: 'DELETE',
+      body: JSON.stringify(body),
+    }),
+
   getMenteeRegistrations: () => request('/api/admin/mentee-registrations'),
 
   reviewMenteeRegistration: (id, body) =>
