@@ -8,9 +8,10 @@ from database import ensure_db, mentor_inbox
 from extensions import app
 from services.inbox import send_daily_inbox_summary_for_mentor
 from services.mentee_activity_digest import is_activity_digest_window, process_mentee_activity_digests
+from services.mentor_inbox_digest import process_mentor_inbox_digests
 
 _last_inbox_reminder_check = 0.0
-_last_activity_digest_date = ""
+_last_daily_digest_date = ""
 
 
 @app.after_request
@@ -21,7 +22,7 @@ def add_geolocation_policy(response):
 
 @app.before_request
 def maybe_process_inbox_reminders():
-    global _last_inbox_reminder_check, _last_activity_digest_date
+    global _last_inbox_reminder_check, _last_daily_digest_date
 
     if request.path.startswith("/api/email/"):
         return None
@@ -42,9 +43,10 @@ def maybe_process_inbox_reminders():
             from zoneinfo import ZoneInfo
 
             today_key = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d")
-            if _last_activity_digest_date != today_key:
-                _last_activity_digest_date = today_key
+            if _last_daily_digest_date != today_key:
+                _last_daily_digest_date = today_key
                 process_mentee_activity_digests()
+                process_mentor_inbox_digests()
     except Exception:
         pass
     return None

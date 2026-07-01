@@ -642,6 +642,49 @@ def send_mentee_activity_digest_email(
     )
 
 
+def send_mentor_inbox_digest_email(
+    *,
+    to_email: str,
+    item_lines: list[str],
+    admin_url: str = "",
+) -> bool:
+    admin_url = admin_url or os.getenv("MENTOR_ADMIN_URL", "http://localhost:5174/").strip()
+    count = len(item_lines)
+    if count == 0:
+        return False
+
+    intro = f"Bạn có {count} việc chưa xử lí:"
+    subject = f"[Mentor Trơn Tru] {intro}"
+    numbered_lines = [f"{index}. {line}" for index, line in enumerate(item_lines, start=1)]
+    list_text = "\n".join(numbered_lines)
+    text_body = (
+        f"{intro}\n\n"
+        f"{list_text}\n\n"
+        f"Mở trang mentor: {admin_url}\n\n— Hệ thống Phong Van"
+    )
+    list_html = "".join(
+        f'<li style="margin:0.35rem 0;">{index}. {line}</li>'
+        for index, line in enumerate(item_lines, start=1)
+    )
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+      <h2 style="color: #eb2233; margin-top: 0;">{intro}</h2>
+      <ol style="padding-left: 1.25rem; margin: 1rem 0;">
+        {list_html}
+      </ol>
+      <p style="margin-top: 1.25rem;">
+        <a href="{admin_url}" style="color:#eb2233;font-weight:600;">Mở trang quản lý mentor</a>
+      </p>
+    </div>
+    """
+    return send_email(
+        to_email=to_email,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+    )
+
+
 def send_mentee_login_anomaly_email(
     *,
     to_email: str,

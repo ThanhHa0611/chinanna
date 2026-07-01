@@ -51,13 +51,15 @@ services:
         generateValue: true
 
   - type: cron
-    name: phong-van-mentee-activity-digest
+    name: phong-van-daily-digests
     runtime: python
     schedule: "0 3 * * *"
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: >-
-      python -c "import os,urllib.request; s=os.environ['CRON_SECRET']; b=os.environ.get('BACKEND_PUBLIC_URL','').rstrip('/'); urllib.request.urlopen(urllib.request.Request(f'{b}/api/cron/mentee-activity-digest', method='POST', headers={'X-Cron-Secret': s}))"
+      python -c "import os,urllib.request; s=os.environ['CRON_SECRET']; b=os.environ.get('BACKEND_PUBLIC_URL','').rstrip('/'); h={'X-Cron-Secret': s};
+      urllib.request.urlopen(urllib.request.Request(f'{b}/api/cron/mentee-activity-digest', method='POST', headers=h));
+      urllib.request.urlopen(urllib.request.Request(f'{b}/api/cron/mentor-inbox-digest', method='POST', headers=h))"
     envVars:
       - fromService:
           type: web

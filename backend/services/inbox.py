@@ -231,7 +231,8 @@ def build_inbox_document_payload(task: dict):
 
 
 def send_daily_inbox_summary_for_mentor(mentor_name: str, tasks: list[dict]) -> bool:
-    # In-app inbox reminders only; mentor email is limited to cấp quyền + cảnh báo.
+    # In-app reminder scheduling only. Daily inbox email is sent once at 10:00 VN
+    # via services.mentor_inbox_digest (not per-item / not per-reminder).
     return bool(tasks)
 
 
