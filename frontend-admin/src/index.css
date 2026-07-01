@@ -3797,6 +3797,40 @@ html.device-phone .daily-summary-status {
   gap: 1.25rem;
 }
 
+.profile-activity-registrations th:last-child,
+.profile-activity-registrations td:last-child {
+  min-width: 13.5rem;
+}
+
+.profile-activity-group-ops {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.profile-activity-add-to-group {
+  width: 100%;
+}
+
+.profile-activity-add-to-group select {
+  flex: 1;
+  min-width: 8.5rem;
+}
+
+.profile-activity-reject-btn {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+.profile-activity-reject-btn:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.profile-activity-pending-reject {
+  font-size: 0.82rem;
+}
+
 .profile-activity-registration-section-title {
   margin: 0 0 0.35rem;
   font-size: 0.95rem;

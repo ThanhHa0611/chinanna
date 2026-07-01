@@ -1458,19 +1458,34 @@ export default function ProfileActivities() {
     </>
   );
 
-  const renderRejectRegistrationButton = (item) =>
-    !item.pending_l1_reject &&
-    item.response_display_status !== 'rejected' &&
-    item.response_display_status !== 'confirmed' ? (
+  const canRejectRegistration = (item) => {
+    if (item.pending_l1_reject || item.response_display_status === 'rejected') {
+      return false;
+    }
+    if (item.response_display_status === 'confirmed' && !item.awaiting_group_assignment) {
+      return false;
+    }
+    return true;
+  };
+
+  const renderRejectRegistrationButton = (item) => {
+    if (item.pending_l1_reject) {
+      return <span className="muted profile-activity-pending-reject">Chờ L1 duyệt từ chối</span>;
+    }
+    if (!canRejectRegistration(item)) {
+      return null;
+    }
+    return (
       <button
         type="button"
-        className="btn btn-outline btn-sm"
+        className="btn btn-outline btn-sm profile-activity-reject-btn"
         onClick={() => handleRejectRegistration(item.mentee_id)}
         disabled={saving}
       >
         Từ chối
       </button>
-    ) : null;
+    );
+  };
 
   const renderGroupMemberActions = (item, currentGroupId) => (
     <div className="action-cell profile-activity-group-ops">
@@ -1516,9 +1531,10 @@ export default function ProfileActivities() {
   );
 
   const renderUnassignedActions = (item) => (
-    <div className="action-cell profile-activity-group-ops">
+    <div className="profile-activity-group-ops">
+      {renderRejectRegistrationButton(item)}
       {approvedGroups.length > 0 && (
-        <>
+        <div className="action-cell profile-activity-add-to-group">
           <select
             value={addToGroupTargets[item.mentee_id] || ''}
             onChange={(e) =>
@@ -1543,9 +1559,8 @@ export default function ProfileActivities() {
           >
             Thêm
           </button>
-        </>
+        </div>
       )}
-      {renderRejectRegistrationButton(item)}
     </div>
   );
 
