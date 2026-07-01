@@ -598,6 +598,50 @@ def send_mentee_document_feedback_email(
     )
 
 
+def send_mentee_activity_digest_email(
+    *,
+    to_email: str,
+    mentee_name: str,
+    activity_names: list[str],
+    profile_url: str = "",
+) -> bool:
+    profile_url = profile_url or os.getenv("MENTEE_PROFILE_URL", "http://localhost:5173/profile").strip()
+    count = len(activity_names)
+    if count == 0:
+        return False
+
+    intro = f"Mentor cập nhật {count} hoạt động ngoại khóa, hãy tham gia ngay nhé"
+    subject = f"[Trơn Tru] {intro}"
+    numbered_lines = [f"{index}. {name}" for index, name in enumerate(activity_names, start=1)]
+    list_text = "\n".join(numbered_lines)
+    text_body = (
+        f"{intro}\n\n"
+        f"{list_text}\n\n"
+        f"Mở hồ sơ: {profile_url}\n\n— Hệ thống Phong Van"
+    )
+    list_html = "".join(
+        f"<li style=\"margin:0.35rem 0;\">{index}. {name}</li>"
+        for index, name in enumerate(activity_names, start=1)
+    )
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+      <h2 style="color: #eb2233; margin-top: 0;">{intro}</h2>
+      <ol style="padding-left: 1.25rem; margin: 1rem 0;">
+        {list_html}
+      </ol>
+      <p style="margin-top: 1.25rem;">
+        <a href="{profile_url}" style="color:#eb2233;font-weight:600;">Xem hoạt động ngoại khóa</a>
+      </p>
+    </div>
+    """
+    return send_email(
+        to_email=to_email,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+    )
+
+
 def send_mentee_login_anomaly_email(
     *,
     to_email: str,

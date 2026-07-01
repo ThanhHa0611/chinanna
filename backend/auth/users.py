@@ -35,6 +35,10 @@ from auth.login_tracking import (
 def user_response(user: dict) -> dict:
     from services.admins import is_thanh_ha_mentee
     from services.apply_documents import apply_degree_level_label, term3_2027_language_semester_label
+    from services.mentee_email_prefs import (
+        mentee_email_notify_activities_enabled,
+        mentee_email_notify_documents_enabled,
+    )
     from services.profile_info import profile_info_reminder_unread, serialize_profile_info_reminder
     from services.referrals import referral_points_for_user
 
@@ -69,6 +73,8 @@ def user_response(user: dict) -> dict:
     if role == ROLE_MENTEE:
         payload["profile_info_reminder"] = serialize_profile_info_reminder(user)
         payload["profile_info_reminder_unread"] = profile_info_reminder_unread(user)
+        payload["email_notify_documents"] = mentee_email_notify_documents_enabled(user)
+        payload["email_notify_activities"] = mentee_email_notify_activities_enabled(user)
     return payload
 
 

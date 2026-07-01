@@ -151,56 +151,8 @@ def notify_l1_mentee_registration(mentee: dict) -> bool:
 
 
 def notify_l1_mentee_apply_progress_edit(mentee: dict, row_nums: list[int]) -> bool:
-    if not row_nums:
-        return False
-
-    mentor_name = (mentee.get("mentor") or "").strip()
-    emails = level1_mentor_notify_emails(mentor_name)
-    if not emails:
-        return False
-
-    request_id = str(uuid.uuid4())
-    tokens = _create_action_tokens()
-    users.update_one(
-        {"_id": ObjectId(mentee["_id"])},
-        {
-            "$set": {
-                f"mentee_l1_email_tokens.apply_progress.{request_id}": {
-                    **tokens,
-                    "row_nums": row_nums,
-                }
-            }
-        },
-    )
-
-    mentee_name = mentee.get("full_name") or mentee.get("username") or mentee.get("email", "")
-    rows_label = ", ".join(str(num) for num in row_nums)
-
-    from email_notify import send_l1_mentee_request_email
-
-    urls = _apply_progress_urls(tokens)
-    sent = False
-    for email in emails:
-        if send_l1_mentee_request_email(
-            to_email=email,
-            subject="[Mentor Trơn Tru] Mentee yêu cầu chỉnh sửa tiến độ apply",
-            title="Yêu cầu chỉnh sửa tiến độ apply",
-            description=(
-                f"Mentee {mentee_name} gửi chỉnh sửa nguyện vọng apply "
-                f"(dòng {rows_label}) chờ mentor cấp 1 duyệt."
-            ),
-            details=[
-                ("Mentee", mentee_name),
-                ("Email", mentee.get("email", "")),
-                ("Team", mentor_name),
-                ("Dòng chỉnh sửa", rows_label),
-            ],
-            approve_url=urls["approve"],
-            reject_url=urls["reject"],
-            admin_page_url=urls["admin_page"],
-        ):
-            sent = True
-    return sent
+    # Apply-progress edits are in-app inbox only; email is for cấp quyền + cảnh báo.
+    return False
 
 
 def mentee_account_status(user: dict) -> str:

@@ -56,14 +56,13 @@ def notify_mentors_mentee_document_upload(user: dict, doc_id: str):
     if not mentor_name:
         return
 
-    from inbox_tasks import create_mentor_inbox_task, inbox_snooze_urls, inbox_urls
+    from inbox_tasks import create_mentor_inbox_task
 
     doc_label = APPLY_DOC_LABELS.get(doc_id, doc_id)
     mentee_name = user.get("full_name") or user.get("username") or user.get("email", "")
-    mentee_page = os.getenv("MENTOR_MENTEES_URL", "http://localhost:5174/mentees").strip()
     mentee_id = str(user.get("_id", ""))
 
-    task = create_mentor_inbox_task(
+    create_mentor_inbox_task(
         mentor_inbox,
         mentor_name=mentor_name,
         mentee_id=mentee_id,
@@ -75,26 +74,6 @@ def notify_mentors_mentee_document_upload(user: dict, doc_id: str):
         doc_id=doc_id,
         has_file=doc_id not in NO_FILE_UPLOAD_DOC_IDS,
     )
-    urls = inbox_urls(BACKEND_PUBLIC_URL, task)
-    snooze_urls = inbox_snooze_urls(BACKEND_PUBLIC_URL, task)
-
-    try:
-        from email_notify import send_mentee_document_upload_email
-
-        for email in mentor_branch_notify_emails(mentor_name):
-            send_mentee_document_upload_email(
-                to_email=email,
-                mentee_name=mentee_name,
-                mentee_email=user.get("email", ""),
-                mentor_name=mentor_name,
-                document_label=doc_label,
-                mentee_page_url=mentee_page,
-                view_url=urls["view"] if doc_id not in NO_FILE_UPLOAD_DOC_IDS else "",
-                confirm_url=urls["confirm"],
-                snooze_urls=snooze_urls,
-            )
-    except Exception:
-        pass
 
 
 def notify_mentors_mentee_document_request(user: dict, doc_id: str, request_note: str = ""):
@@ -106,15 +85,14 @@ def notify_mentors_mentee_document_request(user: dict, doc_id: str, request_note
     if not mentor_name:
         return
 
-    from inbox_tasks import create_mentor_inbox_task, inbox_snooze_urls, inbox_urls
+    from inbox_tasks import create_mentor_inbox_task
 
     doc_label = APPLY_DOC_LABELS.get(doc_id, doc_id)
     mentee_name = user.get("full_name") or user.get("username") or user.get("email", "")
-    mentee_page = os.getenv("MENTOR_MENTEES_URL", "http://localhost:5174/mentees").strip()
     mentee_id = str(user.get("_id", ""))
     note_suffix = f" ({request_note})" if request_note else ""
 
-    task = create_mentor_inbox_task(
+    create_mentor_inbox_task(
         mentor_inbox,
         mentor_name=mentor_name,
         mentee_id=mentee_id,
@@ -126,30 +104,11 @@ def notify_mentors_mentee_document_request(user: dict, doc_id: str, request_note
         doc_id=doc_id,
         has_file=False,
     )
-    urls = inbox_urls(BACKEND_PUBLIC_URL, task)
-    snooze_urls = inbox_snooze_urls(BACKEND_PUBLIC_URL, task)
-
-    try:
-        from email_notify import send_mentee_document_upload_email
-
-        for email in mentor_branch_notify_emails(mentor_name):
-            send_mentee_document_upload_email(
-                to_email=email,
-                mentee_name=mentee_name,
-                mentee_email=user.get("email", ""),
-                mentor_name=mentor_name,
-                document_label=f"{doc_label}{note_suffix}",
-                mentee_page_url=mentee_page,
-                view_url="",
-                confirm_url=urls["confirm"],
-                snooze_urls=snooze_urls,
-            )
-    except Exception:
-        pass
 
 
 def notify_mentee_mentor_document_upload(user: dict, doc_id: str, mentor_name: str = ""):
     from inbox_tasks import create_mentee_view_task, mentee_doc_urls
+    from services.mentee_email_prefs import mentee_email_notify_documents_enabled
 
     doc_label = APPLY_DOC_LABELS.get(doc_id, doc_id)
     mentee_name = user.get("full_name") or user.get("username") or user.get("email", "")
@@ -172,6 +131,9 @@ def notify_mentee_mentor_document_upload(user: dict, doc_id: str, mentor_name: s
         )
         view_url = mentee_doc_urls(BACKEND_PUBLIC_URL, task)["view"]
 
+    if not mentee_email_notify_documents_enabled(user):
+        return
+
     try:
         from email_notify import send_mentee_mentor_document_upload_email
 
@@ -192,13 +154,12 @@ def notify_mentors_mentee_feedback(user: dict, content: str):
     if not mentor_name:
         return
 
-    from inbox_tasks import create_mentor_inbox_task, inbox_snooze_urls, inbox_urls
+    from inbox_tasks import create_mentor_inbox_task
 
     mentee_name = user.get("full_name") or user.get("username") or user.get("email", "")
     preview = content if len(content) <= 500 else f"{content[:497]}..."
-    mentee_page = os.getenv("MENTOR_MENTEES_URL", "http://localhost:5174/mentees").strip()
 
-    task = create_mentor_inbox_task(
+    create_mentor_inbox_task(
         mentor_inbox,
         mentor_name=mentor_name,
         mentee_id=str(user.get("_id", "")),
@@ -208,26 +169,6 @@ def notify_mentors_mentee_feedback(user: dict, content: str):
         title=f"{mentee_name} gửi phản hồi",
         description=preview,
     )
-    urls = inbox_urls(BACKEND_PUBLIC_URL, task)
-    snooze_urls = inbox_snooze_urls(BACKEND_PUBLIC_URL, task)
-
-    try:
-        from email_notify import send_mentee_feedback_to_mentor_email
-
-        for email in mentor_branch_notify_emails(mentor_name):
-            send_mentee_feedback_to_mentor_email(
-                to_email=email,
-                mentee_name=mentee_name,
-                mentee_email=user.get("email", ""),
-                mentor_name=mentor_name,
-                content_preview=preview,
-                view_url=urls["view"],
-                confirm_url=urls["confirm"],
-                mentee_page_url=mentee_page,
-                snooze_urls=snooze_urls,
-            )
-    except Exception:
-        pass
 
 
 def notify_mentors_mentee_activity(
@@ -243,11 +184,10 @@ def notify_mentors_mentee_activity(
     if not mentor_name:
         return
 
-    from inbox_tasks import create_mentor_inbox_task, inbox_snooze_urls, inbox_urls
-    from email_notify import send_mentor_inbox_activity_email
+    from inbox_tasks import create_mentor_inbox_task
 
     mentee_name = user.get("full_name") or user.get("username") or user.get("email", "")
-    task = create_mentor_inbox_task(
+    create_mentor_inbox_task(
         mentor_inbox,
         mentor_name=mentor_name,
         mentee_id=str(user.get("_id", "")),
@@ -259,22 +199,6 @@ def notify_mentors_mentee_activity(
         doc_id=doc_id,
         reminder_hours=reminder_hours,
     )
-    urls = inbox_urls(BACKEND_PUBLIC_URL, task)
-    snooze_urls = inbox_snooze_urls(BACKEND_PUBLIC_URL, task)
-    try:
-        for email in mentor_branch_notify_emails(mentor_name):
-            send_mentor_inbox_activity_email(
-                to_email=email,
-                title=title,
-                description=description,
-                mentee_name=mentee_name,
-                mentee_email=user.get("email", ""),
-                view_url=urls["view"],
-                confirm_url=urls["confirm"],
-                snooze_urls=snooze_urls,
-            )
-    except Exception:
-        pass
 
 
 def notify_mentee_mentor_activity(
@@ -288,7 +212,11 @@ def notify_mentee_mentor_activity(
     mentor_admin: dict | None = None,
 ):
     from inbox_tasks import create_mentee_view_task, mentee_doc_urls
-    from email_notify import send_mentee_activity_email
+    from services.mentee_email_prefs import (
+        is_document_email_action,
+        is_profile_activity_status_action,
+        mentee_email_notify_documents_enabled,
+    )
 
     mentee_name = mentee.get("full_name") or mentee.get("username") or mentee.get("email", "")
     mentor_label = mentor_name or (mentor_admin or {}).get("mentor_name") or mentee.get("mentor") or "Mentor"
@@ -320,7 +248,19 @@ def notify_mentee_mentor_activity(
         )
         view_url = mentee_doc_urls(BACKEND_PUBLIC_URL, task)["view"]
 
+    if is_profile_activity_status_action(action):
+        return
+
+    send_email = True
+    if is_document_email_action(action):
+        send_email = mentee_email_notify_documents_enabled(mentee)
+
+    if not send_email:
+        return
+
     try:
+        from email_notify import send_mentee_activity_email
+
         send_mentee_activity_email(
             to_email=mentee.get("email", ""),
             mentee_name=mentee_name,

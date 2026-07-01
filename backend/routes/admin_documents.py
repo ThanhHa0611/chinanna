@@ -721,33 +721,53 @@ def admin_review_apply_document(mentee_id: str, doc_id: str):
     doc_label = APPLY_DOC_LABELS.get(doc_id, doc_id)
     profile_url = os.getenv("MENTEE_PROFILE_URL", "http://localhost:5173/profile").strip()
     feedback_description = f"Trạng thái: {mentor_status}. Nhận xét: {mentor_note or '—'}"
-    try:
-        from email_notify import send_mentee_document_feedback_email
-        from inbox_tasks import create_mentee_view_task, mentee_doc_urls
+    from services.mentee_email_prefs import mentee_email_notify_documents_enabled
 
-        task = create_mentee_view_task(
-            mentor_inbox,
-            mentee_id=mentee_id,
-            mentee_email=mentee.get("email", ""),
-            mentee_name=mentee.get("full_name") or mentee.get("username", ""),
-            action="document_feedback",
-            title=f"Phản hồi giấy tờ {doc_label}",
-            description=feedback_description,
-            doc_id=doc_id if doc_id not in NO_FILE_UPLOAD_DOC_IDS else "",
-            mentor_name=admin.get("mentor_name") or admin.get("full_name") or "",
-        )
-        view_url = mentee_doc_urls(BACKEND_PUBLIC_URL, task)["view"]
-        send_mentee_document_feedback_email(
-            to_email=mentee.get("email", ""),
-            mentee_name=mentee.get("full_name") or mentee.get("username", ""),
-            document_label=doc_label,
-            mentor_status=mentor_status,
-            mentor_note=mentor_note or "—",
-            profile_url=profile_url,
-            view_url=view_url,
-        )
-    except Exception:
-        pass
+    if mentee_email_notify_documents_enabled(mentee):
+        try:
+            from email_notify import send_mentee_document_feedback_email
+            from inbox_tasks import create_mentee_view_task, mentee_doc_urls
+
+            task = create_mentee_view_task(
+                mentor_inbox,
+                mentee_id=mentee_id,
+                mentee_email=mentee.get("email", ""),
+                mentee_name=mentee.get("full_name") or mentee.get("username", ""),
+                action="document_feedback",
+                title=f"Phản hồi giấy tờ {doc_label}",
+                description=feedback_description,
+                doc_id=doc_id if doc_id not in NO_FILE_UPLOAD_DOC_IDS else "",
+                mentor_name=admin.get("mentor_name") or admin.get("full_name") or "",
+            )
+            view_url = mentee_doc_urls(BACKEND_PUBLIC_URL, task)["view"]
+            send_mentee_document_feedback_email(
+                to_email=mentee.get("email", ""),
+                mentee_name=mentee.get("full_name") or mentee.get("username", ""),
+                document_label=doc_label,
+                mentor_status=mentor_status,
+                mentor_note=mentor_note or "—",
+                profile_url=profile_url,
+                view_url=view_url,
+            )
+        except Exception:
+            pass
+    else:
+        try:
+            from inbox_tasks import create_mentee_view_task
+
+            create_mentee_view_task(
+                mentor_inbox,
+                mentee_id=mentee_id,
+                mentee_email=mentee.get("email", ""),
+                mentee_name=mentee.get("full_name") or mentee.get("username", ""),
+                action="document_feedback",
+                title=f"Phản hồi giấy tờ {doc_label}",
+                description=feedback_description,
+                doc_id=doc_id if doc_id not in NO_FILE_UPLOAD_DOC_IDS else "",
+                mentor_name=admin.get("mentor_name") or admin.get("full_name") or "",
+            )
+        except Exception:
+            pass
 
     log_mentor_activity(
         admin,

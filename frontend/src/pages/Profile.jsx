@@ -319,6 +319,9 @@ function MenteeProfile() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
   const [profileError, setProfileError] = useState('');
+  const [emailNotifyDocuments, setEmailNotifyDocuments] = useState(true);
+  const [emailNotifyActivities, setEmailNotifyActivities] = useState(false);
+  const [emailPrefSaving, setEmailPrefSaving] = useState('');
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -381,6 +384,8 @@ function MenteeProfile() {
     setZaloPhone(user?.zalo_phone || '');
     setProfileInfoReminder(user?.profile_info_reminder || null);
     setProfileInfoReminderUnread(Boolean(user?.profile_info_reminder_unread));
+    setEmailNotifyDocuments(user?.email_notify_documents !== false);
+    setEmailNotifyActivities(Boolean(user?.email_notify_activities));
   }, [user]);
 
   useEffect(() => {
@@ -1326,6 +1331,36 @@ function MenteeProfile() {
     );
   };
 
+  const handleEmailNotifyDocumentsChange = async (checked) => {
+    setEmailNotifyDocuments(checked);
+    setEmailPrefSaving('documents');
+    setProfileError('');
+    try {
+      const updated = await api.updateProfile({ email_notify_documents: checked });
+      updateUser(updated);
+    } catch (err) {
+      setEmailNotifyDocuments(!checked);
+      setProfileError(err.message);
+    } finally {
+      setEmailPrefSaving('');
+    }
+  };
+
+  const handleEmailNotifyActivitiesChange = async (checked) => {
+    setEmailNotifyActivities(checked);
+    setEmailPrefSaving('activities');
+    setProfileError('');
+    try {
+      const updated = await api.updateProfile({ email_notify_activities: checked });
+      updateUser(updated);
+    } catch (err) {
+      setEmailNotifyActivities(!checked);
+      setProfileError(err.message);
+    } finally {
+      setEmailPrefSaving('');
+    }
+  };
+
   const handleProfileSubmit = async (event) => {
     event.preventDefault();
     setProfileSaving(true);
@@ -1693,6 +1728,33 @@ function MenteeProfile() {
                 {profileSaving ? 'Đang lưu...' : 'Lưu thông tin'}
               </button>
             </form>
+          </div>
+
+          <div className="profile-card">
+            <h3>Thông báo email</h3>
+            <p className="profile-panel-desc profile-email-pref-desc">
+              Bật hoặc tắt email từ mentor. Thông báo trong app vẫn hoạt động bình thường.
+            </p>
+            <div className="profile-email-prefs">
+              <label className="profile-doc-request-check">
+                <input
+                  type="checkbox"
+                  checked={emailNotifyDocuments}
+                  disabled={emailPrefSaving === 'documents'}
+                  onChange={(e) => handleEmailNotifyDocumentsChange(e.target.checked)}
+                />
+                Nhận email khi mentor cập nhật giấy tờ
+              </label>
+              <label className="profile-doc-request-check">
+                <input
+                  type="checkbox"
+                  checked={emailNotifyActivities}
+                  disabled={emailPrefSaving === 'activities'}
+                  onChange={(e) => handleEmailNotifyActivitiesChange(e.target.checked)}
+                />
+                Nhận email tóm tắt hoạt động ngoại khóa (10h sáng hàng ngày)
+              </label>
+            </div>
           </div>
 
           <div className="profile-card">

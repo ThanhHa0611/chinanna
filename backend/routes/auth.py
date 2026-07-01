@@ -338,6 +338,15 @@ def update_profile():
             return jsonify({"detail": "Chọn Có hoặc Không cho kì tiếng 3/2027"}), 400
         updates["term3_2027_language_semester"] = term_value
 
+    if "email_notify_documents" in data:
+        updates["email_notify_documents"] = bool(data.get("email_notify_documents"))
+
+    if "email_notify_activities" in data:
+        enabling = bool(data.get("email_notify_activities"))
+        updates["email_notify_activities"] = enabling
+        if enabling and not user.get("email_notify_activities"):
+            updates["last_activity_digest_sent_at"] = datetime.now(timezone.utc)
+
     if not updates:
         return jsonify({"detail": "Không có dữ liệu để cập nhật"}), 400
 

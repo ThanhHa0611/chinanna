@@ -47,3 +47,23 @@ services:
         sync: false
       - key: GOOGLE_SERVICE_ACCOUNT_JSON
         sync: false
+      - key: CRON_SECRET
+        generateValue: true
+
+  - type: cron
+    name: phong-van-mentee-activity-digest
+    runtime: python
+    schedule: "0 3 * * *"
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: >-
+      python -c "import os,urllib.request; s=os.environ['CRON_SECRET']; b=os.environ.get('BACKEND_PUBLIC_URL','').rstrip('/'); urllib.request.urlopen(urllib.request.Request(f'{b}/api/cron/mentee-activity-digest', method='POST', headers={'X-Cron-Secret': s}))"
+    envVars:
+      - fromService:
+          type: web
+          name: phong-van-api
+          envVarKey: CRON_SECRET
+      - fromService:
+          type: web
+          name: phong-van-api
+          envVarKey: BACKEND_PUBLIC_URL

@@ -43,6 +43,7 @@ def create_app():
     import routes.admin_profile_activities  # noqa: F401
     import routes.admin_stats  # noqa: F401
     import routes.auth  # noqa: F401
+    import routes.cron  # noqa: F401
     import routes.documents  # noqa: F401
     import routes.email_actions  # noqa: F401
     import routes.feedback  # noqa: F401

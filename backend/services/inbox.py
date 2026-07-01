@@ -231,27 +231,8 @@ def build_inbox_document_payload(task: dict):
 
 
 def send_daily_inbox_summary_for_mentor(mentor_name: str, tasks: list[dict]) -> bool:
-    from inbox_tasks import format_date_vn_title, serialize_inbox_task
-
-    if not tasks:
-        return False
-
-    date_label = format_date_vn_title(datetime.now(timezone.utc))
-    items = [serialize_inbox_task(task, base_url=BACKEND_PUBLIC_URL) for task in tasks]
-    try:
-        from email_notify import send_daily_inbox_summary_email
-    except Exception:
-        return False
-
-    sent = False
-    for email in mentor_branch_notify_emails(mentor_name):
-        if send_daily_inbox_summary_email(
-            to_email=email,
-            date_label=date_label,
-            items=items,
-        ):
-            sent = True
-    return sent
+    # In-app inbox reminders only; mentor email is limited to cấp quyền + cảnh báo.
+    return bool(tasks)
 
 
 def create_email_action_tokens(admin_id) -> dict[str, str]:
