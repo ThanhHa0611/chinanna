@@ -376,10 +376,14 @@ def notify_login_security_event(
     unique_devices = len(device_set)
     existing_ips = {entry.get("ip") for entry in login_ips}
     existing_devices = {entry.get("device_id") for entry in login_devices}
+    approved_devices = set(user.get("approved_login_devices") or [])
     new_ip = ip not in existing_ips
     new_device = device_id not in existing_devices
+    known_approved_device = device_id in approved_devices
     anomaly = unique_ips >= 2 or unique_devices >= 2
-    should_alert = anomaly and (new_ip or new_device or projected)
+    should_alert = anomaly and (
+        new_device or projected or (new_ip and not known_approved_device)
+    )
 
     updates = {}
     if anomaly:

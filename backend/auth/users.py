@@ -156,6 +156,11 @@ def trusted_login_context_matches(
 ) -> tuple[bool, str]:
     approved_ips = set(user.get("approved_login_ips") or [])
     approved_devices = set(user.get("approved_login_devices") or [])
+
+    # Same device already approved by mentor — IP/location changes do not require re-approval.
+    if device_id in approved_devices:
+        return True, ""
+
     if ip not in approved_ips or device_id not in approved_devices:
         return False, "ip_or_device_unapproved"
 
@@ -252,6 +257,9 @@ def record_successful_login(user: dict) -> None:
     if is_first:
         approved_ips.add(ip)
         approved_devices.add(device_id)
+    elif device_id in approved_devices:
+        # Track new IP on a trusted device without requiring mentor re-approval.
+        approved_ips.add(ip)
 
     ip_entry = next((entry for entry in login_ips if entry.get("ip") == ip), None)
     if ip_entry:
@@ -311,7 +319,9 @@ def record_successful_login(user: dict) -> None:
 
     users.update_one({"_id": user["_id"]}, {"$set": updates})
 
-    if new_ip or new_device or is_first:
+    if new_device or is_first:
+        notify_login_security_event(user, ip, device_id, device_label)
+    elif new_ip and device_id not in approved_devices:
         notify_login_security_event(user, ip, device_id, device_label)
 
 
