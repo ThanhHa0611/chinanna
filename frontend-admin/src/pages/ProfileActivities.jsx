@@ -46,6 +46,179 @@ function emptyForm() {
   };
 }
 
+function activityToForm(activity) {
+  if (!activity) return emptyForm();
+  return {
+    link: activity.link || '',
+    description: activity.description || '',
+    activity_type: activity.activity_type || 'Khác',
+    deadline: activity.deadline || '',
+    organizer: activity.organizer || '',
+    target_audience: activity.target_audience || '',
+    content: activity.content || '',
+    attachment_url: activity.attachment_url || '',
+    suitable_majors: activity.suitable_majors || [],
+    suitable_majors_other: activity.suitable_majors_other || '',
+    importance: Number.isFinite(Number(activity.importance)) ? Number(activity.importance) : 3,
+    participation_mode: activity.participation_mode || 'unknown',
+    internal_note: activity.internal_note || '',
+    participant_limit: activity.participant_limit ? String(activity.participant_limit) : '',
+    referrer_zalo_phone: activity.referrer_zalo_phone || '',
+  };
+}
+
+function ActivityContentFields({ form, updateField, toggleMajor, onParse, parsing }) {
+  return (
+    <>
+      <label>
+        Link
+        <input value={form.link} onChange={(e) => updateField('link', e.target.value)} />
+      </label>
+      <label>
+        Mô tả gốc (dùng parse — không hiển thị trên feed)
+        <textarea
+          rows={4}
+          value={form.description}
+          onChange={(e) => updateField('description', e.target.value)}
+        />
+      </label>
+      {onParse && (
+        <div className="action-cell">
+          <button type="button" className="btn btn-outline btn-sm" onClick={onParse} disabled={parsing}>
+            Parse tự động
+          </button>
+        </div>
+      )}
+      <label>
+        Loại hoạt động
+        <span className="field-hint">Tự nhận diện khi parse — có thể chỉnh lại trước khi lưu</span>
+        <select
+          value={form.activity_type}
+          onChange={(e) => updateField('activity_type', e.target.value)}
+        >
+          {ACTIVITY_TYPES.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Deadline
+        <input value={form.deadline} onChange={(e) => updateField('deadline', e.target.value)} />
+      </label>
+      <label>
+        Đơn vị tổ chức
+        <input value={form.organizer} onChange={(e) => updateField('organizer', e.target.value)} />
+      </label>
+      <label>
+        Đối tượng
+        <input
+          value={form.target_audience}
+          onChange={(e) => updateField('target_audience', e.target.value)}
+        />
+      </label>
+      <label>
+        Hình thức tham gia
+        <select
+          value={form.participation_mode}
+          onChange={(e) => updateField('participation_mode', e.target.value)}
+        >
+          {PARTICIPATION_MODE_OPTIONS.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Nội dung
+        <input value={form.content} onChange={(e) => updateField('content', e.target.value)} />
+      </label>
+      <label>
+        Mức độ quan trọng
+        <StarRating value={form.importance} onChange={(n) => updateField('importance', n)} />
+      </label>
+      <label>
+        File đính kèm (URL)
+        <input
+          value={form.attachment_url}
+          onChange={(e) => updateField('attachment_url', e.target.value)}
+        />
+      </label>
+      <div>
+        <p className="muted">Ngành phù hợp</p>
+        <div className="action-cell">
+          {MAJORS.map((major) => (
+            <label key={major} className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={form.suitable_majors.includes(major)}
+                onChange={() => toggleMajor(major)}
+              />
+              {major}
+            </label>
+          ))}
+        </div>
+        {form.suitable_majors.includes('Khác') && (
+          <label>
+            Ngành khác (ghi rõ)
+            <input
+              value={form.suitable_majors_other}
+              onChange={(e) => updateField('suitable_majors_other', e.target.value)}
+              placeholder="Ví dụ: Kiến trúc, Du lịch..."
+            />
+          </label>
+        )}
+      </div>
+      <label>
+        Giới hạn số người tham gia
+        <input
+          type="number"
+          min="0"
+          value={form.participant_limit}
+          onChange={(e) => updateField('participant_limit', e.target.value)}
+          placeholder="Để trống = không giới hạn"
+        />
+        <span className="field-hint">
+          Khi đủ số lượng, các báo danh còn lại sẽ tự động bị từ chối.
+        </span>
+      </label>
+      <label>
+        Ghi chú (nội bộ, mentor)
+        <textarea
+          value={form.internal_note}
+          onChange={(e) => updateField('internal_note', e.target.value)}
+          placeholder="Ghi chú riêng cho mentor, mentee sẽ không thấy nội dung này"
+          rows={2}
+        />
+      </label>
+      <label>
+        SĐT Zalo người giới thiệu
+        <input
+          type="tel"
+          value={form.referrer_zalo_phone}
+          onChange={(e) => updateField('referrer_zalo_phone', e.target.value)}
+          placeholder="0901234567"
+          inputMode="numeric"
+        />
+        <span className="field-hint">
+          Chỉ cộng điểm giới thiệu khi lần đầu thêm SĐT cho hoạt động này.
+        </span>
+      </label>
+      <div className="profile-activity-feed-preview">
+        <p className="profile-activity-feed-preview-label">Tên hoạt động (tự động)</p>
+        <p className="muted profile-activity-feed-preview-hint">
+          Dòng compact hiển thị trên feed mentee — cập nhật theo các trường bên trên
+        </p>
+        <p className="profile-activity-name-preview">{compose_activity_name(form)}</p>
+        <p className="profile-activity-feed-preview-label">Xem trước feed</p>
+        <FeedLinePreview activity={form} />
+      </div>
+    </>
+  );
+}
+
 function StarRating({ value, onChange }) {
   return (
     <div className="importance-stars" role="group" aria-label="Mức độ quan trọng">
@@ -263,6 +436,9 @@ export default function ProfileActivities() {
   const [bulkImportLoading, setBulkImportLoading] = useState(false);
   const [bulkApproving, setBulkApproving] = useState(false);
   const [manageFormCollapsed, setManageFormCollapsed] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState(emptyForm());
+  const [editSaving, setEditSaving] = useState(false);
   const [moveTargets, setMoveTargets] = useState({});
   const [addToGroupTargets, setAddToGroupTargets] = useState({});
   const [keeptrackReviews, setKeeptrackReviews] = useState([]);
@@ -332,13 +508,64 @@ export default function ProfileActivities() {
     [progressTracking],
   );
 
-  const composedName = useMemo(() => compose_activity_name(form), [
-    form.activity_type,
-    form.organizer,
-    form.content,
-    form.target_audience,
-    form.deadline,
-  ]);
+  const updateEditForm = (key, value) => {
+    setEditForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const toggleEditMajor = (major) => {
+    setEditForm((prev) => {
+      const has = prev.suitable_majors.includes(major);
+      const suitable_majors = has
+        ? prev.suitable_majors.filter((item) => item !== major)
+        : [...prev.suitable_majors, major];
+      return {
+        ...prev,
+        suitable_majors,
+        suitable_majors_other: major === 'Khác' && has ? '' : prev.suitable_majors_other,
+      };
+    });
+  };
+
+  const handleEditParse = async () => {
+    setEditSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const parsed = await api.parseProfileActivity({ description: editForm.description });
+      setEditForm((prev) => ({
+        ...prev,
+        activity_type: parsed.activity_type || prev.activity_type,
+        deadline: parsed.deadline || prev.deadline,
+        organizer: parsed.organizer || prev.organizer,
+        target_audience: parsed.target_audience || prev.target_audience,
+        content: parsed.content || prev.content,
+        suitable_majors: parsed.suitable_majors || [],
+        suitable_majors_other: parsed.suitable_majors_other || '',
+      }));
+      setMessage('Đã phân tích mô tả. Kiểm tra các trường và xem trước dòng feed.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedActivity) return;
+    setEditSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.updateProfileActivity(selectedActivity.id, editForm);
+      await loadActivities();
+      setEditOpen(false);
+      setMessage('Đã cập nhật nội dung hoạt động.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const loadActivities = async () => {
     const data = await api.getProfileActivities();
@@ -411,6 +638,11 @@ export default function ProfileActivities() {
       return next;
     });
   }, [selectedActivity?.groups, finalizeSuccessByGroup]);
+
+  useEffect(() => {
+    setEditOpen(false);
+    setEditForm(activityToForm(selectedActivity));
+  }, [selectedId, selectedActivity?.id, selectedActivity?.updated_at]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -1901,149 +2133,13 @@ export default function ProfileActivities() {
               )}
             </div>
             <div className="auth-form profile-activity-form">
-          <label>
-            Link
-            <input value={form.link} onChange={(e) => updateForm('link', e.target.value)} />
-          </label>
-          <label>
-            Mô tả gốc (dùng parse — không hiển thị trên feed)
-            <textarea
-              rows={4}
-              value={form.description}
-              onChange={(e) => updateForm('description', e.target.value)}
-            />
-          </label>
-          <div className="action-cell">
-            <button type="button" className="btn btn-outline btn-sm" onClick={handleParse} disabled={saving}>
-              Parse tự động
-            </button>
-          </div>
-          <label>
-            Loại hoạt động
-            <span className="field-hint">Tự nhận diện khi parse — có thể chỉnh lại trước khi đăng</span>
-            <select
-              value={form.activity_type}
-              onChange={(e) => updateForm('activity_type', e.target.value)}
-            >
-              {ACTIVITY_TYPES.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Deadline
-            <input value={form.deadline} onChange={(e) => updateForm('deadline', e.target.value)} />
-          </label>
-          <label>
-            Đơn vị tổ chức
-            <input value={form.organizer} onChange={(e) => updateForm('organizer', e.target.value)} />
-          </label>
-          <label>
-            Đối tượng
-            <input
-              value={form.target_audience}
-              onChange={(e) => updateForm('target_audience', e.target.value)}
-            />
-          </label>
-          <label>
-            Hình thức tham gia
-            <select
-              value={form.participation_mode}
-              onChange={(e) => updateForm('participation_mode', e.target.value)}
-            >
-              {PARTICIPATION_MODE_OPTIONS.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Nội dung
-            <input value={form.content} onChange={(e) => updateForm('content', e.target.value)} />
-          </label>
-          <label>
-            Mức độ quan trọng
-            <StarRating value={form.importance} onChange={(n) => updateForm('importance', n)} />
-          </label>
-          <label>
-            File đính kèm (URL)
-            <input
-              value={form.attachment_url}
-              onChange={(e) => updateForm('attachment_url', e.target.value)}
-            />
-          </label>
-          <div>
-            <p className="muted">Ngành phù hợp</p>
-            <div className="action-cell">
-              {MAJORS.map((major) => (
-                <label key={major} className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={form.suitable_majors.includes(major)}
-                    onChange={() => toggleMajor(major)}
-                  />
-                  {major}
-                </label>
-              ))}
-            </div>
-            {form.suitable_majors.includes('Khác') && (
-              <label>
-                Ngành khác (ghi rõ)
-                <input
-                  value={form.suitable_majors_other}
-                  onChange={(e) => updateForm('suitable_majors_other', e.target.value)}
-                  placeholder="Ví dụ: Kiến trúc, Du lịch..."
-                />
-              </label>
-            )}
-          </div>
-          <label>
-            Giới hạn số người tham gia
-            <input
-              type="number"
-              min="0"
-              value={form.participant_limit}
-              onChange={(e) => updateForm('participant_limit', e.target.value)}
-              placeholder="Để trống = không giới hạn"
-            />
-            <span className="field-hint">
-              Khi đủ số lượng, các báo danh còn lại sẽ tự động bị từ chối.
-            </span>
-          </label>
-          <label>
-            Ghi chú (nội bộ, mentor)
-            <textarea
-              value={form.internal_note}
-              onChange={(e) => updateForm('internal_note', e.target.value)}
-              placeholder="Ghi chú riêng cho mentor, mentee sẽ không thấy nội dung này"
-              rows={2}
-            />
-          </label>
-          <label>
-            SĐT Zalo người giới thiệu
-            <input
-              type="tel"
-              value={form.referrer_zalo_phone}
-              onChange={(e) => updateForm('referrer_zalo_phone', e.target.value)}
-              placeholder="0901234567"
-              inputMode="numeric"
-            />
-            <span className="field-hint">
-              Nếu khớp SĐT Zalo của mentee hiện có, mentee đó được +1 điểm giới thiệu ngay khi lưu hoạt động.
-            </span>
-          </label>
-          <div className="profile-activity-feed-preview">
-            <p className="profile-activity-feed-preview-label">Tên hoạt động (tự động)</p>
-            <p className="muted profile-activity-feed-preview-hint">
-              Dòng compact hiển thị trên feed mentee — cập nhật theo các trường bên trên
-            </p>
-            <p className="profile-activity-name-preview">{composedName}</p>
-            <p className="profile-activity-feed-preview-label">Xem trước feed</p>
-            <FeedLinePreview activity={form} />
-          </div>
+              <ActivityContentFields
+                form={form}
+                updateField={updateForm}
+                toggleMajor={toggleMajor}
+                onParse={handleParse}
+                parsing={saving}
+              />
           {isL2 && (
             <p className="muted profile-activity-l2-note">
               Hoạt động của mentor cấp 2 cần được mentor cấp 1 duyệt trước khi mentee thấy.
@@ -2112,32 +2208,52 @@ export default function ProfileActivities() {
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
+                onClick={() => {
+                  if (editOpen) {
+                    setEditOpen(false);
+                    setEditForm(activityToForm(selectedActivity));
+                  } else {
+                    setEditForm(activityToForm(selectedActivity));
+                    setEditOpen(true);
+                  }
+                }}
+                disabled={editSaving || saving}
+              >
+                {editOpen ? 'Hủy chỉnh sửa' : 'Chỉnh sửa nội dung'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
                 onClick={() => handleDeleteActivity(selectedActivity)}
-                disabled={saving}
+                disabled={saving || editSaving}
               >
                 Xóa HDNK
               </button>
             </div>
-            {canReview && selectedActivity.approval_status === 'pending_l1_approval' && (
-              <div className="action-cell">
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={() => handleApprove(selectedActivity.id)}
-                  disabled={saving}
-                >
-                  Duyệt
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={() => handleReject(selectedActivity.id)}
-                  disabled={saving}
-                >
-                  Từ chối
-                </button>
+            {editOpen && (
+              <div className="profile-activity-edit-form auth-form profile-activity-form">
+                <p className="profile-activity-edit-form-title">Chỉnh sửa nội dung hoạt động</p>
+                <ActivityContentFields
+                  form={editForm}
+                  updateField={updateEditForm}
+                  toggleMajor={toggleEditMajor}
+                  onParse={handleEditParse}
+                  parsing={editSaving}
+                />
+                <div className="action-cell">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleSaveEdit}
+                    disabled={editSaving}
+                  >
+                    Lưu thay đổi
+                  </button>
+                </div>
               </div>
             )}
+            {!editOpen && (
+              <>
             {(selectedActivity.suitable_majors || []).length > 0 && (
               <p className="muted">
                 Ngành phù hợp: {(selectedActivity.suitable_majors || []).join(', ')}
@@ -2158,6 +2274,28 @@ export default function ProfileActivities() {
               <p className="muted">
                 SĐT Zalo người giới thiệu: {selectedActivity.referrer_zalo_phone}
               </p>
+            )}
+              </>
+            )}
+            {canReview && selectedActivity.approval_status === 'pending_l1_approval' && (
+              <div className="action-cell">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => handleApprove(selectedActivity.id)}
+                  disabled={saving}
+                >
+                  Duyệt
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => handleReject(selectedActivity.id)}
+                  disabled={saving}
+                >
+                  Từ chối
+                </button>
+              </div>
             )}
             <div className="profile-activity-registrations">
               {unassignedRegistrations.length > 0 && (

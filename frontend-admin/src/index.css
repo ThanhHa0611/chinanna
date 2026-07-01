@@ -3640,6 +3640,19 @@ html.device-phone .daily-summary-status {
   gap: 0.9rem;
 }
 
+.profile-activity-edit-form {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--pink-50);
+}
+
+.profile-activity-edit-form-title {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
 .activity-picker {
   position: relative;
   width: 100%;

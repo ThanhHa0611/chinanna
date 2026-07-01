@@ -1918,6 +1918,33 @@ def create_profile_activity(admin: dict, payload: dict) -> dict:
     return created
 
 
+class ProfileActivityUpdateError(ValueError):
+    pass
+
+
+def update_profile_activity(activity: dict, admin: dict, data: dict) -> dict:
+    now = datetime.now(timezone.utc)
+    parsed = parse_profile_activity_from_description(
+        str(data.get("description") or activity.get("description") or "")
+    )
+    payload = sanitize_profile_activity_input(data, parsed_fallback=parsed)
+    if not payload.get("activity_name"):
+        raise ProfileActivityUpdateError("Không thể tạo tên hoạt động — vui lòng điền loại hoạt động")
+
+    old_referrer_phone = normalize_zalo_phone(str(activity.get("referrer_zalo_phone") or ""))
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {**payload, "updated_at": now}},
+    )
+    updated = profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+    new_referrer_phone = payload.get("referrer_zalo_phone") or ""
+    if new_referrer_phone and not old_referrer_phone:
+        award_referrer_phone_for_activity(phone=new_referrer_phone, activity_id=updated["_id"])
+
+    return updated
+
+
 def approve_profile_activity(activity: dict, admin: dict) -> dict:
     now = datetime.now(timezone.utc)
     profile_activities.update_one(

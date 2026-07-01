@@ -406,6 +406,12 @@ export const api = {
       method: 'DELETE',
     }),
 
+  updateProfileActivity: (activityId, body) =>
+    request(`/api/admin/profile-activities/${activityId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
   upsertProfileActivityGroup: (activityId, body) =>
     request(`/api/admin/profile-activities/${activityId}/groups`, {
       method: 'PATCH',

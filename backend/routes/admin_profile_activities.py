@@ -13,6 +13,7 @@ from services.profile_activities import (
     ProfileActivityBulkImportError,
     ProfileActivityKeeptrackError,
     ProfileActivityRegistrationError,
+    ProfileActivityUpdateError,
     add_mentee_to_group,
     approve_pending_group,
     approve_pending_mentor_reject,
@@ -48,6 +49,7 @@ from services.profile_activities import (
     submit_mentor_reject_registration,
     suggest_group_name,
     update_activity_keeptrack,
+    update_profile_activity,
     upsert_activity_group,
     view_individual_keeptrack_review,
 )
@@ -206,6 +208,27 @@ def admin_list_profile_activities():
     items = [serialize_admin_profile_activity(doc, admin=admin) for doc in cursor]
     total_pending_count = sum(item.get("pending_action_count", 0) for item in items)
     return jsonify({"items": items, "total_pending_count": total_pending_count})
+
+
+@app.patch("/api/admin/profile-activities/<activity_id>")
+@with_db
+def admin_update_profile_activity(activity_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+
+    data = request.get_json(silent=True) or {}
+    try:
+        updated = update_profile_activity(activity, admin, data)
+    except ProfileActivityUpdateError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify(serialize_admin_profile_activity(updated, admin=admin))
 
 
 @app.delete("/api/admin/profile-activities/<activity_id>")
