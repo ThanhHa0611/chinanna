@@ -448,9 +448,9 @@ def remove_mentee_account(mentee: dict) -> None:
         if parent and parent.get("linked_mentee_id") == mentee_id:
             users.delete_one({"_id": parent["_id"]})
 
-    upload_path = UPLOAD_ROOT / str(mentee_id)
-    if upload_path.is_dir():
-        shutil.rmtree(upload_path, ignore_errors=True)
+    from services import storage
+
+    storage.delete_prefix(storage.storage_key(mentee_id))
 
     users.delete_one({"_id": ObjectId(mentee_id)})
 

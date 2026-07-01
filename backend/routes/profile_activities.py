@@ -21,13 +21,24 @@ from services.profile_activities import (
 )
 
 
-def _find_activity_or_404(activity_id: str):
+def _activity_belongs_to_mentee(activity: dict, user: dict) -> bool:
+    """Mentee chỉ được truy cập hoạt động của mentor mình (khớp logic feed)."""
+    activity_mentor = (activity.get("mentor_name") or "").strip()
+    if not activity_mentor:
+        return True
+    return activity_mentor == (user.get("mentor") or "").strip()
+
+
+def _find_activity_or_404(activity_id: str, user: dict):
     try:
         oid = ObjectId(activity_id)
     except InvalidId:
         return None, (jsonify({"detail": "Hoạt động không tồn tại"}), 404)
     activity = profile_activities.find_one({"_id": oid})
     if not activity:
+        return None, (jsonify({"detail": "Hoạt động không tồn tại"}), 404)
+    if not _activity_belongs_to_mentee(activity, user):
+        # Không tiết lộ hoạt động thuộc mentor khác.
         return None, (jsonify({"detail": "Hoạt động không tồn tại"}), 404)
     return activity, None
 
@@ -55,7 +66,7 @@ def mentee_get_profile_activity(activity_id: str):
     if error_response:
         return error_response
 
-    activity, error = _find_activity_or_404(activity_id)
+    activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
     if not activity_visible_to_mentee(activity):
@@ -76,7 +87,7 @@ def mentee_mark_profile_activity_read(activity_id: str):
     if error_response:
         return error_response
 
-    activity, error = _find_activity_or_404(activity_id)
+    activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
     if not activity_visible_to_mentee(activity):
@@ -95,7 +106,7 @@ def mentee_hide_profile_activity(activity_id: str):
     if error_response:
         return error_response
 
-    activity, error = _find_activity_or_404(activity_id)
+    activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
     if not activity_visible_to_mentee(activity):
@@ -116,7 +127,7 @@ def mentee_register_profile_activity(activity_id: str):
     if error_response:
         return error_response
 
-    activity, error = _find_activity_or_404(activity_id)
+    activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
     if not activity_visible_to_mentee(activity):
@@ -140,7 +151,7 @@ def mentee_profile_activity_group_response(activity_id: str):
     if error_response:
         return error_response
 
-    activity, error = _find_activity_or_404(activity_id)
+    activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
     if not activity_visible_to_mentee(activity):
@@ -168,7 +179,7 @@ def mentee_complete_profile_activity_keeptrack(activity_id: str):
     if error_response:
         return error_response
 
-    activity, error = _find_activity_or_404(activity_id)
+    activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
     if not activity_visible_to_mentee(activity):
@@ -193,7 +204,7 @@ def mentee_abandon_profile_activity_keeptrack(activity_id: str):
     if error_response:
         return error_response
 
-    activity, error = _find_activity_or_404(activity_id)
+    activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
     if not activity_visible_to_mentee(activity):
@@ -218,7 +229,7 @@ def mentee_update_profile_activity_keeptrack(activity_id: str):
     if error_response:
         return error_response
 
-    activity, error = _find_activity_or_404(activity_id)
+    activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
     if not activity_visible_to_mentee(activity):

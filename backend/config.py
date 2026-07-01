@@ -12,6 +12,12 @@ def _parse_email_list(env_key: str, fallback: str) -> list[str]:
 BACKEND_DIR = Path(__file__).resolve().parent
 UPLOAD_ROOT = BACKEND_DIR / "uploads"
 
+# Lưu trữ file: để trống S3_BUCKET => dùng đĩa local (UPLOAD_ROOT).
+# Đặt S3_BUCKET => dùng Amazon S3 (bền vững khi redeploy/nhiều instance).
+S3_BUCKET = os.getenv("S3_BUCKET", "").strip()
+S3_PREFIX = os.getenv("S3_PREFIX", "uploads").strip().strip("/")
+AWS_REGION = os.getenv("AWS_REGION", "").strip()
+
 MONGODB_URL = os.getenv("MONGODB_URL")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "phong_van")
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me")

@@ -154,17 +154,18 @@ def download_template_docx() -> bytes | None:
     return payload
 
 
-def create_personal_declaration_local_copy(username: str, upload_root: Path) -> dict:
+def create_personal_declaration_local_copy(username: str) -> dict:
+    """Tải file mẫu docx và trả về nội dung (``payload``) cùng metadata.
+
+    Việc lưu file để cho lớp ``services.storage`` xử lý (local hoặc S3) nên
+    hàm này không tự ghi ra đĩa.
+    """
     payload = download_template_docx()
     if not payload:
         raise RuntimeError("Không tải được file mẫu docx từ Google Docs.")
 
     safe_username = re.sub(r"[^\w.-]+", "_", (username or "mentee").strip()) or "mentee"
-    dest_dir = upload_root / "personal-declaration"
-    dest_dir.mkdir(parents=True, exist_ok=True)
     stored_name = f"Ke_khai_{safe_username}.docx"
-    dest_path = dest_dir / stored_name
-    dest_path.write_bytes(payload)
 
     title = f"Kê khai thông tin - {username}"
     return {
@@ -172,4 +173,5 @@ def create_personal_declaration_local_copy(username: str, upload_root: Path) -> 
         "stored_name": stored_name,
         "title": title,
         "mode": "local_docx",
+        "payload": payload,
     }

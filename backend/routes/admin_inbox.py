@@ -135,14 +135,16 @@ def admin_inbox_task_file(task_id: str):
         stored_name = (declaration.get("stored_name") or "").strip()
         if not stored_name:
             return jsonify({"detail": "Chưa có file kê khai docx trên hệ thống."}), 404
-        file_path = UPLOAD_ROOT / str(mentee["_id"]) / "personal-declaration" / stored_name
-        if not file_path.is_file():
+        from services import storage
+        from services.files import make_inline_file_response
+
+        data = storage.read_bytes(storage.storage_key(mentee["_id"], "personal-declaration", stored_name))
+        if data is None:
             return jsonify({"detail": "File kê khai không tồn tại."}), 404
-        return send_file(
-            file_path,
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            as_attachment=False,
-            download_name=stored_name,
+        return make_inline_file_response(
+            data,
+            stored_name,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
 
     result, error = build_inbox_document_payload(task)
@@ -158,7 +160,7 @@ def admin_inbox_task_file(task_id: str):
 def admin_inbox_view(task_id: str):
     from bson import ObjectId
     from bson.errors import InvalidId
-    from inbox_tasks import record_inbox_view, serialize_inbox_task
+    from inbox_tasks import mentor_inbox_filter, record_inbox_view, serialize_inbox_task
 
     admin, error_response = get_authenticated_admin()
     if error_response:
@@ -172,7 +174,9 @@ def admin_inbox_view(task_id: str):
     except InvalidId:
         return jsonify({"detail": "Không tìm thấy công việc"}), 404
 
-    task = mentor_inbox.find_one({"_id": oid, "audience": "mentor"})
+    filt = mentor_inbox_filter(admin, "")
+    filt["_id"] = oid
+    task = mentor_inbox.find_one(filt)
     if not task:
         return jsonify({"detail": "Không tìm thấy công việc"}), 404
 
@@ -207,6 +211,7 @@ def admin_inbox_bulk_confirm():
         via="app",
         processed_by=str(admin["_id"]),
         processed_by_name=admin_display_name(admin),
+        admin=admin,
     )
     succeeded = result["succeeded"]
     failed = result["failed"]
@@ -248,6 +253,7 @@ def admin_inbox_confirm(task_id: str):
         via="app",
         processed_by=str(admin["_id"]),
         processed_by_name=admin_display_name(admin),
+        admin=admin,
     )
     if not task:
         return jsonify({"detail": "Không tìm thấy công việc"}), 404

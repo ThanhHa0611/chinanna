@@ -64,15 +64,17 @@ def admin_view_mentee_document_file(mentee_id: str, doc_id: str):
         if not stored_name:
             return jsonify({"detail": "Chưa có file kê khai docx trên hệ thống."}), 404
 
-        file_path = UPLOAD_ROOT / str(mentee["_id"]) / "personal-declaration" / stored_name
-        if not file_path.is_file():
+        from services import storage
+        from services.files import make_inline_file_response
+
+        data = storage.read_bytes(storage.storage_key(mentee["_id"], "personal-declaration", stored_name))
+        if data is None:
             return jsonify({"detail": "File kê khai không tồn tại."}), 404
 
-        return send_file(
-            file_path,
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            as_attachment=False,
-            download_name=stored_name,
+        return make_inline_file_response(
+            data,
+            stored_name,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
 
     if doc_id in NO_FILE_UPLOAD_DOC_IDS:
@@ -83,15 +85,17 @@ def admin_view_mentee_document_file(mentee_id: str, doc_id: str):
     if not stored_name:
         return jsonify({"detail": "Chưa có file tải lên"}), 404
 
-    file_path = apply_doc_upload_dir(str(mentee["_id"]), doc_id) / stored_name
-    if not file_path.is_file():
+    from services import storage
+    from services.files import make_inline_file_response
+
+    data = storage.read_bytes(storage.storage_key(mentee["_id"], doc_id, stored_name))
+    if data is None:
         return jsonify({"detail": "File không tồn tại trên hệ thống"}), 404
 
-    return send_file(
-        file_path,
-        as_attachment=False,
-        download_name=record.get("original_name") or stored_name,
-        mimetype=record.get("mime_type") or None,
+    return make_inline_file_response(
+        data,
+        record.get("original_name") or stored_name,
+        record.get("mime_type") or None,
     )
 
 
@@ -117,10 +121,6 @@ def admin_download_mentee_document(mentee_id: str, doc_id: str):
     if not stored_name:
         return jsonify({"detail": "Chưa có file để tải"}), 404
 
-    file_path = apply_doc_upload_dir(str(mentee["_id"]), doc_id) / stored_name
-    if not file_path.is_file():
-        return jsonify({"detail": "File không tồn tại trên hệ thống"}), 404
-
     output_format = (request.args.get("format") or "pdf").strip().lower()
     variant = (request.args.get("variant") or "original").strip().lower()
     if output_format not in {"pdf", "png"}:
@@ -130,14 +130,19 @@ def admin_download_mentee_document(mentee_id: str, doc_id: str):
 
     scholarship_system = normalize_scholarship_system(mentee.get("scholarship_system", ""))
 
+    from services import storage
+
     try:
         from document_processing import process_document_file
 
-        payload, out_ext = process_document_file(
-            file_path,
-            output_format=output_format,
-            variant=variant,
-        )
+        with storage.local_path(storage.storage_key(mentee["_id"], doc_id, stored_name)) as file_path:
+            if file_path is None:
+                return jsonify({"detail": "File không tồn tại trên hệ thống"}), 404
+            payload, out_ext = process_document_file(
+                file_path,
+                output_format=output_format,
+                variant=variant,
+            )
     except Exception as exc:
         return jsonify({"detail": str(exc) or "Không xử lý được file tải xuống"}), 400
 
@@ -171,6 +176,8 @@ def admin_download_supporting_materials(mentee_id: str):
     apply_docs = mentee.get("apply_documents") or {}
     zip_entries = []
 
+    from services import storage
+
     try:
         from document_processing import build_zip_bytes, process_document_file
 
@@ -179,14 +186,14 @@ def admin_download_supporting_materials(mentee_id: str):
             stored_name = record.get("stored_name")
             if not stored_name:
                 continue
-            file_path = apply_doc_upload_dir(str(mentee["_id"]), doc_id) / stored_name
-            if not file_path.is_file():
-                continue
-            payload, out_ext = process_document_file(
-                file_path,
-                output_format=output_format,
-                variant=variant,
-            )
+            with storage.local_path(storage.storage_key(mentee["_id"], doc_id, stored_name)) as file_path:
+                if file_path is None:
+                    continue
+                payload, out_ext = process_document_file(
+                    file_path,
+                    output_format=output_format,
+                    variant=variant,
+                )
             entry_name = build_apply_download_filename(doc_id, scholarship_system, out_ext)
             zip_entries.append((entry_name, payload))
     except Exception as exc:
@@ -236,6 +243,8 @@ def admin_download_selected_documents(mentee_id: str):
     scholarship_system = normalize_scholarship_system(mentee.get("scholarship_system", ""))
     apply_docs = mentee.get("apply_documents") or {}
 
+    from services import storage
+
     try:
         from document_processing import build_zip_bytes, process_document_file
 
@@ -245,14 +254,14 @@ def admin_download_selected_documents(mentee_id: str):
             stored_name = record.get("stored_name")
             if not stored_name:
                 return jsonify({"detail": f"Chưa có file cho mục {APPLY_DOC_LABELS.get(doc_id, doc_id)}"}), 404
-            file_path = apply_doc_upload_dir(str(mentee["_id"]), doc_id) / stored_name
-            if not file_path.is_file():
-                return jsonify({"detail": "File không tồn tại trên hệ thống"}), 404
-            payload, out_ext = process_document_file(
-                file_path,
-                output_format=output_format,
-                variant=variant,
-            )
+            with storage.local_path(storage.storage_key(mentee["_id"], doc_id, stored_name)) as file_path:
+                if file_path is None:
+                    return jsonify({"detail": "File không tồn tại trên hệ thống"}), 404
+                payload, out_ext = process_document_file(
+                    file_path,
+                    output_format=output_format,
+                    variant=variant,
+                )
             entry_name = build_apply_download_filename(doc_id, scholarship_system, out_ext)
             zip_entries.append((entry_name, payload))
     except Exception as exc:

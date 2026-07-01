@@ -246,6 +246,9 @@ def task_visible_on_daily_board(doc: dict) -> bool:
 
 def serialize_inbox_task(doc: dict, *, base_url: str = "") -> dict:
     display_state = task_display_state(doc)
+    # Docs cũ chưa có trường has_file thì giữ mặc định True để không giấu link
+    # file hợp lệ; task mới không có file (has_file=False) sẽ không phát file_url.
+    has_file = doc.get("has_file", True)
     payload = {
         "id": str(doc["_id"]),
         "mentee_id": doc.get("mentee_id", ""),
@@ -259,7 +262,7 @@ def serialize_inbox_task(doc: dict, *, base_url: str = "") -> dict:
         "description": doc.get("description", ""),
         "summary_line": format_task_summary_line(doc),
         "doc_id": doc.get("doc_id", ""),
-        "has_file": doc.get("has_file", True),
+        "has_file": has_file,
         "status": doc.get("status", "pending"),
         "display_state": display_state,
         "processed_at": doc["processed_at"].isoformat() if doc.get("processed_at") else "",
@@ -274,7 +277,7 @@ def serialize_inbox_task(doc: dict, *, base_url: str = "") -> dict:
     if base_url:
         urls = inbox_urls(base_url, doc)
         payload["view_url"] = urls["view"]
-        payload["file_url"] = urls["file"]
+        payload["file_url"] = urls["file"] if has_file else ""
         payload["confirm_url"] = urls["confirm"]
         payload["snooze_urls"] = inbox_snooze_urls(base_url, doc)
     return payload
@@ -581,9 +584,12 @@ def bulk_confirm_inbox_tasks(
     via: str = "app",
     processed_by: str = "",
     processed_by_name: str = "",
+    admin: dict | None = None,
 ) -> dict:
     from bson import ObjectId
     from bson.errors import InvalidId
+
+    scope = mentor_inbox_filter(admin, "") if admin is not None else {"audience": "mentor"}
 
     succeeded = 0
     failed = 0
@@ -600,7 +606,7 @@ def bulk_confirm_inbox_tasks(
             failed += 1
             continue
 
-        existing = collection.find_one({"_id": oid, "audience": "mentor"})
+        existing = collection.find_one({**scope, "_id": oid})
         if not existing:
             failed += 1
             continue
@@ -613,6 +619,7 @@ def bulk_confirm_inbox_tasks(
             via=via,
             processed_by=processed_by,
             processed_by_name=processed_by_name,
+            admin=admin,
         )
         if not task or task.get("status") != "done":
             failed += 1
@@ -635,6 +642,7 @@ def confirm_inbox_task(
     via: str = "app",
     processed_by: str = "",
     processed_by_name: str = "",
+    admin: dict | None = None,
 ) -> dict | None:
     from bson import ObjectId
     from bson.errors import InvalidId
@@ -643,8 +651,9 @@ def confirm_inbox_task(
     if confirm_token:
         doc = find_task_by_token(collection, confirm_token, "confirm_token")
     elif task_id:
+        scope = mentor_inbox_filter(admin, "") if admin is not None else {"audience": "mentor"}
         try:
-            doc = collection.find_one({"_id": ObjectId(task_id), "audience": "mentor"})
+            doc = collection.find_one({**scope, "_id": ObjectId(task_id)})
         except InvalidId:
             return None
     if not doc or doc.get("status") == "done":

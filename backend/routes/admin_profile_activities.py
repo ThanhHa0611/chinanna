@@ -53,7 +53,7 @@ from services.profile_activities import (
 )
 
 
-def _get_activity_or_404(activity_id: str):
+def _get_activity_or_404(activity_id: str, admin: dict):
     try:
         oid = ObjectId(activity_id)
     except InvalidId:
@@ -61,7 +61,22 @@ def _get_activity_or_404(activity_id: str):
     activity = profile_activities.find_one({"_id": oid})
     if not activity:
         return None, (jsonify({"detail": "Hoạt động không tồn tại"}), 404)
+    if not _admin_can_access_activity(admin, activity):
+        # Không tiết lộ sự tồn tại của hoạt động thuộc nhánh mentor khác.
+        return None, (jsonify({"detail": "Hoạt động không tồn tại"}), 404)
     return activity, None
+
+
+def _admin_can_access_activity(admin: dict, activity: dict) -> bool:
+    if is_super_admin(admin):
+        return True
+    admin_mentor = (admin.get("mentor_name") or "").strip()
+    if not admin_mentor:
+        return True
+    activity_mentor = (activity.get("mentor_name") or "").strip()
+    if not activity_mentor:
+        return True
+    return activity_mentor == admin_mentor
 
 
 def _admin_activity_query(admin: dict) -> dict:
@@ -220,7 +235,7 @@ def admin_approve_profile_activity(activity_id: str):
     if not _can_review_profile_activity(admin):
         return jsonify({"detail": "Chỉ mentor cấp 1 mới được duyệt hoạt động."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     if activity.get("approval_status") == "approved":
@@ -240,7 +255,7 @@ def admin_reject_profile_activity(activity_id: str):
     if not _can_review_profile_activity(admin):
         return jsonify({"detail": "Chỉ mentor cấp 1 mới được từ chối hoạt động."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     updated = reject_profile_activity(activity, admin)
@@ -256,7 +271,7 @@ def admin_activity_registrations(activity_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     registrations = []
@@ -282,7 +297,7 @@ def admin_suggest_activity_group_name(activity_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     return jsonify({"suggested_name": suggest_group_name(activity)})
@@ -297,7 +312,7 @@ def admin_upsert_activity_group(activity_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     data = request.get_json(silent=True) or {}
@@ -338,7 +353,7 @@ def admin_add_mentee_to_group(activity_id: str, group_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     data = request.get_json(silent=True) or {}
@@ -373,7 +388,7 @@ def admin_remove_mentee_from_group(activity_id: str, group_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     data = request.get_json(silent=True) or {}
@@ -403,7 +418,7 @@ def admin_move_mentee_group(activity_id: str, mentee_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     data = request.get_json(silent=True) or {}
@@ -435,7 +450,7 @@ def admin_approve_activity_group(activity_id: str, group_id: str):
     if not _can_review_profile_activity(admin):
         return jsonify({"detail": "Chỉ mentor cấp 1 mới được duyệt phân nhóm."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     group = next((row for row in activity.get("groups", []) if row.get("group_id") == group_id), None)
@@ -461,7 +476,7 @@ def admin_reject_activity_group(activity_id: str, group_id: str):
     if not _can_review_profile_activity(admin):
         return jsonify({"detail": "Chỉ mentor cấp 1 mới được từ chối phân nhóm."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     group = next((row for row in activity.get("groups", []) if row.get("group_id") == group_id), None)
@@ -485,7 +500,7 @@ def admin_delete_activity_group(activity_id: str, group_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     try:
@@ -509,7 +524,7 @@ def admin_finalize_activity_group(activity_id: str, group_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     group = next((row for row in activity.get("groups", []) if row.get("group_id") == group_id), None)
@@ -539,7 +554,7 @@ def admin_set_activity_group_leader(activity_id: str, group_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     data = request.get_json(silent=True) or {}
@@ -567,7 +582,7 @@ def admin_reject_activity_registration(activity_id: str, mentee_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     if not ObjectId.is_valid(mentee_id):
@@ -595,7 +610,7 @@ def admin_approve_reject_activity_registration(activity_id: str, mentee_id: str)
     if not _can_review_profile_activity(admin):
         return jsonify({"detail": "Chỉ mentor cấp 1 mới được duyệt từ chối báo danh."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     if not ObjectId.is_valid(mentee_id):
@@ -615,7 +630,7 @@ def admin_deny_reject_activity_registration(activity_id: str, mentee_id: str):
     if not _can_review_profile_activity(admin):
         return jsonify({"detail": "Chỉ mentor cấp 1 mới được hủy yêu cầu từ chối."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     if not ObjectId.is_valid(mentee_id):
@@ -633,7 +648,7 @@ def admin_update_activity_keeptrack(activity_id: str, mentee_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     if not ObjectId.is_valid(mentee_id):
@@ -681,7 +696,7 @@ def admin_view_keeptrack_review(activity_id: str, mentee_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     try:
@@ -700,7 +715,7 @@ def admin_reject_keeptrack_review(activity_id: str, mentee_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     data = request.get_json(silent=True) or {}
@@ -750,7 +765,7 @@ def admin_approve_keeptrack_abandon(activity_id: str, mentee_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     try:
@@ -769,7 +784,7 @@ def admin_reject_keeptrack_abandon(activity_id: str, mentee_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     data = request.get_json(silent=True) or {}
@@ -803,7 +818,7 @@ def admin_remove_progress_tracking_row(activity_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    activity, error = _get_activity_or_404(activity_id)
+    activity, error = _get_activity_or_404(activity_id, admin)
     if error:
         return error
     data = request.get_json(silent=True) or {}

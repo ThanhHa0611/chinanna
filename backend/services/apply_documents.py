@@ -223,6 +223,7 @@ def sync_apply_inbox_confirm(mentee_id: str, doc_id: str, *, via: str = "app", a
             via=via,
             processed_by=processed_by,
             processed_by_name=processed_by_name,
+            admin=admin,
         )
 
 
@@ -455,6 +456,8 @@ def apply_doc_display_label(doc_id: str, scholarship_system: str) -> str:
 
 
 def count_supporting_material_files(user: dict) -> int:
+    from services import storage
+
     apply_docs = user.get("apply_documents") or {}
     user_id = str(user["_id"])
     count = 0
@@ -463,8 +466,7 @@ def count_supporting_material_files(user: dict) -> int:
         stored_name = record.get("stored_name")
         if not stored_name:
             continue
-        file_path = apply_doc_upload_dir(user_id, doc_id) / stored_name
-        if file_path.is_file():
+        if storage.exists(storage.storage_key(user_id, doc_id, stored_name)):
             count += 1
     return count
 
@@ -554,20 +556,21 @@ def save_apply_document_upload(user: dict, doc_id: str, uploaded, *, uploaded_by
     if size > MAX_UPLOAD_BYTES:
         raise ValueError("File không được vượt quá 15MB")
 
+    from services import storage
+
     user_id = str(user["_id"])
-    upload_dir = apply_doc_upload_dir(user_id, doc_id)
-    upload_dir.mkdir(parents=True, exist_ok=True)
 
     existing = (user.get("apply_documents") or {}).get(doc_id) or {}
     old_name = existing.get("stored_name")
     if old_name:
-        old_path = upload_dir / old_name
-        if old_path.is_file():
-            old_path.unlink()
+        storage.delete(storage.storage_key(user_id, doc_id, old_name))
 
     stored_name = f"{uuid.uuid4().hex}{ext}"
-    save_path = upload_dir / stored_name
-    uploaded.save(save_path)
+    storage.save_fileobj(
+        storage.storage_key(user_id, doc_id, stored_name),
+        uploaded,
+        uploaded.mimetype or "",
+    )
 
     now = datetime.now(timezone.utc)
     record = {
@@ -916,8 +919,9 @@ def attempt_create_personal_declaration(user: dict) -> dict:
         has_google_credentials,
     )
 
+    from services import storage
+
     username = user.get("username") or user.get("email") or "mentee"
-    upload_path = UPLOAD_ROOT / str(user["_id"])
 
     if has_google_credentials():
         try:
@@ -926,7 +930,13 @@ def attempt_create_personal_declaration(user: dict) -> dict:
             pass
 
     try:
-        local = create_personal_declaration_local_copy(username, upload_path)
+        local = create_personal_declaration_local_copy(username)
+        payload = local.pop("payload", b"")
+        storage.save_bytes(
+            storage.storage_key(user["_id"], "personal-declaration", local["stored_name"]),
+            payload,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
         local["local_file_url"] = f"{BACKEND_PUBLIC_URL}/api/documents/personal-declaration/file"
         return local
     except RuntimeError:

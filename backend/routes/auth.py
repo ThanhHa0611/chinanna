@@ -220,9 +220,16 @@ def auto_login():
         return jsonify({"detail": location_error, "location_required": True}), 403
     set_request_login_location(location)
 
+    # Không tiết lộ email có tồn tại hay không (account enumeration): trả về
+    # cùng phản hồi chung như khi ngữ cảnh chưa được tin cậy.
     user = users.find_one({"email": email})
     if not user:
-        return jsonify({"detail": "Không thể tự động đăng nhập"}), 401
+        return jsonify(
+            {
+                "detail": "Thiết bị/IP/vị trí chưa trùng ngữ cảnh đã duyệt. Vui lòng đăng nhập bằng mật khẩu để gửi yêu cầu duyệt mới.",
+                "login_blocked": True,
+            }
+        ), 403
 
     payload, status = create_trusted_auto_login_for_user(user)
     return jsonify(payload), status

@@ -67,15 +67,17 @@ def download_personal_declaration_file():
     if record.get("mode") != "local_docx" or not stored_name:
         return jsonify({"detail": "Chưa có file kê khai docx."}), 404
 
-    file_path = UPLOAD_ROOT / str(user["_id"]) / "personal-declaration" / stored_name
-    if not file_path.is_file():
+    from services import storage
+    from services.files import make_inline_file_response
+
+    data = storage.read_bytes(storage.storage_key(user["_id"], "personal-declaration", stored_name))
+    if data is None:
         return jsonify({"detail": "File kê khai không tồn tại."}), 404
 
-    return send_file(
-        file_path,
-        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        as_attachment=False,
-        download_name=stored_name,
+    return make_inline_file_response(
+        data,
+        stored_name,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
 
 
@@ -568,15 +570,17 @@ def download_apply_document(doc_id: str):
     if not stored_name:
         return jsonify({"detail": "Chưa có file tải lên"}), 404
 
-    file_path = apply_doc_upload_dir(str(user["_id"]), doc_id) / stored_name
-    if not file_path.is_file():
+    from services import storage
+    from services.files import make_inline_file_response
+
+    data = storage.read_bytes(storage.storage_key(user["_id"], doc_id, stored_name))
+    if data is None:
         return jsonify({"detail": "File không tồn tại trên hệ thống"}), 404
 
-    return send_file(
-        file_path,
-        as_attachment=False,
-        download_name=record.get("original_name") or stored_name,
-        mimetype=record.get("mime_type") or None,
+    return make_inline_file_response(
+        data,
+        record.get("original_name") or stored_name,
+        record.get("mime_type") or None,
     )
 
 

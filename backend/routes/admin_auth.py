@@ -205,17 +205,23 @@ def admin_auto_login():
         return jsonify({"detail": location_error, "location_required": True}), 403
     set_request_login_location(location)
 
+    # Không phân biệt "email không tồn tại" / "chưa duyệt" / "chưa tin cậy" để
+    # tránh dò email (account enumeration). Mọi trường hợp không đủ điều kiện
+    # auto-login đều trả về cùng một phản hồi chung; người dùng hợp lệ vẫn có
+    # thể đăng nhập bằng mật khẩu để nhận thông báo chi tiết.
+    untrusted_response = jsonify(
+        {
+            "detail": "Thiết bị/IP/vị trí chưa khớp với lần đăng nhập trước. Vui lòng đăng nhập bằng mật khẩu.",
+        },
+    ), 403
+
     admin = admins.find_one({"email": email})
     if not admin:
-        return jsonify({"detail": "Không thể tự động đăng nhập"}), 401
+        return untrusted_response
     if not admin_is_approved(admin):
-        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+        return untrusted_response
     if not _trusted_admin_context_matches(admin, location):
-        return jsonify(
-            {
-                "detail": "Thiết bị/IP/vị trí chưa khớp với lần đăng nhập trước. Vui lòng đăng nhập bằng mật khẩu.",
-            },
-        ), 403
+        return untrusted_response
 
     _record_admin_login_context(admin, location)
     fresh_admin = admins.find_one({"_id": admin["_id"]}) or admin

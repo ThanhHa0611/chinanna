@@ -208,19 +208,20 @@ def build_inbox_document_payload(task: dict):
     if not stored_name:
         return None, "Chưa có file để xem"
 
-    file_path = apply_doc_upload_dir(str(mentee["_id"]), doc_id) / stored_name
-    if not file_path.is_file():
-        return None, "File không tồn tại trên hệ thống"
-
     scholarship_system = normalize_scholarship_system(mentee.get("scholarship_system", ""))
+    from services import storage
+
     try:
         from document_processing import process_document_file
 
-        payload, out_ext = process_document_file(
-            file_path,
-            output_format="pdf",
-            variant="original",
-        )
+        with storage.local_path(storage.storage_key(mentee["_id"], doc_id, stored_name)) as file_path:
+            if file_path is None:
+                return None, "File không tồn tại trên hệ thống"
+            payload, out_ext = process_document_file(
+                file_path,
+                output_format="pdf",
+                variant="original",
+            )
     except Exception as exc:
         return None, str(exc) or "Không xử lý được file"
 

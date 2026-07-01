@@ -395,7 +395,7 @@ def notify_login_security_event(
         try:
             from email_notify import send_mentee_login_anomaly_email
 
-            mentor_page_url = os.getenv(
+            mentee_page_url = os.getenv(
                 "MENTOR_MENTEES_URL",
                 "http://localhost:5174/mentees",
             ).strip()

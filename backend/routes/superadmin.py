@@ -301,14 +301,16 @@ def superadmin_view_mentee_document_file(mentee_id: str, doc_id: str):
     if not stored_name:
         return jsonify({"detail": "Chưa có file tải lên"}), 404
 
-    file_path = apply_doc_upload_dir(str(mentee["_id"]), doc_id) / stored_name
-    if not file_path.is_file():
+    from services import storage
+    from services.files import make_inline_file_response
+
+    data = storage.read_bytes(storage.storage_key(mentee["_id"], doc_id, stored_name))
+    if data is None:
         return jsonify({"detail": "File không tồn tại trên hệ thống"}), 404
 
-    return send_file(
-        file_path,
-        as_attachment=False,
-        download_name=record.get("original_name") or stored_name,
-        mimetype=record.get("mime_type") or None,
+    return make_inline_file_response(
+        data,
+        record.get("original_name") or stored_name,
+        record.get("mime_type") or None,
     )
 

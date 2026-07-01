@@ -187,6 +187,7 @@ def trusted_login_context_matches(
 
 def create_trusted_auto_login_for_user(user: dict) -> tuple[dict, int]:
     from bson import ObjectId
+    from auth.security import create_token
 
     role = user.get("role") or ROLE_MENTEE
     if role not in (ROLE_MENTEE, ROLE_PARENT):
