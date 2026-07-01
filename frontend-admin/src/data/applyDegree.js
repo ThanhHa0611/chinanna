@@ -187,6 +187,22 @@ export function menteeMaiChiClassificationLine(mentee) {
   return parts.length ? parts.join(' - ') : 'Chưa phân loại';
 }
 
+/** Tên phụ cho mời tham gia HDNK: khối ngành-hướng NC-hệ */
+export function menteeActivityInviteLabel(mentee) {
+  const major =
+    mentee?.mentor_apply_direction_label ||
+    mentorApplyDirectionLabel(mentee?.mentor_apply_direction);
+  const research = researchDirectionDisplayText(mentee);
+  const degree = applyDegreeLevelShortDisplay(mentee);
+  const parts = [major, research, degree].filter((part) => part && part !== '—');
+  return parts.length ? parts.join('-') : 'Chưa phân loại';
+}
+
+export function formatMenteeActivityInviteOption(mentee) {
+  const name = (mentee?.full_name || mentee?.username || mentee?.email || 'Mentee').trim();
+  return `${name} (${menteeActivityInviteLabel(mentee)})`;
+}
+
 export function patchMenteeSummaryFromDetail(summary, detail) {
   return {
     ...summary,

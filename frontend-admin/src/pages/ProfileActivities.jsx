@@ -12,6 +12,7 @@ import {
   getDeadlineBadge,
   participationModeDisplayLabel,
 } from '../utils/profileActivities';
+import { formatMenteeActivityInviteOption } from '../data/applyDegree';
 
 const ACTIVITY_TYPES = ['Cuộc thi', 'NCKH', 'HĐNK', 'Hội thảo', 'Chương trình hè', 'Dự án', 'Khác'];
 const MAJORS = [
@@ -439,6 +440,11 @@ export default function ProfileActivities() {
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState(emptyForm());
   const [editSaving, setEditSaving] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteMentees, setInviteMentees] = useState([]);
+  const [inviteMenteesLoading, setInviteMenteesLoading] = useState(false);
+  const [inviteSelectedIds, setInviteSelectedIds] = useState([]);
+  const [inviteSaving, setInviteSaving] = useState(false);
   const [moveTargets, setMoveTargets] = useState({});
   const [addToGroupTargets, setAddToGroupTargets] = useState({});
   const [keeptrackReviews, setKeeptrackReviews] = useState([]);
@@ -487,6 +493,33 @@ export default function ProfileActivities() {
     }
     return registrations.filter((item) => !assigned.has(item.mentee_id));
   }, [registrations, selectedActivity?.groups]);
+
+  const registeredMenteeIds = useMemo(
+    () => new Set(registrations.map((item) => item.mentee_id)),
+    [registrations],
+  );
+
+  const invitedMenteeIds = useMemo(
+    () => new Set(selectedActivity?.invited_mentee_ids || []),
+    [selectedActivity?.invited_mentee_ids],
+  );
+
+  const inviteCandidates = useMemo(
+    () =>
+      [...inviteMentees]
+        .filter((mentee) => !registeredMenteeIds.has(mentee.id))
+        .sort((a, b) =>
+          formatMenteeActivityInviteOption(a).localeCompare(
+            formatMenteeActivityInviteOption(b),
+            'vi',
+          ),
+        ),
+    [inviteMentees, registeredMenteeIds],
+  );
+
+  const canInviteMentees =
+    selectedActivity?.approval_status === 'approved' ||
+    !selectedActivity?.approval_status;
 
   const pendingActivities = useMemo(
     () => activities.filter((item) => item.approval_status === 'pending_l1_approval'),
@@ -567,6 +600,54 @@ export default function ProfileActivities() {
     }
   };
 
+  const openInvitePanel = async () => {
+    if (inviteOpen) {
+      setInviteOpen(false);
+      setInviteSelectedIds([]);
+      return;
+    }
+    setInviteOpen(true);
+    setInviteSelectedIds([]);
+    if (inviteMentees.length) return;
+    setInviteMenteesLoading(true);
+    setError('');
+    try {
+      const items = await api.getMentees();
+      setInviteMentees(Array.isArray(items) ? items : items?.items || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setInviteMenteesLoading(false);
+    }
+  };
+
+  const toggleInviteMentee = (menteeId) => {
+    setInviteSelectedIds((prev) =>
+      prev.includes(menteeId) ? prev.filter((id) => id !== menteeId) : [...prev, menteeId],
+    );
+  };
+
+  const handleSendInvites = async () => {
+    if (!selectedActivity || !inviteSelectedIds.length) return;
+    setInviteSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.inviteProfileActivityMentees(selectedActivity.id, {
+        mentee_ids: inviteSelectedIds,
+      });
+      await loadActivities();
+      setInviteOpen(false);
+      setInviteSelectedIds([]);
+      const count = result?.invited_count ?? inviteSelectedIds.length;
+      setMessage(`Đã mời ${count} mentee tham gia hoạt động.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setInviteSaving(false);
+    }
+  };
+
   const loadActivities = async () => {
     const data = await api.getProfileActivities();
     const items = Array.isArray(data) ? data : data?.items || [];
@@ -642,6 +723,8 @@ export default function ProfileActivities() {
   useEffect(() => {
     setEditOpen(false);
     setEditForm(activityToForm(selectedActivity));
+    setInviteOpen(false);
+    setInviteSelectedIds([]);
   }, [selectedId, selectedActivity?.id, selectedActivity?.updated_at]);
 
   useEffect(() => {
@@ -2208,6 +2291,19 @@ export default function ProfileActivities() {
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
+                onClick={openInvitePanel}
+                disabled={editSaving || saving || inviteSaving || !canInviteMentees}
+                title={
+                  canInviteMentees
+                    ? undefined
+                    : 'Hoạt động cần được duyệt trước khi mời mentee'
+                }
+              >
+                {inviteOpen ? 'Đóng mời tham gia' : 'Mời tham gia'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
                 onClick={() => {
                   if (editOpen) {
                     setEditOpen(false);
@@ -2230,6 +2326,59 @@ export default function ProfileActivities() {
                 Xóa HDNK
               </button>
             </div>
+            {inviteOpen && (
+              <div className="profile-activity-invite-panel">
+                <p className="profile-activity-edit-form-title">Mời mentee tham gia hoạt động</p>
+                <p className="muted profile-activity-invite-hint">
+                  Chọn mentee cần mời — tên hiển thị theo định dạng Tên (khối ngành-hướng NC-hệ).
+                </p>
+                {inviteMenteesLoading ? (
+                  <p className="muted">Đang tải danh sách mentee…</p>
+                ) : inviteCandidates.length === 0 ? (
+                  <p className="muted">Không còn mentee nào để mời (đã báo danh hết).</p>
+                ) : (
+                  <ul className="profile-activity-invite-list">
+                    {inviteCandidates.map((mentee) => {
+                      const alreadyInvited = invitedMenteeIds.has(mentee.id);
+                      const checked =
+                        inviteSelectedIds.includes(mentee.id) || alreadyInvited;
+                      return (
+                        <li key={mentee.id}>
+                          <label className="profile-activity-invite-option checkbox-label">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={alreadyInvited}
+                              onChange={() => toggleInviteMentee(mentee.id)}
+                            />
+                            <span>
+                              {formatMenteeActivityInviteOption(mentee)}
+                              {alreadyInvited ? (
+                                <span className="muted"> · đã mời</span>
+                              ) : null}
+                            </span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                <div className="action-cell">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleSendInvites}
+                    disabled={
+                      inviteSaving ||
+                      inviteMenteesLoading ||
+                      inviteSelectedIds.length === 0
+                    }
+                  >
+                    Gửi lời mời ({inviteSelectedIds.length})
+                  </button>
+                </div>
+              </div>
+            )}
             {editOpen && (
               <div className="profile-activity-edit-form auth-form profile-activity-form">
                 <p className="profile-activity-edit-form-title">Chỉnh sửa nội dung hoạt động</p>

@@ -412,6 +412,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  inviteProfileActivityMentees: (activityId, body) =>
+    request(`/api/admin/profile-activities/${activityId}/invite`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   upsertProfileActivityGroup: (activityId, body) =>
     request(`/api/admin/profile-activities/${activityId}/groups`, {
       method: 'PATCH',

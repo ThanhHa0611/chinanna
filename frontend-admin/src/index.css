@@ -3653,6 +3653,43 @@ html.device-phone .daily-summary-status {
   font-size: 0.95rem;
 }
 
+.profile-activity-invite-panel {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.profile-activity-invite-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+.profile-activity-invite-list {
+  list-style: none;
+  margin: 0 0 0.85rem;
+  padding: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.profile-activity-invite-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  padding: 0.35rem 0.15rem;
+}
+
+.profile-activity-invite-option input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
 .activity-picker {
   position: relative;
   width: 100%;

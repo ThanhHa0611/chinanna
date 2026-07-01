@@ -273,6 +273,9 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
   };
 
   const renderRegistrationStatus = (item) => {
+    if (item.invited && !item.registered) {
+      return <span className="muted profile-activity-invite-text">Mentor mời bạn tham gia</span>;
+    }
     if (item.group_assignment_pending && item.group_name) {
       const memberCount = item.group_member_count ?? item.group_members?.length ?? 0;
       return (

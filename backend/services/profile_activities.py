@@ -1844,6 +1844,7 @@ def serialize_profile_activity_for_feed(
         "awaiting_group_assignment": _mentee_awaiting_group_assignment(doc, mentee_id, state),
         "needs_participation_choice": _normalize_participation_mode(doc.get("participation_mode"))
         in {"both", "unknown"},
+        "invited": bool(state.get("invited_at")) and not bool(state.get("registered_at")),
     }
     keeptrack = _serialize_keeptrack_for_feed(doc, state)
     if keeptrack:
@@ -1889,6 +1890,11 @@ def serialize_admin_profile_activity(doc: dict, *, admin: dict | None = None) ->
         "pending_action_count": pending_action_count,
         "participation_mode": _normalize_participation_mode(doc.get("participation_mode")),
         "participation_mode_label": participation_mode_label(doc.get("participation_mode")),
+        "invited_mentee_ids": [
+            str(item.get("mentee_id"))
+            for item in mentee_states
+            if item.get("invited_at") and not item.get("registered_at") and item.get("mentee_id")
+        ],
     }
 
 
@@ -2101,6 +2107,91 @@ def _create_auto_solo_group(activity: dict, mentee_id: str) -> dict:
     groups.append(group)
     activity["groups"] = groups
     return group
+
+
+class ProfileActivityInviteError(ValueError):
+    pass
+
+
+def _mentee_belongs_to_activity_mentor(mentee: dict, activity: dict) -> bool:
+    activity_mentor = (activity.get("mentor_name") or "").strip()
+    if not activity_mentor:
+        return True
+    return (mentee.get("mentor") or "").strip() == activity_mentor
+
+
+def invite_mentees_to_activity(activity: dict, mentee_ids: list[str], admin: dict) -> dict:
+    approval = _normalize_approval_status(activity.get("approval_status"))
+    if approval == PROFILE_ACTIVITY_APPROVAL_PENDING:
+        raise ProfileActivityInviteError(
+            "Hoạt động chưa được duyệt — chưa thể mời mentee tham gia."
+        )
+    if approval == PROFILE_ACTIVITY_APPROVAL_REJECTED:
+        raise ProfileActivityInviteError("Hoạt động đã bị từ chối.")
+
+    now = datetime.now(timezone.utc)
+    activity_name = compose_activity_name(activity)
+    mentor_label = (
+        (admin.get("full_name") or "").strip()
+        or (admin.get("mentor_name") or "").strip()
+        or (activity.get("mentor_name") or "").strip()
+        or "Mentor"
+    )
+    invited: list[str] = []
+    skipped: list[dict] = []
+
+    seen: set[str] = set()
+    for raw_id in mentee_ids or []:
+        mentee_id = str(raw_id or "").strip()
+        if not mentee_id or mentee_id in seen:
+            continue
+        seen.add(mentee_id)
+        if not ObjectId.is_valid(mentee_id):
+            skipped.append({"mentee_id": mentee_id, "reason": "invalid"})
+            continue
+        mentee = users.find_one({"_id": ObjectId(mentee_id)})
+        if not mentee:
+            skipped.append({"mentee_id": mentee_id, "reason": "not_found"})
+            continue
+        if not _mentee_belongs_to_activity_mentor(mentee, activity):
+            skipped.append({"mentee_id": mentee_id, "reason": "wrong_mentor"})
+            continue
+
+        state = _get_or_create_state(activity, mentee_id)
+        if state.get("registered_at"):
+            skipped.append({"mentee_id": mentee_id, "reason": "already_registered"})
+            continue
+
+        was_invited = bool(state.get("invited_at"))
+        state["invited_at"] = now
+        if not was_invited:
+            state["read_at"] = None
+
+        notify_mentee_mentor_activity(
+            mentee,
+            action="profile_activity_invite",
+            title=f"{mentor_label} mời bạn tham gia hoạt động",
+            description=(
+                f"Hoạt động: {activity_name}. Hãy vào hồ sơ để xem chi tiết và báo danh nhé."
+            ),
+            mentor_name=activity.get("mentor_name", "") or mentor_label,
+            mentor_admin=admin,
+        )
+        invited.append(mentee_id)
+
+    if invited:
+        profile_activities.update_one(
+            {"_id": activity["_id"]},
+            {
+                "$set": {
+                    "mentee_states": activity.get("mentee_states", []),
+                    "updated_at": now,
+                }
+            },
+        )
+
+    refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    return {"invited": invited, "skipped": skipped, "activity": refreshed}
 
 
 def _resolve_registration_choice(activity: dict, participation_choice: str | None) -> str:

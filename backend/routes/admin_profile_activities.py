@@ -26,8 +26,10 @@ from services.profile_activities import (
     enforce_participant_capacity,
     finalize_group_and_sync_hdnk,
     group_is_approved,
+    invite_mentees_to_activity,
     ProfileActivityGroupDeleteError,
     ProfileActivityGroupLeaderError,
+    ProfileActivityInviteError,
     set_group_leader,
     list_pending_individual_keeptrack_reviews,
     list_pending_keeptrack_abandon_requests,
@@ -309,6 +311,38 @@ def admin_activity_registrations(activity_id: str):
             continue
         registrations.append(serialize_admin_registration(activity, state, mentee))
     return jsonify({"items": registrations})
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/invite")
+@with_db
+def admin_invite_mentees_to_activity(activity_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+
+    data = request.get_json(silent=True) or {}
+    mentee_ids = data.get("mentee_ids")
+    if not isinstance(mentee_ids, list) or not mentee_ids:
+        return jsonify({"detail": "Vui lòng chọn ít nhất một mentee để mời."}), 400
+
+    try:
+        result = invite_mentees_to_activity(activity, mentee_ids, admin)
+    except ProfileActivityInviteError as exc:
+        return jsonify({"detail": str(exc)}), 400
+
+    return jsonify(
+        {
+            "invited_count": len(result.get("invited") or []),
+            "skipped": result.get("skipped") or [],
+            "activity": serialize_admin_profile_activity(result["activity"], admin=admin),
+        }
+    )
 
 
 @app.get("/api/admin/profile-activities/<activity_id>/groups/suggest-name")
