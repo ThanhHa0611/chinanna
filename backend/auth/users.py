@@ -36,6 +36,7 @@ def user_response(user: dict) -> dict:
     from services.admins import is_thanh_ha_mentee
     from services.apply_documents import apply_degree_level_label, term3_2027_language_semester_label
     from services.profile_info import profile_info_reminder_unread, serialize_profile_info_reminder
+    from services.referrals import referral_points_for_user
 
     role = user.get("role") or ROLE_MENTEE
     payload = {
@@ -52,6 +53,7 @@ def user_response(user: dict) -> dict:
         "scholarship_system": user.get("scholarship_system", ""),
         "parent_email": user.get("parent_email", ""),
         "zalo_phone": user.get("zalo_phone", ""),
+        "referral_points": referral_points_for_user(user),
         "apply_direction": user.get("apply_direction", ""),
         "apply_degree_level": user.get("apply_degree_level", ""),
         "apply_degree_level_label": apply_degree_level_label(user.get("apply_degree_level", "")),

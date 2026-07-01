@@ -3423,6 +3423,48 @@ html.device-phone .daily-summary-status {
   min-width: 7.5rem;
 }
 
+.profile-activity-bulk-import-majors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  min-width: 12rem;
+  max-width: 15rem;
+}
+
+.profile-activity-bulk-import-majors .checkbox-label {
+  gap: 0.3rem !important;
+  font-size: 0.78rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.profile-activity-bulk-import-majors .checkbox-label input[type='checkbox'] {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.profile-activity-bulk-import-preview table input.profile-activity-bulk-import-major-other {
+  margin-top: 0.35rem;
+  min-width: 12rem;
+}
+
+.profile-activity-bulk-import-preview table input.profile-activity-bulk-import-limit {
+  min-width: 5.5rem;
+  max-width: 7rem;
+}
+
+.profile-activity-bulk-import-preview table textarea.profile-activity-bulk-import-note {
+  min-width: 9rem;
+  max-width: 12rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.profile-activity-bulk-import-preview table input.profile-activity-bulk-import-referrer-phone {
+  min-width: 8rem;
+  max-width: 10rem;
+}
+
 .profile-activity-form textarea {
   padding: 0.75rem 1rem;
   border-radius: 10px;
@@ -3503,6 +3545,15 @@ html.device-phone .daily-summary-status {
   font-size: 0.85rem;
   letter-spacing: -0.05em;
   white-space: nowrap;
+}
+
+.profile-activity-capacity-badge.is-full {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.profile-activity-internal-note {
+  white-space: pre-wrap;
 }
 
 .profile-activity-approval-badge {

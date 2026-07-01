@@ -2167,6 +2167,10 @@ export default function Mentees() {
                           <strong>{selectedMentee.zalo_phone || '—'}</strong>
                         </div>
                         <div>
+                          <span className="info-label">Điểm giới thiệu</span>
+                          <strong>{selectedMentee.referral_points ?? 0}</strong>
+                        </div>
+                        <div>
                           <span className="info-label">Mật khẩu đăng nhập</span>
                           <strong>{selectedMentee.account_password || '—'}</strong>
                         </div>

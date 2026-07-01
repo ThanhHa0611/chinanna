@@ -22,6 +22,7 @@ from services.profile_activities import (
     create_profile_activity,
     delete_activity,
     delete_activity_group,
+    enforce_participant_capacity,
     finalize_group_and_sync_hdnk,
     group_is_approved,
     ProfileActivityGroupDeleteError,
@@ -306,6 +307,7 @@ def admin_upsert_activity_group(activity_id: str):
         {"$set": {"groups": activity.get("groups", []), "updated_at": datetime.now(timezone.utc)}},
     )
     saved_group = None
+    groups_response = activity.get("groups", [])
     if not requires_l1:
         refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
         saved_group = next(
@@ -314,7 +316,12 @@ def admin_upsert_activity_group(activity_id: str):
         )
         if saved_group and group_is_approved(saved_group) and not saved_group.get("notification_sent_at"):
             notify_group_assignment(refreshed, saved_group)
-    response = {"group": group, "groups": activity.get("groups", [])}
+        # Creating/editing a group is an instant mentor approval for non-L1-gated
+        # admins, so this can also be the action that pushes the activity over its
+        # participant_limit — re-check capacity here too.
+        refreshed = enforce_participant_capacity(refreshed)
+        groups_response = refreshed.get("groups", [])
+    response = {"group": group, "groups": groups_response}
     if requires_l1:
         response["message"] = "Đã gửi phân nhóm, chờ mentor cấp 1 duyệt trước khi mentee thấy."
     elif saved_group and group_is_approved(saved_group):
@@ -346,7 +353,12 @@ def admin_add_mentee_to_group(activity_id: str, group_id: str):
         {"_id": activity["_id"]},
         {"$set": {"groups": activity.get("groups", []), "updated_at": datetime.now(timezone.utc)}},
     )
-    response = {"group": group, "groups": activity.get("groups", [])}
+    groups_response = activity.get("groups", [])
+    if not requires_l1:
+        refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+        refreshed = enforce_participant_capacity(refreshed)
+        groups_response = refreshed.get("groups", [])
+    response = {"group": group, "groups": groups_response}
     if requires_l1:
         response["message"] = "Đã gửi thêm mentee vào nhóm, chờ mentor cấp 1 duyệt."
     return jsonify(response)

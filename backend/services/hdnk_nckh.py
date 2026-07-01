@@ -157,6 +157,97 @@ def hdnk_nckh_entries_equal(left: list[dict], right: list[dict]) -> bool:
     return True
 
 
+HDNK_NCKH_DIFF_FIELDS = (
+    ("start_date", "Ngày bắt đầu"),
+    ("category", "Hạng mục tham gia"),
+    ("participation_type", "Hình thức tham gia"),
+    ("zalo_group_name", "Tên nhóm Zalo"),
+    ("progress", "Tiến độ"),
+    ("award", "Giải thưởng"),
+    ("mentor_note", "Ghi chú của mentor"),
+    ("reminder_due_at", "Ngày nhắc nhở"),
+)
+
+
+def _hdnk_nckh_field_display(entry: dict, field: str) -> str:
+    if field == "award":
+        if entry.get("has_award"):
+            return entry.get("award_level") or "có giải"
+        return ""
+    value = entry.get(field)
+    if field == "reminder_due_at":
+        return format_hdnk_reminder_date(value)
+    if isinstance(value, bool):
+        return "có" if value else "không"
+    return (value or "").strip() if isinstance(value, str) else (value or "")
+
+
+def _hdnk_nckh_entry_label(entry: dict) -> str:
+    return entry.get("category") or "(chưa đặt tên)"
+
+
+def summarize_hdnk_nckh_changes(
+    before: list[dict],
+    after: list[dict],
+    fallback: str = "Bảng Keep track HDNK + NCKH đã được cập nhật.",
+) -> str:
+    """Build a concise, Vietnamese, human-readable diff between two HDNK+NCKH entry lists.
+
+    Entries are matched by ``entry_id``. Entries only in ``after`` are reported as added,
+    entries only in ``before`` as removed, and entries in both with differing fields as
+    changed (listing old -> new per field). Falls back to ``fallback`` if no differences
+    are identifiable, so callers never receive a blank description.
+    """
+    before_by_id = {entry.get("entry_id"): entry for entry in before if entry.get("entry_id")}
+    after_by_id = {entry.get("entry_id"): entry for entry in after if entry.get("entry_id")}
+
+    lines: list[str] = []
+
+    for entry in after:
+        entry_id = entry.get("entry_id")
+        old_entry = before_by_id.get(entry_id) if entry_id else None
+        if old_entry is None:
+            details = []
+            start_date = _hdnk_nckh_field_display(entry, "start_date")
+            if start_date:
+                details.append(f"ngày {start_date}")
+            participation_type = _hdnk_nckh_field_display(entry, "participation_type")
+            if participation_type:
+                details.append(participation_type)
+            zalo_group_name = _hdnk_nckh_field_display(entry, "zalo_group_name")
+            if zalo_group_name:
+                details.append(f"nhóm {zalo_group_name}")
+            progress = _hdnk_nckh_field_display(entry, "progress")
+            if progress:
+                details.append(progress)
+            award = _hdnk_nckh_field_display(entry, "award")
+            if award:
+                details.append(award)
+            detail_text = ", ".join(details)
+            label = _hdnk_nckh_entry_label(entry)
+            lines.append(f"Thêm mục mới: {label}" + (f" ({detail_text})" if detail_text else ""))
+            continue
+
+        diffs = []
+        for field, field_label in HDNK_NCKH_DIFF_FIELDS:
+            old_value = _hdnk_nckh_field_display(old_entry, field)
+            new_value = _hdnk_nckh_field_display(entry, field)
+            if old_value != new_value:
+                diffs.append(f"{field_label}: {old_value or '(trống)'} → {new_value or '(trống)'}")
+        if diffs:
+            label = _hdnk_nckh_entry_label(entry) or _hdnk_nckh_entry_label(old_entry)
+            lines.append(f"{label}: " + "; ".join(diffs))
+
+    for entry in before:
+        entry_id = entry.get("entry_id")
+        if entry_id and entry_id not in after_by_id:
+            lines.append(f"Đã xóa mục: {_hdnk_nckh_entry_label(entry)}")
+
+    if not lines:
+        return fallback
+    return "\n".join(lines)
+
+
 def validate_hdnk_nckh_entries(entries: list[dict]) -> str | None:
     if len(entries) > HDNK_NCKH_MAX_ENTRIES:
         return f"Tối đa {HDNK_NCKH_MAX_ENTRIES} mục"

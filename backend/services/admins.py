@@ -271,6 +271,7 @@ def get_mentee_for_admin(admin: dict, mentee_id: str):
 
 def serialize_admin_mentee_summary(user: dict, admin: dict | None = None) -> dict:
     from services.misc import get_mentor_l2_activity_raw
+    from services.referrals import referral_points_for_user
     summary = {
         "id": str(user["_id"]),
         "username": user["username"],
@@ -302,6 +303,7 @@ def serialize_admin_mentee_summary(user: dict, admin: dict | None = None) -> dic
         "apply_progress_pending_count": count_apply_progress_pending(user),
         "apply_progress_l2_unread": bool(user.get("apply_progress_l2_unread")),
         "zalo_phone": user.get("zalo_phone", ""),
+        "referral_points": referral_points_for_user(user),
         "account_password": user.get("mentor_visible_password", ""),
         "uploaded_count": count_uploaded_apply_documents(user),
         "approved_count": count_approved_apply_documents(user),

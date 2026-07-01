@@ -36,6 +36,13 @@ function vnTomorrowDateInputValue() {
   return formatDateInputInVn(tomorrow);
 }
 
+function inboxDescriptionPreview(description) {
+  if (!description) return '';
+  const lines = description.split('\n').filter((line) => line.trim());
+  if (lines.length <= 1) return description;
+  return `${lines[0]} (+${lines.length - 1} thay đổi khác)`;
+}
+
 function reminderAtIsoFromDateInput(dateStr) {
   return `${dateStr}T00:00:00+07:00`;
 }
@@ -418,7 +425,9 @@ export default function Home() {
         )}
         <div className="home-inbox-main">
           <strong>{actionLine}</strong>
-          {item.description && <p className="home-inbox-desc">{item.description}</p>}
+          {item.description && (
+            <p className="home-inbox-desc">{inboxDescriptionPreview(item.description)}</p>
+          )}
           <span className={`home-inbox-status status-${item.display_state || 'pending'} ${statusClass}`}>
             {statusLine}
           </span>

@@ -39,6 +39,7 @@ from services.files import *
 from services.hdnk_nckh import *
 from services.inbox import *
 from services.notifications import *
+from services.referrals import fulfill_pending_referrals_for_phone
 from services.utils import *
 
 @app.get("/api/auth/mentor-teams")
@@ -138,6 +139,7 @@ def register():
         )
 
     _notify_l1_after_registration(mentee_id)
+    fulfill_pending_referrals_for_phone(zalo_phone, mentee_id)
 
     return jsonify({
         "message": message,
@@ -336,6 +338,9 @@ def update_profile():
 
     users.update_one({"_id": ObjectId(user["_id"])}, {"$set": updates})
     updated = users.find_one({"_id": ObjectId(user["_id"])})
+    if "zalo_phone" in updates:
+        fulfill_pending_referrals_for_phone(updates["zalo_phone"], updated["_id"])
+        updated = users.find_one({"_id": ObjectId(user["_id"])})
     if "parent_email" in updates:
         sync_parent_account(updated, updates.get("parent_email", ""))
         updated = users.find_one({"_id": ObjectId(user["_id"])})

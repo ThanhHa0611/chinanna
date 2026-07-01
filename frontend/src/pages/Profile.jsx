@@ -1546,6 +1546,13 @@ function MenteeProfile() {
                 />
               </label>
               <label>
+                Điểm giới thiệu
+                <input type="text" value={user?.referral_points ?? 0} readOnly />
+                <span className="profile-field-hint">
+                  Tích lũy khi bạn được mentor ghi nhận là người giới thiệu hoạt động.
+                </span>
+              </label>
+              <label>
                 Ngày tháng năm sinh
                 <input
                   type="date"

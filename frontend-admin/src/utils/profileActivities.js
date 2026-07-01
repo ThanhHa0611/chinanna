@@ -92,7 +92,8 @@ export function feedLineLink(activity) {
 }
 
 export function formatImportanceStars(importance) {
-  const value = Math.max(1, Math.min(5, parseInt(importance, 10) || 3));
+  const parsed = parseInt(importance, 10);
+  const value = Number.isNaN(parsed) ? 3 : Math.max(0, Math.min(5, parsed));
   return '★'.repeat(value) + '☆'.repeat(5 - value);
 }
 

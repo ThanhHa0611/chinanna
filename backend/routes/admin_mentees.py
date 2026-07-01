@@ -673,7 +673,11 @@ def admin_update_hdnk_nckh(mentee_id: str):
             fresh,
             action="hdnk_nckh_update",
             title="Mentor cập nhật HDNK + NCKH",
-            description="Mentor đã cập nhật bảng Keep track HDNK + NCKH cho bạn.",
+            description=summarize_hdnk_nckh_changes(
+                existing,
+                normalized,
+                fallback="Mentor đã cập nhật bảng Keep track HDNK + NCKH cho bạn.",
+            ),
             mentor_name=admin_display_name(admin),
             mentor_admin=admin,
         )

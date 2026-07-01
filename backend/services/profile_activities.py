@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import openpyxl
 from bson import ObjectId
 
+from auth.validators import normalize_zalo_phone
 from config import ROLE_PARENT
 from database import mentor_inbox, profile_activities, users
 from services.apply_documents import (
@@ -18,6 +19,7 @@ from services.apply_documents import (
 )
 from services.hdnk_nckh import get_hdnk_nckh_entries_raw, normalize_hdnk_nckh_entry
 from services.notifications import notify_mentee_mentor_activity, notify_mentors_mentee_activity
+from services.referrals import award_referrer_phone_for_activity
 
 PROFILE_ACTIVITY_TYPES = (
     "Cuộc thi",
@@ -1444,7 +1446,16 @@ def _normalize_importance(raw) -> int:
         value = int(raw)
     except (TypeError, ValueError):
         value = DEFAULT_PROFILE_ACTIVITY_IMPORTANCE
-    return max(1, min(5, value))
+    return max(0, min(5, value))
+
+
+def _normalize_participant_limit(raw) -> int:
+    """0 (or anything invalid/blank) means "no limit"."""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, value)
 
 
 def _normalize_approval_status(raw: str | None) -> str:
@@ -1538,6 +1549,9 @@ def sanitize_profile_activity_input(data: dict, *, parsed_fallback: dict | None 
         "participation_mode": _normalize_participation_mode(
             data.get("participation_mode", parsed_fallback.get("participation_mode", DEFAULT_PARTICIPATION_MODE))
         ),
+        "internal_note": str(data.get("internal_note") or "").strip(),
+        "participant_limit": _normalize_participant_limit(data.get("participant_limit")),
+        "referrer_zalo_phone": normalize_zalo_phone(str(data.get("referrer_zalo_phone") or "")),
     }
     cleaned["activity_name"] = compose_activity_name(cleaned)
     return cleaned
@@ -1860,6 +1874,10 @@ def serialize_admin_profile_activity(doc: dict, *, admin: dict | None = None) ->
         "registration_count": len(registrations),
         "groups": doc.get("groups", []),
         "importance": _normalize_importance(doc.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE)),
+        "internal_note": doc.get("internal_note", ""),
+        "participant_limit": _normalize_participant_limit(doc.get("participant_limit")),
+        "approved_participant_count": count_approved_participants(doc),
+        "referrer_zalo_phone": doc.get("referrer_zalo_phone", ""),
         "approval_status": _normalize_approval_status(doc.get("approval_status")),
         "created_by_admin_id": doc.get("created_by_admin_id", ""),
         "approved_at": doc.get("approved_at").isoformat() if doc.get("approved_at") else "",
@@ -1891,7 +1909,13 @@ def create_profile_activity(admin: dict, payload: dict) -> dict:
         doc["approved_at"] = now
         doc["approved_by_admin_id"] = str(admin["_id"])
     result = profile_activities.insert_one(doc)
-    return profile_activities.find_one({"_id": result.inserted_id}) or doc
+    created = profile_activities.find_one({"_id": result.inserted_id}) or doc
+    if created.get("referrer_zalo_phone"):
+        award_referrer_phone_for_activity(
+            phone=created["referrer_zalo_phone"],
+            activity_id=created["_id"],
+        )
+    return created
 
 
 def approve_profile_activity(activity: dict, admin: dict) -> dict:
@@ -2076,10 +2100,21 @@ def register_for_activity(
 
     effective_choice = _resolve_registration_choice(activity, participation_choice)
     now = datetime.now(timezone.utc)
+    limit = _normalize_participant_limit(activity.get("participant_limit"))
+    over_capacity = (
+        effective_choice == "individual" and limit > 0 and count_approved_participants(activity) >= limit
+    )
     state["registered_at"] = now
     state["participation_choice"] = effective_choice
 
-    if effective_choice == "individual":
+    if over_capacity:
+        # Individual registrations are otherwise auto-confirmed immediately below
+        # (no separate "pending mentor approval" step to intercept later), so the
+        # capacity limit for new individual sign-ups has to be enforced right here.
+        state["group_response_status"] = "rejected"
+        state["group_response_note"] = PARTICIPANT_LIMIT_AUTO_REJECT_REASON
+        state["group_response_at"] = now
+    elif effective_choice == "individual":
         _create_auto_solo_group(activity, mentee_id)
         state["group_response_status"] = "confirmed"
         state["group_response_note"] = ""
@@ -2096,9 +2131,22 @@ def register_for_activity(
         },
     )
     refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    if over_capacity:
+        notify_mentee_mentor_activity(
+            mentee,
+            action="profile_activity_rejected",
+            title="Đã đủ số lượng tham gia",
+            description=(
+                f"Hoạt động '{compose_activity_name(refreshed)}' đã đủ số lượng tham gia nên báo danh "
+                f"của bạn không được duyệt."
+            ),
+            mentor_name=activity.get("mentor_name", ""),
+        )
+        return refreshed
     if effective_choice == "individual":
         maybe_start_individual_keeptrack(refreshed, mentee_id)
         refreshed = profile_activities.find_one({"_id": activity["_id"]}) or refreshed
+        refreshed = enforce_participant_capacity(refreshed)
         activity_name = compose_activity_name(refreshed)
         mentee_name = mentee.get("full_name") or mentee.get("username") or mentee.get("email", "")
         notify_mentors_mentee_activity(
@@ -2246,6 +2294,98 @@ def _find_group(activity: dict, group_id: str) -> dict | None:
     return next((row for row in activity.get("groups", []) if row.get("group_id") == group_id), None)
 
 
+PARTICIPANT_LIMIT_AUTO_REJECT_REASON = "Đã đủ số lượng tham gia"
+
+
+def count_approved_participants(activity: dict) -> int:
+    """Count distinct mentees whose participation has been approved by the mentor.
+
+    Individual participants are approved automatically at registration (see
+    ``register_for_activity``) unless later rejected. Group participants are
+    counted once their group has been approved by the mentor (``approve_pending_group``
+    or an L1-mentor's own instantly-approved group edit) — this intentionally does
+    NOT require the mentee to have since personally confirmed via
+    ``update_group_response``, since "duyệt" here refers to the mentor's approval
+    action, not the mentee's own follow-up confirmation. Counts by mentee (person),
+    not by group.
+    """
+    approved_mentee_ids: set[str] = set()
+    for state in activity.get("mentee_states") or []:
+        mentee_id = str(state.get("mentee_id") or "")
+        if not mentee_id or not state.get("registered_at"):
+            continue
+        if (state.get("group_response_status") or "").strip().lower() == "rejected":
+            continue
+        pending_reject = state.get("mentor_reject_pending") or {}
+        if pending_reject.get("approval_status") == PROFILE_ACTIVITY_APPROVAL_PENDING:
+            continue
+        if _is_individual_participant(activity, state):
+            approved_mentee_ids.add(mentee_id)
+        elif _is_group_participant(activity, state):
+            if _find_mentee_display_group(activity, mentee_id, state):
+                approved_mentee_ids.add(mentee_id)
+    return len(approved_mentee_ids)
+
+
+def enforce_participant_capacity(activity: dict) -> dict:
+    """If ``activity`` has hit its ``participant_limit``, auto-reject everyone still
+    pending (not yet approved, not already rejected) for it.
+
+    "Pending" here covers: (1) groups not yet approved by the mentor (rejected via
+    the existing ``reject_pending_group``), and (2) registered "group"-choice
+    mentees not yet placed into any approved group (rejected via the same
+    ``_apply_mentor_reject`` path a manual mentor rejection uses). Mentees already
+    approved/confirmed by the time the limit is reached are never retroactively
+    un-approved — call this right after an approval action so it only ever rejects
+    people who were still waiting at that moment.
+
+    Known edge cases intentionally NOT handled here (documented, not silently
+    swallowed): new individual registrations are capped directly in
+    ``register_for_activity`` instead (individuals are confirmed immediately at
+    registration, so there's no separate pending state to intercept once already
+    registered); and moving/removing mentees between existing groups
+    (``move_mentee_to_group`` / ``remove_mentee_from_group``) does not re-run this
+    check, since those actions don't approve anyone new.
+    """
+    limit = _normalize_participant_limit(activity.get("participant_limit"))
+    if limit <= 0 or count_approved_participants(activity) < limit:
+        return activity
+
+    updated = activity
+    for group in list(updated.get("groups") or []):
+        if _is_auto_solo_group(group) or group_is_approved(group):
+            continue
+        updated = reject_pending_group(updated, group.get("group_id"), reason=PARTICIPANT_LIMIT_AUTO_REJECT_REASON)
+
+    for state in list(updated.get("mentee_states") or []):
+        mentee_id = str(state.get("mentee_id") or "")
+        if not mentee_id or not state.get("registered_at"):
+            continue
+        if not ObjectId.is_valid(mentee_id):
+            continue
+        response = (state.get("group_response_status") or "").strip().lower()
+        if response == "rejected":
+            continue
+        if _is_individual_participant(updated, state):
+            continue
+        if not _is_group_participant(updated, state):
+            continue
+        if _find_mentee_display_group(updated, mentee_id, state):
+            continue
+        mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
+        if not mentee:
+            continue
+        _apply_mentor_reject(updated, mentee, PARTICIPANT_LIMIT_AUTO_REJECT_REASON)
+        now = datetime.now(timezone.utc)
+        profile_activities.update_one(
+            {"_id": updated["_id"]},
+            {"$set": {"mentee_states": updated.get("mentee_states", []), "updated_at": now}},
+        )
+        updated = profile_activities.find_one({"_id": updated["_id"]}) or updated
+
+    return updated
+
+
 def approve_pending_group(activity: dict, group_id: str, admin: dict) -> dict:
     group = _find_group(activity, group_id)
     if not group:
@@ -2273,10 +2413,12 @@ def approve_pending_group(activity: dict, group_id: str, admin: dict) -> dict:
     if approved_group and not approved_group.get("notification_sent_at"):
         notify_group_assignment(refreshed, approved_group)
         refreshed = profile_activities.find_one({"_id": activity["_id"]}) or refreshed
+    refreshed = enforce_participant_capacity(refreshed)
     return refreshed
 
 
-def reject_pending_group(activity: dict, group_id: str) -> dict:
+def reject_pending_group(activity: dict, group_id: str, reason: str = "") -> dict:
+    group = _find_group(activity, group_id)
     groups = [row for row in activity.get("groups", []) if row.get("group_id") != group_id]
     activity["groups"] = groups
     now = datetime.now(timezone.utc)
@@ -2284,7 +2426,22 @@ def reject_pending_group(activity: dict, group_id: str) -> dict:
         {"_id": activity["_id"]},
         {"$set": {"groups": groups, "updated_at": now}},
     )
-    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+    refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    reason = (reason or "").strip()
+    if reason and group:
+        member_ids = [ObjectId(item) for item in (group.get("mentee_ids") or []) if ObjectId.is_valid(item)]
+        for mentee in users.find({"_id": {"$in": member_ids}, "role": {"$ne": ROLE_PARENT}}):
+            notify_mentee_mentor_activity(
+                mentee,
+                action="profile_activity_rejected",
+                title="Mentor từ chối phân nhóm",
+                description=(
+                    f"Nhóm của bạn cho hoạt động '{activity.get('activity_name')}' đã bị từ chối. "
+                    f"Lý do: {reason}"
+                ),
+                mentor_name=activity.get("mentor_name", ""),
+            )
+    return refreshed
 
 
 class ProfileActivityGroupDeleteError(ValueError):

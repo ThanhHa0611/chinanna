@@ -507,7 +507,11 @@ def update_hdnk_nckh():
                 fresh,
                 action="hdnk_nckh_update",
                 title=f"{fresh.get('full_name') or fresh.get('username', 'Mentee')} cập nhật HDNK + NCKH",
-                description="Mentee vừa cập nhật bảng Keep track HDNK + NCKH.",
+                description=summarize_hdnk_nckh_changes(
+                    existing,
+                    normalized,
+                    fallback="Mentee vừa cập nhật bảng Keep track HDNK + NCKH.",
+                ),
             )
         except Exception:
             pass

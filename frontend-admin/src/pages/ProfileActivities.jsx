@@ -40,6 +40,9 @@ function emptyForm() {
     suitable_majors_other: '',
     importance: 3,
     participation_mode: 'unknown',
+    internal_note: '',
+    participant_limit: '',
+    referrer_zalo_phone: '',
   };
 }
 
@@ -51,9 +54,10 @@ function StarRating({ value, onChange }) {
           key={n}
           type="button"
           className={`importance-star${n <= value ? ' is-active' : ''}`}
-          onClick={() => onChange(n)}
+          onClick={() => onChange(n === value ? 0 : n)}
           aria-label={`${n} sao`}
           aria-pressed={n <= value}
+          title={n === value ? 'Bấm lại để bỏ chọn' : undefined}
         >
           ★
         </button>
@@ -512,6 +516,26 @@ export default function ProfileActivities() {
       prev.map((row) => {
         if (row.row_index !== rowIndex) return row;
         const next = { ...row, [key]: value };
+        next.activity_name = compose_activity_name(next);
+        return next;
+      }),
+    );
+  };
+
+  const toggleBulkImportRowMajor = (rowIndex, major) => {
+    setBulkImportRows((prev) =>
+      prev.map((row) => {
+        if (row.row_index !== rowIndex) return row;
+        const currentMajors = row.suitable_majors || [];
+        const has = currentMajors.includes(major);
+        const suitable_majors = has
+          ? currentMajors.filter((item) => item !== major)
+          : [...currentMajors, major];
+        const next = {
+          ...row,
+          suitable_majors,
+          suitable_majors_other: major === 'Khác' && has ? '' : row.suitable_majors_other,
+        };
         next.activity_name = compose_activity_name(next);
         return next;
       }),
@@ -1698,9 +1722,13 @@ export default function ProfileActivities() {
                           <th>Đơn vị tổ chức</th>
                           <th>Nội dung</th>
                           <th>Đối tượng</th>
+                          <th>Khối ngành phù hợp</th>
                           <th>Deadline</th>
                           <th>Hình thức tham gia</th>
                           <th>Mức độ quan trọng</th>
+                          <th>Giới hạn số người</th>
+                          <th>Ghi chú (nội bộ)</th>
+                          <th>SĐT Zalo người giới thiệu</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1762,6 +1790,30 @@ export default function ProfileActivities() {
                               />
                             </td>
                             <td>
+                              <div className="profile-activity-bulk-import-majors">
+                                {MAJORS.map((major) => (
+                                  <label key={major} className="checkbox-label">
+                                    <input
+                                      type="checkbox"
+                                      checked={(row.suitable_majors || []).includes(major)}
+                                      onChange={() => toggleBulkImportRowMajor(row.row_index, major)}
+                                    />
+                                    {major}
+                                  </label>
+                                ))}
+                              </div>
+                              {(row.suitable_majors || []).includes('Khác') && (
+                                <input
+                                  className="profile-activity-bulk-import-major-other"
+                                  value={row.suitable_majors_other || ''}
+                                  onChange={(e) =>
+                                    updateBulkImportRow(row.row_index, 'suitable_majors_other', e.target.value)
+                                  }
+                                  placeholder="Ngành khác (ghi rõ)"
+                                />
+                              )}
+                            </td>
+                            <td>
                               <input
                                 value={row.deadline}
                                 onChange={(e) =>
@@ -1787,6 +1839,41 @@ export default function ProfileActivities() {
                               <StarRating
                                 value={row.importance}
                                 onChange={(n) => updateBulkImportRow(row.row_index, 'importance', n)}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                className="profile-activity-bulk-import-limit"
+                                value={row.participant_limit || ''}
+                                onChange={(e) =>
+                                  updateBulkImportRow(row.row_index, 'participant_limit', e.target.value)
+                                }
+                                placeholder="Không giới hạn"
+                              />
+                            </td>
+                            <td>
+                              <textarea
+                                className="profile-activity-bulk-import-note"
+                                rows={2}
+                                value={row.internal_note || ''}
+                                onChange={(e) =>
+                                  updateBulkImportRow(row.row_index, 'internal_note', e.target.value)
+                                }
+                                placeholder="Ghi chú nội bộ..."
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="tel"
+                                className="profile-activity-bulk-import-referrer-phone"
+                                value={row.referrer_zalo_phone || ''}
+                                onChange={(e) =>
+                                  updateBulkImportRow(row.row_index, 'referrer_zalo_phone', e.target.value)
+                                }
+                                placeholder="0901234567"
+                                inputMode="numeric"
                               />
                             </td>
                           </tr>
@@ -1913,6 +2000,41 @@ export default function ProfileActivities() {
               </label>
             )}
           </div>
+          <label>
+            Giới hạn số người tham gia
+            <input
+              type="number"
+              min="0"
+              value={form.participant_limit}
+              onChange={(e) => updateForm('participant_limit', e.target.value)}
+              placeholder="Để trống = không giới hạn"
+            />
+            <span className="field-hint">
+              Khi đủ số lượng, các báo danh còn lại sẽ tự động bị từ chối.
+            </span>
+          </label>
+          <label>
+            Ghi chú (nội bộ, mentor)
+            <textarea
+              value={form.internal_note}
+              onChange={(e) => updateForm('internal_note', e.target.value)}
+              placeholder="Ghi chú riêng cho mentor, mentee sẽ không thấy nội dung này"
+              rows={2}
+            />
+          </label>
+          <label>
+            SĐT Zalo người giới thiệu
+            <input
+              type="tel"
+              value={form.referrer_zalo_phone}
+              onChange={(e) => updateForm('referrer_zalo_phone', e.target.value)}
+              placeholder="0901234567"
+              inputMode="numeric"
+            />
+            <span className="field-hint">
+              Nếu khớp SĐT Zalo của mentee hiện có, mentee đó được +1 điểm giới thiệu ngay khi lưu hoạt động.
+            </span>
+          </label>
           <div className="profile-activity-feed-preview">
             <p className="profile-activity-feed-preview-label">Tên hoạt động (tự động)</p>
             <p className="muted profile-activity-feed-preview-hint">
@@ -1970,6 +2092,21 @@ export default function ProfileActivities() {
               <span className="muted">
                 · {selectedActivity.registration_count || 0} báo danh
               </span>
+              {Boolean(selectedActivity.participant_limit) && (
+                <span
+                  className={`muted profile-activity-capacity-badge${
+                    (selectedActivity.approved_participant_count || 0) >= selectedActivity.participant_limit
+                      ? ' is-full'
+                      : ''
+                  }`}
+                >
+                  · Đã duyệt {selectedActivity.approved_participant_count || 0}/
+                  {selectedActivity.participant_limit}
+                  {(selectedActivity.approved_participant_count || 0) >= selectedActivity.participant_limit
+                    ? ' — đã đủ số lượng'
+                    : ''}
+                </span>
+              )}
             </div>
             <div className="action-cell">
               <button
@@ -2011,6 +2148,16 @@ export default function ProfileActivities() {
             )}
             {selectedParticipationLabel && (
               <p className="muted">Hình thức tham gia: {selectedParticipationLabel}</p>
+            )}
+            {selectedActivity.internal_note && (
+              <p className="muted profile-activity-internal-note">
+                Ghi chú (nội bộ): {selectedActivity.internal_note}
+              </p>
+            )}
+            {selectedActivity.referrer_zalo_phone && (
+              <p className="muted">
+                SĐT Zalo người giới thiệu: {selectedActivity.referrer_zalo_phone}
+              </p>
             )}
             <div className="profile-activity-registrations">
               {unassignedRegistrations.length > 0 && (
