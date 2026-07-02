@@ -91,7 +91,8 @@ VALID_APPLY_DOC_IDS = {
     "cv",
 }
 NO_FILE_UPLOAD_DOC_IDS = {"personal-declaration"}
-MENTOR_UPLOADABLE_DOC_IDS = frozenset({"study-plan", "cv"})
+MENTEE_UPLOAD_BLOCKED_DOC_IDS = frozenset({"study-plan", "cv"})
+MENTOR_UPLOADABLE_DOC_IDS = frozenset(VALID_APPLY_DOC_IDS - NO_FILE_UPLOAD_DOC_IDS)
 ALLOWED_UPLOAD_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf", ".doc", ".docx"}
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 DOC_MENTOR_STATUS_WAITING = "chờ phản hồi"

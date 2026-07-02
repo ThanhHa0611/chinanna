@@ -105,7 +105,7 @@ const MENTORS = ['', 'Thanh Hà', 'Mai Chi'];
 
 const ACCEPTED_FILE_TYPES = '.jpg,.jpeg,.png,.pdf,.doc,.docx';
 const ACCEPTED_FILE_HINT = 'JPG, PNG, PDF, DOC, DOCX';
-const MENTOR_UPLOAD_DOC_IDS = new Set(['study-plan', 'cv']);
+const MENTOR_ONLY_UPLOAD_DOC_IDS = new Set(['study-plan', 'cv']);
 
 function documentNotificationCount(data) {
   return (
@@ -1091,25 +1091,25 @@ function MenteeProfile() {
     </div>
   );
 
+  const ackMentorUploadIfUnread = (docId, record) => {
+    if (!record?.mentee_unread_upload) return;
+    api
+      .ackDocumentUpload(docId)
+      .catch(() => null)
+      .then(() => {
+        setApplyDocItems((prev) =>
+          prev.map((item) =>
+            item.doc_id === docId ? { ...item, mentee_unread_upload: false } : item,
+          ),
+        );
+        setFeedbackUnreadCount((prev) => Math.max(0, prev - 1));
+      });
+  };
+
   const renderUploadColumn = (doc) => {
-    if (MENTOR_UPLOAD_DOC_IDS.has(doc.id)) {
+    if (MENTOR_ONLY_UPLOAD_DOC_IDS.has(doc.id)) {
       const record = getApplyDocRecord(doc.id);
       const uploadError = uploadErrors[doc.id];
-
-      const ackUploadIfUnread = () => {
-        if (!record?.mentee_unread_upload) return;
-        api
-          .ackDocumentUpload(doc.id)
-          .catch(() => null)
-          .then(() => {
-            setApplyDocItems((prev) =>
-              prev.map((item) =>
-                item.doc_id === doc.id ? { ...item, mentee_unread_upload: false } : item,
-              ),
-            );
-            setFeedbackUnreadCount((prev) => Math.max(0, prev - 1));
-          });
-      };
 
       if (!record?.uploaded) {
         return (
@@ -1135,7 +1135,7 @@ function MenteeProfile() {
                 type="button"
                 className="btn btn-outline btn-sm profile-doc-view-btn"
                 onClick={() => {
-                  ackUploadIfUnread();
+                  ackMentorUploadIfUnread(doc.id, record);
                   api.openApplyDocumentFile(doc.id).catch((err) => {
                     setUploadErrors((prev) => ({ ...prev, [doc.id]: err.message }));
                   });
@@ -1147,7 +1147,7 @@ function MenteeProfile() {
                 type="button"
                 className="btn btn-outline btn-sm"
                 onClick={() => {
-                  ackUploadIfUnread();
+                  ackMentorUploadIfUnread(doc.id, record);
                   api.downloadApplyDocument(doc.id, record.original_name || doc.label).catch((err) => {
                     setUploadErrors((prev) => ({ ...prev, [doc.id]: err.message }));
                   });
@@ -1270,16 +1270,24 @@ function MenteeProfile() {
       <div className="profile-doc-upload-cell">
         {record?.uploaded ? (
           <div className="profile-doc-uploaded">
+            {record.mentee_unread_upload && record.uploaded_by === 'mentor' && (
+              <span className="profile-doc-new-from-mentor">Mới từ mentor</span>
+            )}
             <span className="profile-doc-file-name" title={record.original_name}>
-              {record.original_name}
+              {record.uploaded_by === 'mentor' && record.uploaded_by_name
+                ? `${record.uploaded_by_name}: ${record.original_name}`
+                : record.original_name}
             </span>
             <div className="profile-doc-upload-actions">
               <button
                 type="button"
                 className="btn btn-outline btn-sm profile-doc-view-btn"
-                onClick={() => api.openApplyDocumentFile(doc.id).catch((err) => {
-                  setUploadErrors((prev) => ({ ...prev, [doc.id]: err.message }));
-                })}
+                onClick={() => {
+                  ackMentorUploadIfUnread(doc.id, record);
+                  api.openApplyDocumentFile(doc.id).catch((err) => {
+                    setUploadErrors((prev) => ({ ...prev, [doc.id]: err.message }));
+                  });
+                }}
               >
                 Xem file
               </button>

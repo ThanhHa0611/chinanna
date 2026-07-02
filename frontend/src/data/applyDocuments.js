@@ -1,3 +1,6 @@
+const VALIDITY_WAIT_FOR_MENTOR_NOTE =
+  'Chỉ hiệu lực 6 tháng, không xin trước — đợi mentor dặn.';
+
 export const APPLY_DOCUMENTS = [
   {
     id: 'photo',
@@ -25,7 +28,7 @@ export const APPLY_DOCUMENTS = [
         'TP.HCM: khám tại Hòa Hảo — nói rõ với bệnh viện là khám du học Trung Quốc.',
         'Hà Nội: khám tại Tràng An.',
         'Có form mẫu — nếu khám bệnh viện khác, hỏi rõ có hỗ trợ form này không.',
-        'Giấy có hiệu lực 6 tháng — không xin quá sớm, tránh hết hạn khi apply.',
+        VALIDITY_WAIT_FOR_MENTOR_NOTE,
       ],
       links: [
         {
@@ -53,7 +56,7 @@ export const APPLY_DOCUMENTS = [
       lines: [
         'Form số 1 hoặc số 2 đều được — mất khoảng 1 tháng để làm.',
         'Hoặc Xác nhận dân sự (1 ngày nếu địa phương chấp nhận).',
-        'Giấy có hiệu lực 6 tháng — không xin quá sớm, tránh hết hạn khi apply.',
+        VALIDITY_WAIT_FOR_MENTOR_NOTE,
       ],
     },
   },
@@ -65,6 +68,7 @@ export const APPLY_DOCUMENTS = [
         'Bằng tốt nghiệp ĐH/THPT hoặc giấy xác nhận đang là sinh viên/học sinh.',
         'Nếu là giấy xác nhận: ghi rõ dự kiến tốt nghiệp tháng 6–7/2027.',
         'Các bạn đã tốt nghiệp: cần hợp pháp hóa bằng thông qua trang chính chủ của CSC.',
+        VALIDITY_WAIT_FOR_MENTOR_NOTE,
       ],
     },
   },
@@ -183,6 +187,8 @@ export const APPLY_DOCUMENTS = [
       lines: [
         'Mentor sẽ soạn CV và tải lên giúp bạn — bạn chỉ cần xem và tải file.',
         'Portfolio: chỉ cần với ngành truyền thông / nghệ thuật.',
+        'Có thể làm dịch vụ lẻ (phụ thu phí).',
+        'Scan ngoài hàng cho đẹp hoặc dùng app Scan Genius trên điện thoại (icon màu cam).',
       ],
     },
   },
@@ -190,8 +196,7 @@ export const APPLY_DOCUMENTS = [
 
 export const APPLY_GENERAL_NOTES = [
   'Tất cả giấy tờ cần dịch công chứng sang tiếng Anh hoặc tiếng Trung. Không tiện thì nhắn mentor — mentor gửi chỗ làm online, chỉ cần scan PDF.',
-  'Scan cho đẹp hoặc dùng app Scan Genius trên điện thoại (icon màu cam). Mỗi mục giấy tờ scan thành 1 file PDF riêng.',
-  'Giấy khám sức khỏe và lý lịch tư pháp có hiệu lực 6 tháng — không xin quá sớm.',
+  'Mỗi mục giấy tờ scan thành 1 file PDF riêng.',
 ];
 
 export const MENTOR_APPLY_SETUP = {

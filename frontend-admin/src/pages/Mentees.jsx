@@ -39,7 +39,11 @@ const MENTOR_STATUS_LABELS = {
   'cần chỉnh sửa': 'Cần chỉnh sửa',
 };
 
-const MENTOR_UPLOADABLE_DOC_IDS = new Set(['study-plan', 'cv']);
+const MENTOR_CANNOT_UPLOAD_DOC_IDS = new Set(['personal-declaration']);
+
+function mentorCanUploadDoc(docId) {
+  return docId && !MENTOR_CANNOT_UPLOAD_DOC_IDS.has(docId);
+}
 const MENTOR_UPLOAD_ACCEPT = '.jpg,.jpeg,.png,.pdf,.doc,.docx';
 
 const isMentorOnlyDoc = (doc) =>
@@ -1547,7 +1551,7 @@ export default function Mentees() {
   };
 
   const handleMentorDocumentUpload = async (docId, file) => {
-    if (!selectedMentee || !file || !MENTOR_UPLOADABLE_DOC_IDS.has(docId)) return;
+    if (!selectedMentee || !file || !mentorCanUploadDoc(docId)) return;
 
     setMentorUploadingDocId(docId);
     setError('');
@@ -2581,7 +2585,7 @@ export default function Mentees() {
                               </>
                             ) : (
                               <span className="apply-doc-missing-note">
-                                {MENTOR_UPLOADABLE_DOC_IDS.has(doc.doc_id)
+                                {mentorCanUploadDoc(doc.doc_id)
                                   ? 'Mentee chưa làm · Mentor có thể tải lên'
                                   : 'Mentee chưa làm'}
                               </span>
@@ -2633,7 +2637,7 @@ export default function Mentees() {
                             )}
                           </div>
                           <div className="apply-doc-actions">
-                            {MENTOR_UPLOADABLE_DOC_IDS.has(doc.doc_id) && (
+                            {mentorCanUploadDoc(doc.doc_id) && (
                               <label
                                 className={`btn btn-primary btn-sm${
                                   mentorUploadingDocId === doc.doc_id ? ' btn-disabled' : ''

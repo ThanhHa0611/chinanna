@@ -533,7 +533,7 @@ def upload_apply_document(doc_id: str):
     if doc_id in NO_FILE_UPLOAD_DOC_IDS:
         return jsonify({"detail": "Mục này dùng Google Docs, không tải file trực tiếp"}), 400
 
-    if doc_id in MENTOR_UPLOADABLE_DOC_IDS:
+    if doc_id in MENTEE_UPLOAD_BLOCKED_DOC_IDS:
         return jsonify({
             "detail": "Mục này do mentor tải lên — bạn chỉ cần xem và tải file.",
         }), 403
