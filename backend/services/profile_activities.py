@@ -433,7 +433,7 @@ def _strip_leading_ve(content: str) -> str:
     return text
 
 
-def compose_activity_name(data: dict) -> str:
+def _build_activity_name_line(data: dict) -> str:
     activity_type = (data.get("activity_type") or "").strip() or "Khác"
     organizer = (data.get("organizer") or "").strip()
     content = _strip_leading_ve(data.get("content") or "")
@@ -450,6 +450,14 @@ def compose_activity_name(data: dict) -> str:
     if deadline:
         line = f"{line}, dl {deadline}"
     return line.strip() or "Hoạt động hồ sơ"
+
+
+def compose_activity_name(data: dict) -> str:
+    line = _build_activity_name_line(data)
+    link = (data.get("link") or "").strip()
+    if link:
+        line = f"{line} {link}"
+    return line
 
 
 def _normalize_participation_mode(raw) -> str:
@@ -586,6 +594,7 @@ def _serialize_keeptrack_for_feed(activity: dict, state: dict) -> dict | None:
     payload = {
         "active": keeptrack["active"],
         "display_name": _compose_keeptrack_category(activity),
+        "link": (activity.get("link") or "").strip(),
         "start_date": keeptrack["start_date"],
         "progress_status": keeptrack["progress_status"] or KEEPTRACK_PROGRESS_IN_PROGRESS,
         "progress_label": KEEPTRACK_UI_LABELS.get(
@@ -1756,7 +1765,7 @@ def serialize_admin_registration(activity: dict, state: dict, mentee: dict) -> d
 
 
 def format_activity_feed_line(activity: dict, mentee: dict | None = None) -> str:
-    line = compose_activity_name(activity)
+    line = _build_activity_name_line(activity)
     stored = (activity.get("activity_name") or "").strip()
     if stored and line in {"Khác", "Hoạt động hồ sơ"} and len(stored) > len(line):
         line = stored

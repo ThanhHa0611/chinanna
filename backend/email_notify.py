@@ -838,31 +838,36 @@ def send_daily_inbox_summary_email(
     date_label: str,
     items: list[dict],
 ) -> bool:
-    subject = f"[Mentor Trơn Tru] Tổng hợp Trơn Tru ngày {date_label}"
+    title = f"Tóm tắt ngày {date_label}"
+    subject = f"[Mentor Trơn Tru] {title}"
     lines_text = []
     rows_html = []
     for item in items:
-        summary = item.get("summary_line") or item.get("title") or item.get("description") or ""
-        lines_text.append(summary)
+        main_text = (
+            item.get("action_line")
+            or item.get("summary_line")
+            or item.get("title")
+            or item.get("description")
+            or ""
+        )
+        is_processed = item.get("is_processed") or item.get("status") == "done"
+        status_label = item.get("status_label") or (
+            "Đã xử lí" if is_processed else "Chưa xử lí"
+        )
+        lines_text.append(f"{main_text} — {status_label}")
         view_url = item.get("view_url") or ""
         confirm_url = item.get("confirm_url") or ""
-        state = item.get("display_state") or "new"
-        row_bg = "#f3f4f6" if state == "viewed" else "#ffffff"
-        state_label = {
-            "viewed": "Đã xem · chưa xử lí",
-            "new": "Chưa xem",
-            "done": "Đã xử lí",
-        }.get(state, "")
+        row_bg = "#f3f4f6" if is_processed else "#ffffff"
         snooze_html = mentor_snooze_links_html(item.get("snooze_urls"))
         rows_html.append(
             f"""
             <tr style="background:{row_bg};">
               <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top;">
-                <div style="font-size:0.95rem;color:#111;">{summary}</div>
-                <div style="font-size:0.78rem;color:#6b7280;margin-top:4px;">{state_label}</div>
+                <div style="font-size:0.95rem;color:#111;">{main_text}</div>
+                <div style="font-size:0.78rem;color:#6b7280;margin-top:4px;">{status_label}</div>
                 <div style="margin-top:8px;">
                   {f'<a href="{view_url}" style="display:inline-block;margin-right:8px;padding:6px 12px;background:#eb2233;color:#fff;text-decoration:none;border-radius:6px;font-size:0.82rem;font-weight:600;">Xem</a>' if view_url else ''}
-                  {f'<a href="{confirm_url}" style="display:inline-block;padding:6px 12px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-size:0.82rem;font-weight:600;">Đã xử lí</a>' if confirm_url else ''}
+                  {f'<a href="{confirm_url}" style="display:inline-block;padding:6px 12px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-size:0.82rem;font-weight:600;">Đã xử lí</a>' if confirm_url and not is_processed else ''}
                 </div>
                 {snooze_html}
               </td>
@@ -871,15 +876,16 @@ def send_daily_inbox_summary_email(
         )
 
     text_body = (
-        f"Tổng hợp Trơn Tru ngày {date_label}\n\n"
+        f"{title}\n"
+        f"Ngày {date_label}\n\n"
         + "\n".join(f"• {line}" for line in lines_text)
         + "\n\n— Hệ thống Phong Van"
     )
     html_body = f"""
     <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:640px;">
-      <h2 style="color:#eb2233;margin-top:0;">Tổng hợp Trơn Tru ngày {date_label}</h2>
-      <p style="color:#666;font-size:0.9rem;">Các việc mentee cần mentor xử lí (màu xám = đã xem, chưa xử lí):</p>
-      <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+      <h2 style="color:#eb2233;margin-top:0;">{title}</h2>
+      <p style="color:#666;font-size:0.9rem;margin-top:0;">Ngày {date_label}</p>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-top:1rem;">
         {''.join(rows_html)}
       </table>
     </div>

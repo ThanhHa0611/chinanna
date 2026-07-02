@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
+import ActivityInlineLink from './ActivityInlineLink';
 import ActivityKeeptrackBar from './ActivityKeeptrackBar';
 import {
   MENTEE_PARTICIPATION_CHOICES,
@@ -467,9 +468,10 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
               {activeKeeptrack.map((item) => (
                 <div key={item.id} className="profile-activities-keeptrack-item">
                   <p className="profile-activities-keeptrack-item-label muted">
-                    {feedLineText(item)}
+                    <ActivityInlineLink activity={item} />
                   </p>
                   <ActivityKeeptrackBar
+                    activity={item}
                     keeptrack={item.keeptrack}
                     hideHead
                     saving={Boolean(keeptrackSaving[item.id])}

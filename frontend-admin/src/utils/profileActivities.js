@@ -52,7 +52,7 @@ function stripLeadingVe(content) {
   return text;
 }
 
-export function compose_activity_name(data) {
+function buildActivityNameLine(data) {
   const activityType = (data?.activity_type || '').trim() || 'Khác';
   const organizer = (data?.organizer || '').trim();
   const content = stripLeadingVe(data?.content);
@@ -67,10 +67,17 @@ export function compose_activity_name(data) {
   return line.trim() || 'Hoạt động hồ sơ';
 }
 
+export function compose_activity_name(data) {
+  let line = buildActivityNameLine(data);
+  const link = (data?.link || '').trim();
+  if (link) line = `${line} ${link}`;
+  return line;
+}
+
 export const FEED_INLINE_LINK_LABEL = '(Link)';
 
 export function format_activity_feed_line(activity) {
-  let line = compose_activity_name(activity);
+  let line = buildActivityNameLine(activity);
   const stored = (activity?.activity_name || '').trim();
   if (stored && (line === 'Khác' || line === 'Hoạt động hồ sơ') && stored.length > line.length) {
     line = stored;
@@ -84,7 +91,7 @@ export function format_activity_feed_line(activity) {
 }
 
 export function feedLineText(activity) {
-  return compose_activity_name(activity);
+  return buildActivityNameLine(activity);
 }
 
 export function feedLineLink(activity) {

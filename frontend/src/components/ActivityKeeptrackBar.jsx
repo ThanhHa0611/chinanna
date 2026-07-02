@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { HDNK_NCKH_AWARD_LEVELS } from '../data/hdnkNckh';
+import ActivityInlineLink from './ActivityInlineLink';
 
 export default function ActivityKeeptrackBar({
   keeptrack,
+  activity = null,
   onComplete,
   onAbandon,
   saving = false,
@@ -75,7 +77,9 @@ export default function ActivityKeeptrackBar({
       <div className="profile-activity-keeptrack-fields">
         <div className="profile-activity-keeptrack-field">
           <span className="profile-activity-keeptrack-label">Tên cuộc thi</span>
-          <span className="profile-activity-keeptrack-value">{keeptrack.display_name || '—'}</span>
+          <span className="profile-activity-keeptrack-value">
+            <ActivityInlineLink activity={activity} fallback={keeptrack.display_name || '—'} />
+          </span>
         </div>
         <div className="profile-activity-keeptrack-field">
           <span className="profile-activity-keeptrack-label">Ngày bắt đầu</span>

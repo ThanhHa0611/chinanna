@@ -395,28 +395,3 @@ def notify_login_security_event(
     if updates:
         users.update_one({"_id": user["_id"]}, {"$set": updates})
 
-    if should_alert:
-        try:
-            from email_notify import send_mentee_login_anomaly_email
-            from services.notifications import mentor_branch_notify_emails
-
-            mentee_page_url = os.getenv(
-                "MENTOR_MENTEES_URL",
-                "http://localhost:5174/mentees",
-            ).strip()
-            account_label = "Phụ huynh" if user.get("role") == ROLE_PARENT else "Mentee"
-            mentor_name = (user.get("mentor") or "").strip()
-            notify_emails = mentor_branch_notify_emails(mentor_name) if mentor_name else []
-            for notify_email in notify_emails:
-                send_mentee_login_anomaly_email(
-                    to_email=notify_email,
-                    mentee_name=f"{account_label}: {user.get('full_name') or user.get('username', '')}",
-                    mentee_email=user.get("email", ""),
-                    mentor_name=mentor_name,
-                    unique_ip_count=unique_ips,
-                    unique_device_count=unique_devices,
-                    mentee_page_url=mentee_page_url,
-                )
-        except Exception:
-            pass
-
