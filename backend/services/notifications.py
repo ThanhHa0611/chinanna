@@ -39,16 +39,11 @@ from services.notifications import *
 from services.utils import *
 
 def mentor_branch_notify_emails(mentor_name: str) -> list[str]:
+    # Chỉ gửi về email trưởng branch — các tài khoản mentor thường chỉ nhận
+    # mail cấp quyền (duyệt mentee đăng ký), không nhận bảng tin hàng ngày.
     branch = (mentor_name or "").strip()
-    emails = set()
-    default_email = MENTOR_BRANCH_NOTIFY_EMAILS.get(branch, "")
-    if default_email:
-        emails.add(default_email.lower())
-    for doc in admins.find({"mentor_name": branch, "status": ADMIN_STATUS_APPROVED}):
-        email = (doc.get("email") or "").strip().lower()
-        if email:
-            emails.add(email)
-    return sorted(emails)
+    email = (MENTOR_BRANCH_NOTIFY_EMAILS.get(branch, "") or "").strip().lower()
+    return [email] if email else []
 
 
 def notify_mentors_mentee_document_upload(user: dict, doc_id: str):
