@@ -167,6 +167,34 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
     }
   };
 
+  const cancelRegistration = async (item) => {
+    if (
+      !window.confirm(
+        'Bạn có chắc muốn hủy đăng kí hoạt động này? Mentor sẽ không còn thấy báo danh của bạn.',
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const result = await api.cancelProfileActivityRegistration(item.id);
+      if (result?.activity) {
+        const patchItem = (row) =>
+          row.id === item.id ? { ...row, ...result.activity } : row;
+        setCurrentDay((day) =>
+          day ? { ...day, items: (day.items || []).map(patchItem) } : day,
+        );
+        setOtherDays((days) =>
+          days.map((day) => ({ ...day, items: (day.items || []).map(patchItem) })),
+        );
+      }
+      setError('');
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const registerActivity = async (item) => {
     const needsChoice = item.needs_participation_choice;
     const choice = registerChoice[item.id];
@@ -422,6 +450,15 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
               onClick={() => registerActivity(item)}
             >
               Báo danh
+            </button>
+          )}
+          {item.can_cancel_registration && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => cancelRegistration(item)}
+            >
+              Hủy đăng kí
             </button>
           )}
           <button type="button" className="btn btn-outline btn-sm" onClick={() => hideActivity(item.id)}>

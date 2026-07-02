@@ -1450,6 +1450,44 @@ def _mentee_awaiting_group_assignment(activity: dict, mentee_id: str, state: dic
     return _find_mentee_group(activity, mentee_id) is None
 
 
+def _mentee_can_cancel_registration(activity: dict, mentee_id: str, state: dict) -> bool:
+    if not state.get("registered_at"):
+        return False
+    if _normalize_keeptrack(state.get("keeptrack")).get("active"):
+        return False
+    if _mentee_requires_group_confirmation(activity, mentee_id, state):
+        return False
+    pending_abandon = state.get("keeptrack_abandon_pending") or {}
+    if pending_abandon.get("status") == "pending":
+        return False
+    return True
+
+
+def _reset_mentee_registration_state(state: dict) -> None:
+    state["registered_at"] = None
+    state["participation_choice"] = None
+    state["group_response_status"] = None
+    state["group_response_note"] = ""
+    state["group_response_at"] = None
+    state.pop("mentor_reject_pending", None)
+    state.pop("keeptrack_abandon_pending", None)
+    state.pop("keeptrack_abandon_last_rejection", None)
+    state.pop("keeptrack_pending_review", None)
+    state.pop("keeptrack", None)
+
+
+def _remove_mentee_from_all_groups(activity: dict, mentee_id: str) -> None:
+    for group in activity.get("groups", []):
+        group["mentee_ids"] = [
+            str(item) for item in (group.get("mentee_ids") or []) if str(item) != mentee_id
+        ]
+    activity["groups"] = [
+        group
+        for group in activity.get("groups", [])
+        if group.get("mentee_ids") or not _is_auto_solo_group(group)
+    ]
+
+
 def _normalize_importance(raw) -> int:
     try:
         value = int(raw)
@@ -1854,6 +1892,7 @@ def serialize_profile_activity_for_feed(
         "needs_participation_choice": _normalize_participation_mode(doc.get("participation_mode"))
         in {"both", "unknown"},
         "invited": bool(state.get("invited_at")) and not bool(state.get("registered_at")),
+        "can_cancel_registration": _mentee_can_cancel_registration(doc, mentee_id, state),
     }
     keeptrack = _serialize_keeptrack_for_feed(doc, state)
     if keeptrack:
@@ -2283,6 +2322,38 @@ def register_for_activity(
             description=f"Hoạt động: {activity_name}. Tiến độ đã tự động lưu vào Keep track.",
         )
     return refreshed
+
+
+def cancel_activity_registration(activity: dict, mentee: dict) -> dict:
+    mentee_id = str(mentee["_id"])
+    state = _get_mentee_state(activity, mentee_id)
+    if not state or not state.get("registered_at"):
+        raise ProfileActivityRegistrationError("Bạn chưa báo danh hoạt động này.")
+    if not _mentee_can_cancel_registration(activity, mentee_id, state):
+        raise ProfileActivityRegistrationError(
+            "Không thể hủy đăng kí ở trạng thái hiện tại. Vui lòng liên hệ mentor nếu cần."
+        )
+
+    now = datetime.now(timezone.utc)
+    if _is_individual_participant(activity, state):
+        _remove_keeptrack_hdnk_entry(mentee, state)
+    else:
+        _clear_keeptrack_on_reject(state)
+
+    _remove_mentee_from_all_groups(activity, mentee_id)
+    _reset_mentee_registration_state(state)
+
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "mentee_states": activity.get("mentee_states", []),
+                "groups": activity.get("groups", []),
+                "updated_at": now,
+            }
+        },
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
 
 
 def _group_payload(group: dict, *, approval_status: str | None = None) -> dict:

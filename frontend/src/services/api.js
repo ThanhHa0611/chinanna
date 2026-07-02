@@ -246,6 +246,11 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  cancelProfileActivityRegistration: (activityId) =>
+    request(`/api/profile-activities/${activityId}/cancel-registration`, {
+      method: 'POST',
+    }),
+
   respondProfileActivityGroup: (activityId, body) =>
     request(`/api/profile-activities/${activityId}/group-response`, {
       method: 'POST',

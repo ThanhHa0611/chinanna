@@ -11,6 +11,7 @@ from services.profile_activities import (
     ProfileActivityRegistrationError,
     activity_visible_to_mentee,
     build_mentee_activities_response,
+    cancel_activity_registration,
     complete_activity_keeptrack,
     mark_activity_read,
     register_for_activity,
@@ -139,6 +140,30 @@ def mentee_register_profile_activity(activity_id: str):
     except ProfileActivityRegistrationError as exc:
         return jsonify({"detail": str(exc)}), 400
     return jsonify({"message": "Đã báo danh"})
+
+
+@app.post("/api/profile-activities/<activity_id>/cancel-registration")
+@with_db
+def mentee_cancel_profile_activity_registration(activity_id: str):
+    user, error_response = get_authenticated_user()
+    if error_response:
+        return error_response
+    user, error_response = require_mentee_account(user)
+    if error_response:
+        return error_response
+
+    activity, error = _find_activity_or_404(activity_id, user)
+    if error:
+        return error
+    if not activity_visible_to_mentee(activity):
+        return jsonify({"detail": "Hoạt động không tồn tại"}), 404
+    try:
+        cancel_activity_registration(activity, user)
+    except ProfileActivityRegistrationError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    payload = serialize_profile_activity_for_feed(refreshed, user, include_hidden=True)
+    return jsonify({"message": "Đã hủy đăng kí", "activity": payload})
 
 
 @app.post("/api/profile-activities/<activity_id>/group-response")
