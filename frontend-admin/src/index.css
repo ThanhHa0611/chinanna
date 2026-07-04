@@ -3618,6 +3618,11 @@ html.device-phone .daily-summary-status {
   word-break: break-word;
 }
 
+.profile-activity-pending-actions {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
 .profile-activity-management-summary {
   display: flex;
   flex-wrap: wrap;

@@ -2093,15 +2093,7 @@ export default function ProfileActivities() {
                   <FeedLinePreview activity={item} />
                   {renderDeadlineBadge(item)}
                 </div>
-                <div className="action-cell">
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={() => openPendingActivityEdit(item.id)}
-                    disabled={saving || editSaving}
-                  >
-                    Chỉnh sửa
-                  </button>
+                <div className="action-cell profile-activity-pending-actions">
                   <button
                     type="button"
                     className="btn btn-primary btn-sm"
@@ -2109,6 +2101,14 @@ export default function ProfileActivities() {
                     disabled={saving}
                   >
                     Duyệt
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => openPendingActivityEdit(item.id)}
+                    disabled={saving || editSaving}
+                  >
+                    Chỉnh sửa
                   </button>
                   <button
                     type="button"
@@ -2666,7 +2666,7 @@ export default function ProfileActivities() {
               </>
             )}
             {canReview && selectedActivity.approval_status === 'pending_l1_approval' && (
-              <div className="action-cell">
+              <div className="action-cell profile-activity-pending-actions">
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
@@ -2674,6 +2674,14 @@ export default function ProfileActivities() {
                   disabled={saving}
                 >
                   Duyệt
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => openPendingActivityEdit(selectedActivity.id)}
+                  disabled={saving || editSaving}
+                >
+                  Chỉnh sửa
                 </button>
                 <button
                   type="button"
