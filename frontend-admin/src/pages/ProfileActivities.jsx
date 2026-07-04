@@ -437,6 +437,8 @@ export default function ProfileActivities() {
   const [bulkImportLoading, setBulkImportLoading] = useState(false);
   const [bulkApproving, setBulkApproving] = useState(false);
   const [manageFormCollapsed, setManageFormCollapsed] = useState(true);
+  const [pendingEditActivityId, setPendingEditActivityId] = useState('');
+  const manageSectionRef = useRef(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState(emptyForm());
   const [editSaving, setEditSaving] = useState(false);
@@ -721,11 +723,25 @@ export default function ProfileActivities() {
   }, [selectedActivity?.groups, finalizeSuccessByGroup]);
 
   useEffect(() => {
-    setEditOpen(false);
     setEditForm(activityToForm(selectedActivity));
     setInviteOpen(false);
     setInviteSelectedIds([]);
-  }, [selectedId, selectedActivity?.id, selectedActivity?.updated_at]);
+    if (pendingEditActivityId && selectedId === pendingEditActivityId && selectedActivity) {
+      setEditOpen(true);
+      setPendingEditActivityId('');
+    } else if (!pendingEditActivityId) {
+      setEditOpen(false);
+    }
+  }, [selectedId, selectedActivity?.id, selectedActivity?.updated_at, pendingEditActivityId, selectedActivity]);
+
+  const openPendingActivityEdit = (activityId) => {
+    setManageFormCollapsed(false);
+    setPendingEditActivityId(activityId);
+    setSelectedId(activityId);
+    window.requestAnimationFrame(() => {
+      manageSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  };
 
   useEffect(() => {
     if (!selectedId) {
@@ -1176,7 +1192,7 @@ export default function ProfileActivities() {
       });
       await loadActivities();
       await loadRegistrations(selectedActivity.id);
-      setMessage(result?.message || 'Đã chuyển mentee sang nhóm mới.');
+      setMessage(result?.message || 'Đã chuyển mentee sang nhóm — có thể chốt nhóm khi sẵn sàng.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1487,17 +1503,27 @@ export default function ProfileActivities() {
     );
   };
 
-  const renderGroupMemberActions = (item, currentGroupId) => (
+  const renderGroupMemberActions = (item, group) => {
+    const currentGroupId = group.group_id;
+    const isAutoSolo = Boolean(group.is_auto_solo);
+    const teamGroups = approvedGroups.filter((entry) => !entry.is_auto_solo);
+    const moveOptions = isAutoSolo
+      ? teamGroups
+      : teamGroups.filter((entry) => entry.group_id !== currentGroupId);
+
+    return (
     <div className="action-cell profile-activity-group-ops">
-      <button
-        type="button"
-        className="btn btn-outline btn-sm"
-        onClick={() => handleRemoveMenteeFromGroup(item.mentee_id, currentGroupId)}
-        disabled={saving}
-      >
-        Xóa khỏi nhóm
-      </button>
-      {approvedGroups.length > 1 && (
+      {!isAutoSolo && (
+        <button
+          type="button"
+          className="btn btn-outline btn-sm"
+          onClick={() => handleRemoveMenteeFromGroup(item.mentee_id, currentGroupId)}
+          disabled={saving}
+        >
+          Xóa khỏi nhóm
+        </button>
+      )}
+      {moveOptions.length > 0 && (
         <>
           <select
             value={moveTargets[item.mentee_id] || ''}
@@ -1508,14 +1534,12 @@ export default function ProfileActivities() {
               }))
             }
           >
-            <option value="">Chuyển sang...</option>
-            {approvedGroups
-              .filter((group) => group.group_id !== currentGroupId)
-              .map((group) => (
-                <option key={group.group_id} value={group.group_id}>
-                  {group.group_name}
-                </option>
-              ))}
+            <option value="">{isAutoSolo ? 'Chuyển sang nhóm...' : 'Chuyển sang...'}</option>
+            {moveOptions.map((entry) => (
+              <option key={entry.group_id} value={entry.group_id}>
+                {entry.group_name}
+              </option>
+            ))}
           </select>
           <button
             type="button"
@@ -1523,12 +1547,13 @@ export default function ProfileActivities() {
             onClick={() => handleMoveMenteeGroup(item.mentee_id)}
             disabled={saving}
           >
-            Chuyển
+            {isAutoSolo ? 'Chuyển sang nhóm' : 'Chuyển'}
           </button>
         </>
       )}
     </div>
-  );
+    );
+  };
 
   const renderUnassignedActions = (item) => (
     <div className="profile-activity-group-ops">
@@ -1545,7 +1570,7 @@ export default function ProfileActivities() {
             }
           >
             <option value="">Thêm vào nhóm...</option>
-            {approvedGroups.map((group) => (
+            {approvedGroups.filter((group) => !group.is_auto_solo).map((group) => (
               <option key={group.group_id} value={group.group_id}>
                 {group.group_name}
               </option>
@@ -1884,6 +1909,14 @@ export default function ProfileActivities() {
                   {renderDeadlineBadge(item)}
                 </div>
                 <div className="action-cell">
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => openPendingActivityEdit(item.id)}
+                    disabled={saving || editSaving}
+                  >
+                    Chỉnh sửa
+                  </button>
                   <button
                     type="button"
                     className="btn btn-primary btn-sm"
@@ -2251,7 +2284,7 @@ export default function ProfileActivities() {
         )}
       </div>
 
-      <div className="panel-card daily-summary-panel">
+      <div className="panel-card daily-summary-panel" ref={manageSectionRef}>
         <button
           type="button"
           className="daily-summary-head"
@@ -2553,7 +2586,7 @@ export default function ProfileActivities() {
                                 <td>{item.zalo_phone || '—'}</td>
                                 <td>{item.apply_major || '—'}</td>
                                 <td>{renderParticipationCell(item)}</td>
-                                <td>{renderGroupMemberActions(item, group.group_id)}</td>
+                                <td>{renderGroupMemberActions(item, group)}</td>
                               </tr>
                             ))}
                           </tbody>

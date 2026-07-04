@@ -423,7 +423,13 @@ def admin_add_mentee_to_group(activity_id: str, group_id: str):
         return jsonify({"detail": str(exc)}), 404
     profile_activities.update_one(
         {"_id": activity["_id"]},
-        {"$set": {"groups": activity.get("groups", []), "updated_at": datetime.now(timezone.utc)}},
+        {
+            "$set": {
+                "groups": activity.get("groups", []),
+                "mentee_states": activity.get("mentee_states", []),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
     )
     groups_response = activity.get("groups", [])
     if not requires_l1:
@@ -488,7 +494,13 @@ def admin_move_mentee_group(activity_id: str, mentee_id: str):
         return jsonify({"detail": str(exc)}), 404
     profile_activities.update_one(
         {"_id": activity["_id"]},
-        {"$set": {"groups": activity.get("groups", []), "updated_at": datetime.now(timezone.utc)}},
+        {
+            "$set": {
+                "groups": activity.get("groups", []),
+                "mentee_states": activity.get("mentee_states", []),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
     )
     response = {"group": group, "groups": activity.get("groups", [])}
     if requires_l1:

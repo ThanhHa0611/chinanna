@@ -2373,18 +2373,76 @@ def _group_payload(group: dict, *, approval_status: str | None = None) -> dict:
     }
 
 
+def _cleanup_empty_auto_solo_groups(activity: dict) -> None:
+    activity["groups"] = [
+        group
+        for group in activity.get("groups", [])
+        if not _is_auto_solo_group(group) or group.get("mentee_ids")
+    ]
+
+
+def _promote_mentee_into_group(
+    activity: dict,
+    mentee_id: str,
+    target_group: dict,
+    mentee: dict | None = None,
+) -> bool:
+    """Convert an individual (auto-solo) registration into group participation."""
+    if _is_auto_solo_group(target_group):
+        return False
+    state = _get_mentee_state(activity, mentee_id)
+    if not state:
+        return False
+    source_group = _find_mentee_group(activity, mentee_id)
+    was_individual = _is_individual_participant(activity, state) or _is_auto_solo_group(source_group)
+    if not was_individual:
+        return False
+
+    changed = False
+    if state.get("participation_choice") != "group":
+        state["participation_choice"] = "group"
+        changed = True
+    if (state.get("group_response_status") or "").strip().lower() in {"confirmed", "rejected"}:
+        state["group_response_status"] = None
+        state["group_response_note"] = ""
+        state["group_response_at"] = None
+        changed = True
+
+    keeptrack = _normalize_keeptrack(state.get("keeptrack"))
+    if keeptrack.get("active") or keeptrack.get("hdnk_entry_id"):
+        if not mentee and ObjectId.is_valid(mentee_id):
+            mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
+        if mentee:
+            _remove_keeptrack_hdnk_entry(mentee, state)
+        else:
+            _clear_keeptrack_on_reject(state)
+        changed = True
+    return changed
+
+
 def add_mentee_to_group(activity: dict, group_id: str, mentee_id: str, admin: dict) -> tuple[dict, bool]:
     group = _find_group(activity, group_id)
     if not group:
         raise ValueError("Nhóm không tồn tại")
+    source_group = _find_mentee_group(activity, mentee_id)
+    if source_group and source_group.get("group_id") != group_id:
+        source_group["mentee_ids"] = [
+            str(item)
+            for item in (source_group.get("mentee_ids") or [])
+            if str(item) != mentee_id
+        ]
     mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
     if mentee_id not in mentee_ids:
         mentee_ids.append(mentee_id)
-    return upsert_activity_group(
+    merged, requires_l1 = upsert_activity_group(
         activity,
         {"group_id": group_id, "group_name": group.get("group_name", ""), "mentee_ids": mentee_ids},
         admin,
     )
+    if not _is_auto_solo_group(merged):
+        _promote_mentee_into_group(activity, mentee_id, merged)
+    _cleanup_empty_auto_solo_groups(activity)
+    return merged, requires_l1
 
 
 def remove_mentee_from_group(
@@ -2407,26 +2465,25 @@ def move_mentee_to_group(
     target_group = _find_group(activity, target_group_id)
     if not target_group:
         raise ValueError("Nhóm đích không tồn tại")
+    if _is_auto_solo_group(target_group):
+        raise ValueError("Không thể chuyển mentee vào nhóm cá nhân tự động.")
     source_group = _find_mentee_group(activity, mentee_id)
     requires_l1 = admin_requires_l1_approval(admin)
     now = datetime.now(timezone.utc)
 
     if not requires_l1:
         if source_group and source_group.get("group_id") != target_group_id:
-            source_ids = [
+            source_group["mentee_ids"] = [
                 str(item)
                 for item in (source_group.get("mentee_ids") or [])
                 if str(item) != mentee_id
             ]
-            source_group["mentee_ids"] = source_ids
         target_ids = [str(item) for item in (target_group.get("mentee_ids") or [])]
         if mentee_id not in target_ids:
             target_ids.append(mentee_id)
         target_group["mentee_ids"] = target_ids
-        profile_activities.update_one(
-            {"_id": activity["_id"]},
-            {"$set": {"groups": activity.get("groups", []), "updated_at": now}},
-        )
+        _promote_mentee_into_group(activity, mentee_id, target_group)
+        _cleanup_empty_auto_solo_groups(activity)
         return target_group, False
 
     target_ids = [str(item) for item in (target_group.get("mentee_ids") or [])]
@@ -2602,9 +2659,18 @@ def approve_pending_group(activity: dict, group_id: str, admin: dict) -> dict:
     group["approval_status"] = PROFILE_ACTIVITY_APPROVAL_APPROVED
     group["approved_at"] = now
     group["approved_by_admin_id"] = str(admin["_id"])
+    for mentee_id in (group.get("mentee_ids") or []):
+        _promote_mentee_into_group(activity, str(mentee_id), group)
+    _cleanup_empty_auto_solo_groups(activity)
     profile_activities.update_one(
         {"_id": activity["_id"]},
-        {"$set": {"groups": activity.get("groups", []), "updated_at": now}},
+        {
+            "$set": {
+                "groups": activity.get("groups", []),
+                "mentee_states": activity.get("mentee_states", []),
+                "updated_at": now,
+            }
+        },
     )
     refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
     approved_group = _find_group(refreshed, group_id)
