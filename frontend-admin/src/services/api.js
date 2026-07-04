@@ -445,6 +445,11 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  dismissProfileActivityFinalizeReminder: (activityId, groupId) =>
+    request(
+      `/api/admin/profile-activities/${activityId}/groups/${groupId}/dismiss-finalize-reminder`,
+      { method: 'POST' },
+    ),
   finalizeProfileActivityGroup: (activityId, groupId) =>
     request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/finalize`, {
       method: 'POST',

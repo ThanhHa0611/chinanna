@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import openpyxl
@@ -1924,7 +1924,8 @@ def serialize_admin_profile_activity(doc: dict, *, admin: dict | None = None) ->
         "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else "",
         "updated_at": doc.get("updated_at").isoformat() if doc.get("updated_at") else "",
         "registration_count": len(registrations),
-        "groups": doc.get("groups", []),
+        "groups": _serialize_admin_groups(doc),
+        "unfinalized_group_reminders": list_unfinalized_group_reminders(doc),
         "importance": _normalize_importance(doc.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE)),
         "internal_note": doc.get("internal_note", ""),
         "participant_limit": _normalize_participant_limit(doc.get("participant_limit")),
@@ -2375,6 +2376,84 @@ def cancel_activity_registration(activity: dict, mentee: dict) -> dict:
     return profile_activities.find_one({"_id": activity["_id"]}) or activity
 
 
+FINALIZE_GROUP_REMINDER_INTERVAL = timedelta(hours=12)
+
+
+def _coerce_utc_datetime(value) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+    return None
+
+
+def group_needs_finalize_reminder(group: dict) -> bool:
+    if _is_auto_solo_group(group):
+        return False
+    if group.get("finalized_at"):
+        return False
+    if not (group.get("mentee_ids") or []):
+        return False
+    if not group_is_approved(group):
+        return False
+    dismissed = _coerce_utc_datetime(group.get("finalize_reminder_dismissed_at"))
+    if not dismissed:
+        return True
+    return datetime.now(timezone.utc) >= dismissed + FINALIZE_GROUP_REMINDER_INTERVAL
+
+
+def list_unfinalized_group_reminders(activity: dict) -> list[dict]:
+    reminders: list[dict] = []
+    for group in activity.get("groups", []) or []:
+        if not group_needs_finalize_reminder(group):
+            continue
+        reminders.append(
+            {
+                "group_id": group.get("group_id", ""),
+                "group_name": group.get("group_name", ""),
+                "member_count": len(group.get("mentee_ids") or []),
+            }
+        )
+    return reminders
+
+
+def dismiss_finalize_group_reminder(activity: dict, group_id: str) -> dict:
+    group = _find_group(activity, group_id)
+    if not group:
+        raise ValueError("Nhóm không tồn tại")
+    if not group_needs_finalize_reminder(group):
+        raise ValueError("Nhóm này không cần nhắc chốt nhóm.")
+    now = datetime.now(timezone.utc)
+    group["finalize_reminder_dismissed_at"] = now
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"groups": activity.get("groups", []), "updated_at": now}},
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def _serialize_admin_group_row(group: dict) -> dict:
+    row = dict(group)
+    for key in (
+        "submitted_at",
+        "approved_at",
+        "finalized_at",
+        "notification_sent_at",
+        "finalize_reminder_dismissed_at",
+    ):
+        value = row.get(key)
+        if value and hasattr(value, "isoformat"):
+            row[key] = value.isoformat()
+    row["needs_finalize_reminder"] = group_needs_finalize_reminder(group)
+    return row
+
+
+def _serialize_admin_groups(activity: dict) -> list[dict]:
+    return [_serialize_admin_group_row(group) for group in (activity.get("groups") or [])]
+
+
 def _group_payload(group: dict, *, approval_status: str | None = None) -> dict:
     status = approval_status or _normalize_approval_status(group.get("approval_status"))
     return {
@@ -2389,6 +2468,7 @@ def _group_payload(group: dict, *, approval_status: str | None = None) -> dict:
         "submitted_at": group.get("submitted_at"),
         "approved_at": group.get("approved_at"),
         "approved_by_admin_id": group.get("approved_by_admin_id", ""),
+        "finalize_reminder_dismissed_at": group.get("finalize_reminder_dismissed_at"),
     }
 
 

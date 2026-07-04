@@ -554,6 +554,7 @@ export default function ProfileActivities() {
   const { admin } = useAuth();
   const [form, setForm] = useState(emptyForm());
   const [activities, setActivities] = useState([]);
+  const [totalRegistrationCount, setTotalRegistrationCount] = useState(0);
   const [selectedId, setSelectedId] = useState('');
   const [registrations, setRegistrations] = useState([]);
   const [groupName, setGroupName] = useState('');
@@ -674,6 +675,11 @@ export default function ProfileActivities() {
     [progressTracking],
   );
 
+  const selectedFinalizeReminders = useMemo(
+    () => selectedActivity?.unfinalized_group_reminders || [],
+    [selectedActivity?.unfinalized_group_reminders, selectedActivity?.id],
+  );
+
   const updateEditForm = (key, value) => {
     setEditForm((prev) => ({ ...prev, [key]: value }));
   };
@@ -789,6 +795,7 @@ export default function ProfileActivities() {
     const data = await api.getProfileActivities();
     const items = Array.isArray(data) ? data : data?.items || [];
     setActivities(items);
+    setTotalRegistrationCount(Number(data?.total_registration_count) || 0);
     if (!selectedId && items.length) {
       setSelectedId(items[0].id);
     }
@@ -1416,6 +1423,26 @@ export default function ProfileActivities() {
         setLeaderPickerVisible((prev) => ({ ...prev, [groupId]: true }));
         delete finalizeTimeoutsRef.current[groupId];
       }, 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDismissFinalizeReminder = async (groupId) => {
+    if (!selectedActivity) return;
+    setSaving(true);
+    setError('');
+    try {
+      const result = await api.dismissProfileActivityFinalizeReminder(selectedActivity.id, groupId);
+      await loadActivities();
+      if (selectedId === selectedActivity.id) {
+        await loadRegistrations(selectedActivity.id);
+      }
+      setMessage(
+        result?.message || 'Đã ẩn nhắc nhở — sẽ hiện lại sau 12 giờ nếu nhóm vẫn chưa chốt.',
+      );
     } catch (err) {
       setError(err.message);
     } finally {
@@ -2479,7 +2506,12 @@ export default function ProfileActivities() {
           onClick={() => setManageFormCollapsed((v) => !v)}
           aria-expanded={!manageFormCollapsed}
         >
-          <span className="daily-summary-title">Quản lý hoạt động</span>
+          <span className="daily-summary-title">
+            Quản lý hoạt động
+            {totalRegistrationCount > 0 && (
+              <span className="profile-activity-manage-count-badge">{totalRegistrationCount}</span>
+            )}
+          </span>
           <span className="daily-summary-toggle">
             {manageFormCollapsed ? 'Mở rộng' : 'Thu gọn'}
           </span>
@@ -2694,6 +2726,41 @@ export default function ProfileActivities() {
               </div>
             )}
             <div className="profile-activity-registrations">
+              {selectedFinalizeReminders.length > 0 && (
+                <div className="profile-activity-finalize-reminders">
+                  {selectedFinalizeReminders.map((reminder) => (
+                    <div
+                      key={reminder.group_id}
+                      className="profile-activity-finalize-reminder"
+                      role="status"
+                    >
+                      <div className="profile-activity-finalize-reminder-text">
+                        <strong>Nhóm chưa chốt:</strong> {reminder.group_name} (
+                        {reminder.member_count} thành viên) — vui lòng chốt nhóm để mentee nhận
+                        thông báo.
+                      </div>
+                      <div className="action-cell">
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleFinalizeGroup(reminder.group_id)}
+                          disabled={saving}
+                        >
+                          Chốt nhóm
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => handleDismissFinalizeReminder(reminder.group_id)}
+                          disabled={saving}
+                        >
+                          Đã xem
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {unassignedRegistrations.length > 0 && (
                 <div className="profile-activity-registration-group">
                   <h4 className="profile-activity-registration-section-title">

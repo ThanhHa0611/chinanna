@@ -23,6 +23,7 @@ from services.profile_activities import (
     create_profile_activity,
     delete_activity,
     delete_activity_group,
+    dismiss_finalize_group_reminder,
     enforce_participant_capacity,
     finalize_group_and_sync_hdnk,
     group_is_approved,
@@ -209,7 +210,18 @@ def admin_list_profile_activities():
     cursor = profile_activities.find(_admin_activity_query(admin)).sort("created_at", -1)
     items = [serialize_admin_profile_activity(doc, admin=admin) for doc in cursor]
     total_pending_count = sum(item.get("pending_action_count", 0) for item in items)
-    return jsonify({"items": items, "total_pending_count": total_pending_count})
+    total_registration_count = sum(
+        item.get("registration_count", 0)
+        for item in items
+        if item.get("approval_status") != "pending_l1_approval"
+    )
+    return jsonify(
+        {
+            "items": items,
+            "total_pending_count": total_pending_count,
+            "total_registration_count": total_registration_count,
+        }
+    )
 
 
 @app.patch("/api/admin/profile-activities/<activity_id>")
@@ -579,6 +591,30 @@ def admin_delete_activity_group(activity_id: str, group_id: str):
     return jsonify(
         {
             "message": "Đã xóa nhóm — mentee (nếu có) trở về trạng thái chờ phân nhóm.",
+            "activity": serialize_admin_profile_activity(updated, admin=admin),
+        }
+    )
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/groups/<group_id>/dismiss-finalize-reminder")
+@with_db
+def admin_dismiss_finalize_group_reminder(activity_id: str, group_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+    try:
+        updated = dismiss_finalize_group_reminder(activity, group_id)
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify(
+        {
+            "message": "Đã ẩn nhắc nhở — sẽ hiện lại sau 12 giờ nếu nhóm vẫn chưa chốt.",
             "activity": serialize_admin_profile_activity(updated, admin=admin),
         }
     )
