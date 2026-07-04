@@ -1466,6 +1466,7 @@ def _mentee_can_cancel_registration(activity: dict, mentee_id: str, state: dict)
 def _reset_mentee_registration_state(state: dict) -> None:
     state["registered_at"] = None
     state["participation_choice"] = None
+    state["wants_group_leader"] = False
     state["group_response_status"] = None
     state["group_response_note"] = ""
     state["group_response_at"] = None
@@ -1683,6 +1684,7 @@ def _get_or_create_state(doc: dict, mentee_id: str) -> dict:
         "group_response_note": "",
         "group_response_at": None,
         "participation_choice": None,
+        "wants_group_leader": False,
     }
     states.append(state)
     return state
@@ -1794,6 +1796,7 @@ def serialize_admin_registration(activity: dict, state: dict, mentee: dict) -> d
         "mentor_reject_note": pending_reject.get("note", ""),
         "participation_choice": state.get("participation_choice") or "",
         "participation_choice_label": PARTICIPATION_MODE_LABELS.get(state.get("participation_choice") or "", ""),
+        "wants_group_leader": bool(state.get("wants_group_leader")),
         "awaiting_group_assignment": _mentee_awaiting_group_assignment(activity, mentee_id, state),
         "keeptrack": _serialize_keeptrack_for_feed(activity, state),
         "keeptrack_pending_review": (
@@ -2257,7 +2260,11 @@ def _resolve_registration_choice(activity: dict, participation_choice: str | Non
 
 
 def register_for_activity(
-    activity: dict, mentee: dict, *, participation_choice: str | None = None
+    activity: dict,
+    mentee: dict,
+    *,
+    participation_choice: str | None = None,
+    wants_group_leader: bool | None = None,
 ) -> dict:
     mentee_id = str(mentee["_id"])
     state = _get_or_create_state(activity, mentee_id)
@@ -2272,6 +2279,9 @@ def register_for_activity(
     )
     state["registered_at"] = now
     state["participation_choice"] = effective_choice
+    state["wants_group_leader"] = bool(
+        effective_choice == "group" and wants_group_leader
+    )
 
     if over_capacity:
         # Individual registrations are otherwise auto-confirmed immediately below
@@ -2320,6 +2330,15 @@ def register_for_activity(
             action="profile_activity_register",
             title=f"{mentee_name} báo danh hoạt động (cá nhân)",
             description=f"Hoạt động: {activity_name}. Tiến độ đã tự động lưu vào Keep track.",
+        )
+    elif effective_choice == "group" and state.get("wants_group_leader"):
+        activity_name = compose_activity_name(refreshed)
+        mentee_name = mentee.get("full_name") or mentee.get("username") or mentee.get("email", "")
+        notify_mentors_mentee_activity(
+            mentee,
+            action="profile_activity_register",
+            title=f"{mentee_name} báo danh hoạt động (nhóm) — đăng ký nhóm trưởng",
+            description=f"Hoạt động: {activity_name}. Mentee muốn làm nhóm trưởng.",
         )
     return refreshed
 

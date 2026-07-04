@@ -81,6 +81,7 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
   const [error, setError] = useState('');
   const [successToast, setSuccessToast] = useState('');
   const [registerChoice, setRegisterChoice] = useState({});
+  const [registerLeaderRequest, setRegisterLeaderRequest] = useState({});
   const [keeptrackSaving, setKeeptrackSaving] = useState({});
   const [expandedGroupViews, setExpandedGroupViews] = useState({});
   const [keeptrackExpanded, setKeeptrackExpanded] = useState(true);
@@ -195,9 +196,16 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
     }
   };
 
+  const isGroupRegistration = (item) => {
+    if (item.participation_mode === 'group') return true;
+    if (item.needs_participation_choice && registerChoice[item.id] === 'group') return true;
+    return false;
+  };
+
   const registerActivity = async (item) => {
     const needsChoice = item.needs_participation_choice;
     const choice = registerChoice[item.id];
+    const wantsLeader = Boolean(registerLeaderRequest[item.id]);
 
     if (needsChoice && !choice) {
       setError('Vui lòng chọn hình thức tham gia: Cá nhân hoặc Nhóm.');
@@ -206,17 +214,32 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
 
     const choiceLabel =
       MENTEE_PARTICIPATION_CHOICES.find((row) => row.value === choice)?.label || '';
-    const confirmText = needsChoice
+    let confirmText = needsChoice
       ? `Bạn chọn tham gia ${choiceLabel}. Xác nhận báo danh hoạt động này?`
       : 'Bạn có chắc muốn báo danh hoạt động này?';
+    if (wantsLeader && isGroupRegistration(item)) {
+      confirmText = needsChoice
+        ? `Bạn chọn tham gia ${choiceLabel} và đăng ký làm nhóm trưởng. Xác nhận báo danh?`
+        : 'Bạn đăng ký tham gia nhóm và làm nhóm trưởng. Xác nhận báo danh?';
+    }
     if (!window.confirm(confirmText)) return;
 
+    const body = {};
+    if (needsChoice) {
+      body.participation_choice = choice;
+    }
+    if (wantsLeader && isGroupRegistration(item)) {
+      body.wants_group_leader = true;
+    }
+
     try {
-      await api.registerProfileActivity(
-        item.id,
-        needsChoice ? { participation_choice: choice } : {},
-      );
+      await api.registerProfileActivity(item.id, body);
       setRegisterChoice((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      setRegisterLeaderRequest((prev) => {
         const next = { ...prev };
         delete next[item.id];
         return next;
@@ -434,14 +457,36 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
                     type="radio"
                     name={`participation-${item.id}`}
                     checked={registerChoice[item.id] === choice.value}
-                    onChange={() =>
-                      setRegisterChoice((prev) => ({ ...prev, [item.id]: choice.value }))
-                    }
+                    onChange={() => {
+                      setRegisterChoice((prev) => ({ ...prev, [item.id]: choice.value }));
+                      if (choice.value !== 'group') {
+                        setRegisterLeaderRequest((prev) => {
+                          const next = { ...prev };
+                          delete next[item.id];
+                          return next;
+                        });
+                      }
+                    }}
                   />
                   {choice.label}
                 </label>
               ))}
             </div>
+          )}
+          {!item.registered && isGroupRegistration(item) && (
+            <label className="checkbox-label profile-activity-leader-request">
+              <input
+                type="checkbox"
+                checked={Boolean(registerLeaderRequest[item.id])}
+                onChange={(event) =>
+                  setRegisterLeaderRequest((prev) => ({
+                    ...prev,
+                    [item.id]: event.target.checked,
+                  }))
+                }
+              />
+              Đăng ký làm nhóm trưởng
+            </label>
           )}
           {!item.registered && (
             <button

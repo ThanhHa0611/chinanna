@@ -13,6 +13,7 @@ import {
   participationModeDisplayLabel,
 } from '../utils/profileActivities';
 import { formatMenteeActivityInviteOption } from '../data/applyDegree';
+import { matchesNameSearch } from '../utils/searchByName';
 
 const ACTIVITY_TYPES = ['Cuộc thi', 'NCKH', 'HĐNK', 'Hội thảo', 'Chương trình hè', 'Dự án', 'Khác'];
 const MAJORS = [
@@ -68,7 +69,143 @@ function activityToForm(activity) {
   };
 }
 
-function ActivityContentFields({ form, updateField, toggleMajor, onParse, parsing }) {
+function ReferrerZaloPhoneField({ value, onChange, mentees, menteesLoading, onLoadMentees }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const sortedMentees = useMemo(
+    () =>
+      [...(mentees || [])].sort((a, b) =>
+        formatMenteeActivityInviteOption(a).localeCompare(
+          formatMenteeActivityInviteOption(b),
+          'vi',
+        ),
+      ),
+    [mentees],
+  );
+
+  const filteredMentees = useMemo(
+    () =>
+      sortedMentees.filter((mentee) =>
+        matchesNameSearch(mentee, searchQuery, [
+          'full_name',
+          'username',
+          'email',
+          'zalo_phone',
+        ]),
+      ),
+    [sortedMentees, searchQuery],
+  );
+
+  const selectedMenteeId = useMemo(() => {
+    const phone = (value || '').trim();
+    if (!phone) return '';
+    const match = sortedMentees.find((mentee) => (mentee.zalo_phone || '').trim() === phone);
+    return match?.id || '';
+  }, [sortedMentees, value]);
+
+  const togglePicker = () => {
+    if (pickerOpen) {
+      setPickerOpen(false);
+      return;
+    }
+    setPickerOpen(true);
+    onLoadMentees?.();
+  };
+
+  const handleSelectMentee = (mentee, checked) => {
+    if (!checked) {
+      if (selectedMenteeId === mentee.id) {
+        onChange('');
+      }
+      return;
+    }
+    const phone = (mentee.zalo_phone || '').trim();
+    if (!phone) return;
+    onChange(phone);
+  };
+
+  const handlePhoneChange = (event) => {
+    onChange(event.target.value);
+  };
+
+  return (
+    <div className="profile-activity-referrer-field">
+      <label>
+        SĐT Zalo người giới thiệu
+        <input
+          type="tel"
+          value={value}
+          onChange={handlePhoneChange}
+          placeholder="0901234567"
+          inputMode="numeric"
+        />
+        <span className="field-hint">
+          Nhập SĐT hoặc chọn mentee bên dưới. Chỉ cộng điểm giới thiệu khi lần đầu thêm SĐT cho hoạt
+          động này.
+        </span>
+      </label>
+      <button type="button" className="btn btn-outline btn-sm" onClick={togglePicker}>
+        {pickerOpen ? 'Ẩn danh sách mentee' : 'Chọn mentee'}
+      </button>
+      {pickerOpen && (
+        <div className="profile-activity-referrer-picker profile-activity-invite-panel">
+          <label className="profile-activity-referrer-search">
+            Tìm theo tên
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Nhập tên, email hoặc SĐT Zalo..."
+            />
+          </label>
+          {menteesLoading ? (
+            <p className="muted">Đang tải danh sách mentee…</p>
+          ) : filteredMentees.length === 0 ? (
+            <p className="muted">Không tìm thấy mentee phù hợp.</p>
+          ) : (
+            <ul className="profile-activity-invite-list">
+              {filteredMentees.map((mentee) => {
+                const phone = (mentee.zalo_phone || '').trim();
+                const checked = selectedMenteeId === mentee.id;
+                return (
+                  <li key={mentee.id}>
+                    <label className="profile-activity-invite-option checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!phone}
+                        onChange={(event) => handleSelectMentee(mentee, event.target.checked)}
+                      />
+                      <span>
+                        {formatMenteeActivityInviteOption(mentee)}
+                        {phone ? (
+                          <span className="muted"> · {phone}</span>
+                        ) : (
+                          <span className="muted"> · chưa có SĐT Zalo</span>
+                        )}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActivityContentFields({
+  form,
+  updateField,
+  toggleMajor,
+  onParse,
+  parsing,
+  referrerMentees,
+  referrerMenteesLoading,
+  onLoadReferrerMentees,
+}) {
   return (
     <>
       <label>
@@ -194,19 +331,13 @@ function ActivityContentFields({ form, updateField, toggleMajor, onParse, parsin
           rows={2}
         />
       </label>
-      <label>
-        SĐT Zalo người giới thiệu
-        <input
-          type="tel"
-          value={form.referrer_zalo_phone}
-          onChange={(e) => updateField('referrer_zalo_phone', e.target.value)}
-          placeholder="0901234567"
-          inputMode="numeric"
-        />
-        <span className="field-hint">
-          Chỉ cộng điểm giới thiệu khi lần đầu thêm SĐT cho hoạt động này.
-        </span>
-      </label>
+      <ReferrerZaloPhoneField
+        value={form.referrer_zalo_phone}
+        onChange={(phone) => updateField('referrer_zalo_phone', phone)}
+        mentees={referrerMentees}
+        menteesLoading={referrerMenteesLoading}
+        onLoadMentees={onLoadReferrerMentees}
+      />
       <div className="profile-activity-feed-preview">
         <p className="profile-activity-feed-preview-label">Tên hoạt động (tự động)</p>
         <p className="muted profile-activity-feed-preview-hint">
@@ -602,14 +733,7 @@ export default function ProfileActivities() {
     }
   };
 
-  const openInvitePanel = async () => {
-    if (inviteOpen) {
-      setInviteOpen(false);
-      setInviteSelectedIds([]);
-      return;
-    }
-    setInviteOpen(true);
-    setInviteSelectedIds([]);
+  const ensureMenteeDirectory = async () => {
     if (inviteMentees.length) return;
     setInviteMenteesLoading(true);
     setError('');
@@ -621,6 +745,17 @@ export default function ProfileActivities() {
     } finally {
       setInviteMenteesLoading(false);
     }
+  };
+
+  const openInvitePanel = async () => {
+    if (inviteOpen) {
+      setInviteOpen(false);
+      setInviteSelectedIds([]);
+      return;
+    }
+    setInviteOpen(true);
+    setInviteSelectedIds([]);
+    await ensureMenteeDirectory();
   };
 
   const toggleInviteMentee = (menteeId) => {
@@ -721,6 +856,32 @@ export default function ProfileActivities() {
       return next;
     });
   }, [selectedActivity?.groups, finalizeSuccessByGroup]);
+
+  useEffect(() => {
+    if (!selectedActivity?.groups?.length || !registrations.length) return;
+    setLeaderTargets((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const group of selectedActivity.groups) {
+        if (
+          group.is_auto_solo ||
+          !group.finalized_at ||
+          group.leader_mentee_id ||
+          finalizeSuccessByGroup[group.group_id]
+        ) {
+          continue;
+        }
+        const candidates = (group.mentee_ids || [])
+          .map((menteeId) => registrationByMenteeId.get(menteeId))
+          .filter((item) => item?.wants_group_leader);
+        if (candidates.length === 1 && !next[group.group_id]) {
+          next[group.group_id] = candidates[0].mentee_id;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [selectedActivity?.groups, registrations, registrationByMenteeId, finalizeSuccessByGroup]);
 
   useEffect(() => {
     setEditForm(activityToForm(selectedActivity));
@@ -1467,7 +1628,12 @@ export default function ProfileActivities() {
 
   const renderMenteeNameCell = (item) => (
     <>
-      <div>{item.mentee_name}</div>
+      <div>
+        {item.mentee_name}
+        {item.wants_group_leader && (
+          <span className="profile-activity-leader-request-badge">Đăng ký nhóm trưởng</span>
+        )}
+      </div>
       {item.mentee_profile_summary && (
         <div className="profile-activity-keeptrack-mentee-summary">{item.mentee_profile_summary}</div>
       )}
@@ -1589,6 +1755,12 @@ export default function ProfileActivities() {
     </div>
   );
 
+  const getLeaderPickerCandidates = (group) =>
+    (group.mentee_ids || [])
+      .map((menteeId) => registrationByMenteeId.get(menteeId))
+      .filter(Boolean)
+      .filter((item) => item.wants_group_leader);
+
   const renderGroupSectionHead = (group) => {
     const groupPending = group.approval_status === 'pending_l1_approval';
     const isFinalized = Boolean(group.finalized_at);
@@ -1600,6 +1772,7 @@ export default function ProfileActivities() {
       !showFinalizeSuccess &&
       Boolean(leaderPickerVisible[group.group_id]);
     const memberCount = (group.mentee_ids || []).length;
+    const leaderCandidates = getLeaderPickerCandidates(group);
 
     return (
       <div className="profile-activity-registration-group-head">
@@ -1655,7 +1828,7 @@ export default function ProfileActivities() {
             </>
           )}
           {showLeaderPicker && (
-            <>
+            <div className="profile-activity-group-leader-picker">
               <select
                 value={leaderTargets[group.group_id] || ''}
                 onChange={(e) =>
@@ -1666,11 +1839,17 @@ export default function ProfileActivities() {
                 }
               >
                 <option value="">Chọn nhóm trưởng...</option>
-                {(group.mentee_ids || []).map((menteeId) => (
-                  <option key={menteeId} value={menteeId}>
-                    {getMenteeDisplayName(menteeId)}
-                  </option>
-                ))}
+                {(group.mentee_ids || []).map((menteeId) => {
+                  const registration = registrationByMenteeId.get(menteeId);
+                  const name = getMenteeDisplayName(menteeId);
+                  const leaderSuffix = registration?.wants_group_leader ? ' (đăng ký nhóm trưởng)' : '';
+                  return (
+                    <option key={menteeId} value={menteeId}>
+                      {name}
+                      {leaderSuffix}
+                    </option>
+                  );
+                })}
               </select>
               <button
                 type="button"
@@ -1680,7 +1859,13 @@ export default function ProfileActivities() {
               >
                 Chọn nhóm trưởng
               </button>
-            </>
+              {leaderCandidates.length > 0 && (
+                <p className="muted profile-activity-leader-candidates-hint">
+                  Ứng viên nhóm trưởng:{' '}
+                  {leaderCandidates.map((item) => item.mentee_name).join(', ')}
+                </p>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -2270,6 +2455,9 @@ export default function ProfileActivities() {
                 toggleMajor={toggleMajor}
                 onParse={handleParse}
                 parsing={saving}
+                referrerMentees={inviteMentees}
+                referrerMenteesLoading={inviteMenteesLoading}
+                onLoadReferrerMentees={ensureMenteeDirectory}
               />
           {isL2 && (
             <p className="muted profile-activity-l2-note">
@@ -2436,6 +2624,9 @@ export default function ProfileActivities() {
                   toggleMajor={toggleEditMajor}
                   onParse={handleEditParse}
                   parsing={editSaving}
+                  referrerMentees={inviteMentees}
+                  referrerMenteesLoading={inviteMenteesLoading}
+                  onLoadReferrerMentees={ensureMenteeDirectory}
                 />
                 <div className="action-cell">
                   <button

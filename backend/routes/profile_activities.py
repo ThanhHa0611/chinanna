@@ -136,7 +136,12 @@ def mentee_register_profile_activity(activity_id: str):
     data = request.get_json(silent=True) or {}
     participation_choice = data.get("participation_choice")
     try:
-        register_for_activity(activity, user, participation_choice=participation_choice)
+        register_for_activity(
+            activity,
+            user,
+            participation_choice=participation_choice,
+            wants_group_leader=bool(data.get("wants_group_leader")),
+        )
     except ProfileActivityRegistrationError as exc:
         return jsonify({"detail": str(exc)}), 400
     return jsonify({"message": "Đã báo danh"})

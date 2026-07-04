@@ -3653,6 +3653,26 @@ html.device-phone .daily-summary-status {
   font-size: 0.95rem;
 }
 
+.profile-activity-referrer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.profile-activity-referrer-picker {
+  margin-top: 0.15rem;
+}
+
+.profile-activity-referrer-search {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.profile-activity-referrer-search input {
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
 .profile-activity-invite-panel {
   padding: 1rem;
   border: 1px solid var(--border);
@@ -3894,6 +3914,30 @@ html.device-phone .daily-summary-status {
 
 .profile-activity-group-leader-picker {
   margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.profile-activity-leader-request-badge {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  vertical-align: middle;
+  white-space: nowrap;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.profile-activity-leader-candidates-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
 }
 
 .profile-activity-deadline-badge {
