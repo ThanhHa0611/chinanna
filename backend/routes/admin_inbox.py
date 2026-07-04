@@ -50,8 +50,11 @@ def admin_inbox_list():
         ensure_stale_pending_daily_reminders,
         list_archive_days,
         list_inbox_for_admin,
+        merge_inbox_items,
         process_due_reminders,
+        serialize_inbox_task,
     )
+    from services.profile_activities import list_profile_activity_synthetic_inbox_items
 
     admin, error_response = get_authenticated_admin()
     if error_response:
@@ -62,7 +65,12 @@ def admin_inbox_list():
 
     ensure_stale_pending_daily_reminders(mentor_inbox)
     process_due_reminders(mentor_inbox, send_daily_inbox_summary_for_mentor)
-    items = list_inbox_for_admin(mentor_inbox, admin, limit=100, base_url=BACKEND_PUBLIC_URL)
+    real_items = list_inbox_for_admin(mentor_inbox, admin, limit=100, base_url=BACKEND_PUBLIC_URL)
+    synthetic_docs = list_profile_activity_synthetic_inbox_items(admin)
+    synthetic_items = [
+        serialize_inbox_task(doc, base_url=BACKEND_PUBLIC_URL) for doc in synthetic_docs
+    ]
+    items = merge_inbox_items(real_items, synthetic_items)
     pending = [item for item in items if item.get("status") == "pending"]
     board = build_daily_board(items)
     daily_summary = build_daily_summary(items)

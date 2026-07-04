@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import MenteeFilterDropdown from '../components/MenteeFilterDropdown';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
@@ -66,11 +66,16 @@ function isInboxItemDone(item) {
 }
 
 function isInboxItemPending(item) {
-  return item?.status === 'pending' && !isInboxItemDone(item);
+  return item?.status === 'pending' && !isInboxItemDone(item) && !item?.synthetic;
+}
+
+function inboxHeadline(item) {
+  return item?.summary_line || item?.action_line || item?.title || '—';
 }
 
 export default function Home() {
   const { admin } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [mentees, setMentees] = useState([]);
   const [feedback, setFeedback] = useState([]);
@@ -264,6 +269,11 @@ export default function Home() {
   };
 
   const handleViewInbox = async (item) => {
+    if (item?.synthetic && item?.nav_path) {
+      navigate(item.nav_path);
+      return;
+    }
+
     setInboxSavingId(item.id);
     setActionError('');
     try {
@@ -301,6 +311,12 @@ export default function Home() {
   };
 
   const handleConfirmInbox = async (taskId) => {
+    const item = inboxItems.find((row) => row.id === taskId);
+    if (item?.synthetic && item?.nav_path) {
+      navigate(item.nav_path);
+      return;
+    }
+
     setInboxSavingId(taskId);
     try {
       await api.confirmInboxTask(taskId);
@@ -341,7 +357,7 @@ export default function Home() {
     return (
       <div key={item.id} className={`daily-summary-row ${stateClass}`}>
         <div className="daily-summary-main">
-          <span className="daily-summary-action">{item.action_line || item.summary_line || item.title}</span>
+          <span className="daily-summary-action">{inboxHeadline(item)}</span>
           <span className={`daily-summary-status-line daily-summary-badge ${statusClass}`}>
             {statusLine}
           </span>
@@ -359,36 +375,40 @@ export default function Home() {
             >
               Xem
             </button>
-            <button
-              type="button"
-              className="btn btn-sm daily-summary-btn daily-summary-btn-done"
-              disabled={inboxSavingId === item.id}
-              onClick={() => handleConfirmInbox(item.id)}
-            >
-              Đã xử lí
-            </button>
-            <label className="daily-summary-reminder-field">
-              Hẹn xử lí (ngày)
-              <input
-                type="date"
-                value={reminderDate}
-                min={formatDateInputInVn(new Date())}
-                onChange={(e) =>
-                  setReminderDrafts((prev) => ({
-                    ...prev,
-                    [item.id]: e.target.value,
-                  }))
-                }
-              />
-            </label>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm daily-summary-btn"
-              disabled={inboxSavingId === item.id}
-              onClick={() => handleUpdateReminder(item.id)}
-            >
-              Lưu nhắc hẹn
-            </button>
+            {!item.synthetic && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-sm daily-summary-btn daily-summary-btn-done"
+                  disabled={inboxSavingId === item.id}
+                  onClick={() => handleConfirmInbox(item.id)}
+                >
+                  Đã xử lí
+                </button>
+                <label className="daily-summary-reminder-field">
+                  Hẹn xử lí (ngày)
+                  <input
+                    type="date"
+                    value={reminderDate}
+                    min={formatDateInputInVn(new Date())}
+                    onChange={(e) =>
+                      setReminderDrafts((prev) => ({
+                        ...prev,
+                        [item.id]: e.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm daily-summary-btn"
+                  disabled={inboxSavingId === item.id}
+                  onClick={() => handleUpdateReminder(item.id)}
+                >
+                  Lưu nhắc hẹn
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -406,7 +426,8 @@ export default function Home() {
       (isDone ? 'Đã xử lí' : isViewed ? 'Đã xem · chưa xử lí' : 'Chưa xem');
     const processedByLabel = item.processed_by_label || item.processed_by_name || '';
     const reminderDate = reminderDrafts[item.id] ?? vnTomorrowDateInputValue();
-    const actionLine = item.action_line || item.summary_line || item.title || '—';
+    const actionLine = inboxHeadline(item);
+    const isSynthetic = Boolean(item.synthetic);
 
     return (
       <div key={item.id} className={`home-inbox-item ${stateClass}`}>
@@ -445,36 +466,40 @@ export default function Home() {
             >
               Xem
             </button>
-            <button
-              type="button"
-              className="btn btn-sm daily-summary-btn daily-summary-btn-done"
-              disabled={inboxSavingId === item.id || bulkInboxProcessing}
-              onClick={() => handleConfirmInbox(item.id)}
-            >
-              Đã xử lí
-            </button>
-            <label className="home-inbox-reminder-field">
-              Hẹn xử lí (ngày)
-              <input
-                type="date"
-                value={reminderDate}
-                min={formatDateInputInVn(new Date())}
-                onChange={(e) =>
-                  setReminderDrafts((prev) => ({
-                    ...prev,
-                    [item.id]: e.target.value,
-                  }))
-                }
-              />
-            </label>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm daily-summary-btn"
-              disabled={inboxSavingId === item.id || bulkInboxProcessing}
-              onClick={() => handleUpdateReminder(item.id)}
-            >
-              Lưu nhắc hẹn
-            </button>
+            {!isSynthetic && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-sm daily-summary-btn daily-summary-btn-done"
+                  disabled={inboxSavingId === item.id || bulkInboxProcessing}
+                  onClick={() => handleConfirmInbox(item.id)}
+                >
+                  Đã xử lí
+                </button>
+                <label className="home-inbox-reminder-field">
+                  Hẹn xử lí (ngày)
+                  <input
+                    type="date"
+                    value={reminderDate}
+                    min={formatDateInputInVn(new Date())}
+                    onChange={(e) =>
+                      setReminderDrafts((prev) => ({
+                        ...prev,
+                        [item.id]: e.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm daily-summary-btn"
+                  disabled={inboxSavingId === item.id || bulkInboxProcessing}
+                  onClick={() => handleUpdateReminder(item.id)}
+                >
+                  Lưu nhắc hẹn
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -542,7 +567,7 @@ export default function Home() {
             aria-expanded={!collapsedSections.inboxBoard}
           >
             <span className="daily-summary-title">
-              {inboxBoard?.title || 'Tổng hợp Trơn Tru'}
+              {inboxBoard?.title || 'Mail'}
             </span>
             <span className="daily-summary-toggle">
               {collapsedSections.inboxBoard ? 'Mở rộng' : 'Thu gọn'}

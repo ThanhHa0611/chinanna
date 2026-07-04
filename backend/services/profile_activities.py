@@ -2608,6 +2608,53 @@ def move_mentee_to_group(
     return pending_group, True
 
 
+def promote_individual_to_group_participation(
+    activity: dict, mentee_id: str, admin: dict
+) -> tuple[dict, bool]:
+    """Switch an individual mentee to group participation and enable chốt nhóm."""
+    state = _get_mentee_state(activity, mentee_id)
+    if not state or not state.get("registered_at"):
+        raise ValueError("Mentee chưa báo danh hoạt động này.")
+    if not _is_individual_participant(activity, state):
+        raise ValueError("Mentee không đăng ký hình thức cá nhân.")
+
+    group = _find_mentee_group(activity, mentee_id)
+    if not group:
+        raise ValueError("Mentee chưa được phân vào nhóm.")
+
+    requires_l1 = admin_requires_l1_approval(admin)
+    now = datetime.now(timezone.utc)
+    converting_auto_solo = _is_auto_solo_group(group)
+
+    if requires_l1 and converting_auto_solo:
+        pending_group = _group_payload(
+            {**group, "is_auto_solo": False},
+            approval_status=PROFILE_ACTIVITY_APPROVAL_PENDING,
+        )
+        pending_group["submitted_by_admin_id"] = str(admin["_id"])
+        pending_group["submitted_at"] = now
+        pending_group["notification_sent_at"] = None
+        pending_group["approved_at"] = None
+        pending_group["approved_by_admin_id"] = ""
+        groups = activity.get("groups") or []
+        for idx, row in enumerate(groups):
+            if row.get("group_id") == group.get("group_id"):
+                groups[idx] = pending_group
+                break
+        activity["groups"] = groups
+        return pending_group, True
+
+    if converting_auto_solo:
+        group["is_auto_solo"] = False
+
+    mentee = None
+    if ObjectId.is_valid(mentee_id):
+        mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
+    _promote_mentee_into_group(activity, mentee_id, group, mentee=mentee)
+    _cleanup_empty_auto_solo_groups(activity)
+    return group, False
+
+
 def upsert_activity_group(activity: dict, payload: dict, admin: dict) -> tuple[dict, bool]:
     groups = activity.get("groups") or []
     target_id = (payload.get("group_id") or "").strip()
@@ -3111,6 +3158,142 @@ def list_pending_l1_group_actions(activity: dict) -> list[dict]:
             }
         )
     return pending
+
+
+def _profile_activity_label(activity: dict) -> str:
+    return (activity.get("activity_name") or activity.get("description") or "Hoạt động hồ sơ").strip()
+
+
+def _mentee_display_name(mentee_id: str) -> str:
+    if not ObjectId.is_valid(mentee_id):
+        return mentee_id
+    mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
+    if not mentee:
+        return mentee_id
+    return (
+        mentee.get("full_name") or mentee.get("username") or mentee.get("email") or mentee_id
+    ).strip()
+
+
+def _parse_profile_activity_timestamp(value) -> datetime:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str) and value.strip():
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc)
+
+
+def list_profile_activity_synthetic_inbox_items(admin: dict) -> list[dict]:
+    from inbox_tasks import build_synthetic_inbox_item
+
+    mentor_name = (admin.get("mentor_name") or "").strip()
+    items: list[dict] = []
+    nav_path = "/profile-activities"
+
+    for activity in profile_activities.find(mentor_profile_activities_query(admin)).sort("updated_at", -1):
+        activity_id = str(activity["_id"])
+        activity_label = _profile_activity_label(activity)
+
+        if admin_can_review_profile_activity(admin):
+            if _normalize_approval_status(activity.get("approval_status")) == PROFILE_ACTIVITY_APPROVAL_PENDING:
+                created_at = _coerce_utc_datetime(activity.get("updated_at")) or _coerce_utc_datetime(
+                    activity.get("created_at")
+                )
+                items.append(
+                    build_synthetic_inbox_item(
+                        item_id=f"synthetic:pa-approval:{activity_id}",
+                        mentor_name=mentor_name,
+                        action="profile_activity_pending_approval",
+                        title=activity_label,
+                        description=f"Hoạt động chờ duyệt L1: {activity_label}",
+                        mentee_name="Hệ thống",
+                        created_at=created_at,
+                        nav_path=nav_path,
+                    )
+                )
+
+            for pending in list_pending_l1_group_actions(activity):
+                if pending.get("action_type") == "assign_group":
+                    group_name = (pending.get("group_name") or "").strip() or "nhóm"
+                    created_at = _parse_profile_activity_timestamp(pending.get("submitted_at"))
+                    items.append(
+                        build_synthetic_inbox_item(
+                            item_id=f"synthetic:pa-group:{activity_id}:{pending.get('group_id', '')}",
+                            mentor_name=mentor_name,
+                            action="profile_activity_pending_group",
+                            title=activity_label,
+                            description=f"Chờ duyệt phân nhóm {group_name} · {activity_label}",
+                            mentee_name="Hệ thống",
+                            created_at=created_at,
+                            nav_path=nav_path,
+                        )
+                    )
+                elif pending.get("action_type") == "reject_mentee":
+                    mentee_name = (pending.get("mentee_name") or "").strip() or "Mentee"
+                    created_at = _parse_profile_activity_timestamp(pending.get("submitted_at"))
+                    items.append(
+                        build_synthetic_inbox_item(
+                            item_id=f"synthetic:pa-reject:{activity_id}:{pending.get('mentee_id', '')}",
+                            mentor_name=mentor_name,
+                            action="profile_activity_pending_reject",
+                            title=activity_label,
+                            description=f"Chờ duyệt từ chối báo danh · {activity_label}",
+                            mentee_name=mentee_name,
+                            mentee_id=pending.get("mentee_id", ""),
+                            created_at=created_at,
+                            nav_path=nav_path,
+                        )
+                    )
+
+        for group in activity.get("groups", []) or []:
+            if not group_needs_finalize_reminder(group):
+                continue
+            group_name = (group.get("group_name") or "").strip() or "nhóm"
+            member_count = len(group.get("mentee_ids") or [])
+            created_at = (
+                _coerce_utc_datetime(group.get("finalize_reminder_dismissed_at"))
+                or _coerce_utc_datetime(group.get("approved_at"))
+                or _coerce_utc_datetime(activity.get("updated_at"))
+            )
+            items.append(
+                build_synthetic_inbox_item(
+                    item_id=f"synthetic:pa-finalize:{activity_id}:{group.get('group_id', '')}",
+                    mentor_name=mentor_name,
+                    action="profile_activity_finalize_group",
+                    title=activity_label,
+                    description=f"Nhóm {group_name} ({member_count} thành viên) cần chốt nhóm · {activity_label}",
+                    mentee_name="Hệ thống",
+                    created_at=created_at,
+                    nav_path=nav_path,
+                )
+            )
+
+        for state in activity.get("mentee_states", []) or []:
+            if not state.get("registered_at"):
+                continue
+            mentee_id = state.get("mentee_id", "")
+            if not _mentee_awaiting_group_assignment(activity, mentee_id, state):
+                continue
+            mentee_name = _mentee_display_name(mentee_id)
+            created_at = _coerce_utc_datetime(state.get("registered_at"))
+            items.append(
+                build_synthetic_inbox_item(
+                    item_id=f"synthetic:pa-assign:{activity_id}:{mentee_id}",
+                    mentor_name=mentor_name,
+                    action="profile_activity_assign_group",
+                    title=activity_label,
+                    description=f"Mentee cần phân nhóm · {activity_label}",
+                    mentee_name=mentee_name,
+                    mentee_id=mentee_id,
+                    created_at=created_at,
+                    nav_path=nav_path,
+                )
+            )
+
+    return items
 
 
 

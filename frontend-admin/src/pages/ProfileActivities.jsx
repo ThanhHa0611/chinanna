@@ -1368,6 +1368,28 @@ export default function ProfileActivities() {
     }
   };
 
+  const handlePromoteIndividualToGroup = async (menteeId) => {
+    if (!selectedActivity) return;
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.promoteProfileActivityIndividualToGroup(
+        selectedActivity.id,
+        menteeId,
+      );
+      await loadActivities();
+      await loadRegistrations(selectedActivity.id);
+      setMessage(
+        result?.message || 'Đã chuyển mentee sang hình thức nhóm — có thể chốt nhóm khi sẵn sàng.',
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const renderParticipationCell = (item) => {
     if (item.participation_choice_label) {
       return item.participation_choice_label;
@@ -1699,10 +1721,55 @@ export default function ProfileActivities() {
   const renderGroupMemberActions = (item, group) => {
     const currentGroupId = group.group_id;
     const isAutoSolo = Boolean(group.is_auto_solo);
+    const isIndividual = item.participation_choice === 'individual';
     const teamGroups = approvedGroups.filter((entry) => !entry.is_auto_solo);
     const moveOptions = isAutoSolo
       ? teamGroups
       : teamGroups.filter((entry) => entry.group_id !== currentGroupId);
+
+    if (isIndividual) {
+      return (
+        <div className="action-cell profile-activity-group-ops">
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => handlePromoteIndividualToGroup(item.mentee_id)}
+            disabled={saving}
+          >
+            Chuyển sang nhóm
+          </button>
+          {renderRejectRegistrationButton(item)}
+          {moveOptions.length > 0 && (
+            <>
+              <select
+                value={moveTargets[item.mentee_id] || ''}
+                onChange={(e) =>
+                  setMoveTargets((prev) => ({
+                    ...prev,
+                    [item.mentee_id]: e.target.value,
+                  }))
+                }
+              >
+                <option value="">Chuyển sang nhóm khác...</option>
+                {moveOptions.map((entry) => (
+                  <option key={entry.group_id} value={entry.group_id}>
+                    {entry.group_name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => handleMoveMenteeGroup(item.mentee_id)}
+                disabled={saving}
+              >
+                Chuyển
+              </button>
+            </>
+          )}
+        </div>
+      );
+    }
 
     return (
     <div className="action-cell profile-activity-group-ops">

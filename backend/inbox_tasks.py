@@ -37,8 +37,19 @@ SECTION_DEFINITIONS: list[dict] = [
         "actions": {"hdnk_nckh_update", "profile_activity_keeptrack", "profile_activity_keeptrack_abandon", "profile_activity_register"},
     },
     {
+        "key": "profile_activities_admin",
+        "label": "5. Quản lý hoạt động hồ sơ",
+        "actions": {
+            "profile_activity_pending_approval",
+            "profile_activity_pending_group",
+            "profile_activity_pending_reject",
+            "profile_activity_finalize_group",
+            "profile_activity_assign_group",
+        },
+    },
+    {
         "key": "other",
-        "label": "5. Khác",
+        "label": "6. Khác",
         "actions": {"preferred_schools", "profile_update"},
     },
 ]
@@ -52,6 +63,11 @@ ACTION_SUMMARY_VERBS: dict[str, str] = {
     "profile_activity_keeptrack": "cập nhật tiến độ hoạt động hồ sơ",
     "profile_activity_keeptrack_abandon": "yêu cầu từ bỏ hoạt động hồ sơ",
     "profile_activity_register": "báo danh hoạt động hồ sơ",
+    "profile_activity_pending_approval": "chờ duyệt hoạt động hồ sơ",
+    "profile_activity_pending_group": "chờ duyệt phân nhóm",
+    "profile_activity_pending_reject": "chờ duyệt từ chối báo danh",
+    "profile_activity_finalize_group": "cần chốt nhóm",
+    "profile_activity_assign_group": "cần phân nhóm mentee",
     "preferred_schools": "cập nhật trường ưa thích",
     "profile_update": "cập nhật hồ sơ",
 }
@@ -130,6 +146,17 @@ def format_mentee_action_line(doc: dict) -> str:
         detail = doc.get("description") or doc.get("title") or ""
         if action in ("document_upload", "document_request") and detail:
             return f"{mentee} {verb}: {detail}"
+        profile_admin_actions = {
+            "profile_activity_pending_approval",
+            "profile_activity_pending_group",
+            "profile_activity_pending_reject",
+            "profile_activity_finalize_group",
+            "profile_activity_assign_group",
+        }
+        if action in profile_admin_actions:
+            label = (doc.get("title") or doc.get("description") or "").strip()
+            if label:
+                return f"{mentee} {verb}: {label}"
         return f"{mentee} {verb}"
     title = doc.get("title") or doc.get("description") or "Có cập nhật mới"
     return f"{mentee} · {title}"
@@ -142,7 +169,7 @@ def format_task_summary_line(doc: dict) -> str:
         local = created.astimezone(VN_TZ)
         date_part = f"{local.day}/{local.month}/{local.year}"
     action_line = format_mentee_action_line(doc)
-    return f"{date_part} {action_line}" if date_part else action_line
+    return f"{date_part} · {action_line}" if date_part else action_line
 
 
 def format_reminder_hint(next_reminder_at) -> str:
@@ -274,6 +301,13 @@ def serialize_inbox_task(doc: dict, *, base_url: str = "") -> dict:
         "reminder_interval_hours": doc.get("reminder_interval_hours", DEFAULT_REMINDER_HOURS),
         "viewed_at": doc["viewed_at"].isoformat() if doc.get("viewed_at") else "",
     }
+    payload["action_line"] = format_mentee_action_line(doc)
+    payload["status_line"] = format_task_status_line(doc)
+    payload["processed_by_label"] = (
+        format_processed_by_label(doc) if doc.get("status") == "done" else ""
+    )
+    payload["synthetic"] = bool(doc.get("synthetic"))
+    payload["nav_path"] = (doc.get("nav_path") or "").strip()
     if base_url:
         urls = inbox_urls(base_url, doc)
         payload["view_url"] = urls["view"]
@@ -281,6 +315,66 @@ def serialize_inbox_task(doc: dict, *, base_url: str = "") -> dict:
         payload["confirm_url"] = urls["confirm"]
         payload["snooze_urls"] = inbox_snooze_urls(base_url, doc)
     return payload
+
+
+def build_synthetic_inbox_item(
+    *,
+    item_id: str,
+    mentor_name: str,
+    action: str,
+    title: str,
+    description: str,
+    mentee_name: str = "Hệ thống",
+    mentee_id: str = "",
+    mentee_email: str = "",
+    created_at: datetime | None = None,
+    nav_path: str = "/profile-activities",
+) -> dict:
+    now = created_at or _now()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return {
+        "_id": item_id,
+        "synthetic": True,
+        "nav_path": nav_path,
+        "audience": "mentor",
+        "mentor_name": mentor_name,
+        "mentee_id": mentee_id,
+        "mentee_name": mentee_name,
+        "mentee_email": mentee_email,
+        "action": action,
+        "title": title,
+        "description": description,
+        "doc_id": "",
+        "has_file": False,
+        "status": "pending",
+        "created_at": now,
+        "processed_at": None,
+        "processed_via": "",
+        "processed_by": "",
+        "processed_by_name": "",
+        "next_reminder_at": now + timedelta(hours=DEFAULT_REMINDER_HOURS),
+        "reminder_interval_hours": DEFAULT_REMINDER_HOURS,
+        "last_reminder_at": None,
+        "viewed_at": None,
+    }
+
+
+def merge_inbox_items(*groups: list[dict]) -> list[dict]:
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for group in groups:
+        for item in group:
+            item_id = str(item.get("id") or item.get("_id") or "")
+            if not item_id or item_id in seen:
+                continue
+            seen.add(item_id)
+            merged.append(item)
+    merged.sort(
+        key=lambda row: _parse_dt(row.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    return merged
 
 
 def inbox_urls(base_url: str, task: dict) -> dict[str, str]:
@@ -429,8 +523,10 @@ def enrich_daily_summary_item(item: dict) -> dict:
     is_processed = item.get("status") == "done"
     processed_by_name = resolve_inbox_processed_by_name(item) if is_processed else ""
     processed_by_label = format_processed_by_label(item) if is_processed else ""
+    summary_line = item.get("summary_line") or format_task_summary_line(item)
     return {
         **item,
+        "summary_line": summary_line,
         "action_line": format_mentee_action_line(item),
         "is_processed": is_processed,
         "status_label": "Đã xử lí" if is_processed else "Chưa xử lí",
@@ -471,7 +567,7 @@ def build_daily_board(items: list[dict]) -> dict:
         )
     return {
         "date_label": today_label,
-        "title": f"Tổng hợp Trơn Tru ngày {today_label}",
+        "title": f"Mail · Tổng hợp Trơn Tru ngày {today_label}",
         "sections": sections,
     }
 

@@ -445,6 +445,11 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  promoteProfileActivityIndividualToGroup: (activityId, menteeId) =>
+    request(`/api/admin/profile-activities/${activityId}/registrations/${menteeId}/promote-to-group`, {
+      method: 'POST',
+    }),
+
   dismissProfileActivityFinalizeReminder: (activityId, groupId) =>
     request(
       `/api/admin/profile-activities/${activityId}/groups/${groupId}/dismiss-finalize-reminder`,

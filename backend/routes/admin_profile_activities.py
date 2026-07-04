@@ -36,6 +36,7 @@ from services.profile_activities import (
     list_pending_keeptrack_abandon_requests,
     list_progress_tracking_for_admin,
     move_mentee_to_group,
+    promote_individual_to_group_participation,
     notify_group_assignment,
     parse_profile_activities_bulk_excel,
     parse_profile_activity_from_description,
@@ -517,6 +518,40 @@ def admin_move_mentee_group(activity_id: str, mentee_id: str):
     response = {"group": group, "groups": activity.get("groups", [])}
     if requires_l1:
         response["message"] = "Đã gửi chuyển nhóm, chờ mentor cấp 1 duyệt."
+    return jsonify(response)
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/promote-to-group")
+@with_db
+def admin_promote_individual_to_group(activity_id: str, mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+    try:
+        group, requires_l1 = promote_individual_to_group_participation(activity, mentee_id, admin)
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "groups": activity.get("groups", []),
+                "mentee_states": activity.get("mentee_states", []),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+    response = {"group": group, "groups": activity.get("groups", [])}
+    if requires_l1:
+        response["message"] = "Đã gửi chuyển sang nhóm, chờ mentor cấp 1 duyệt."
+    else:
+        response["message"] = "Đã chuyển mentee sang hình thức nhóm — có thể chốt nhóm khi sẵn sàng."
     return jsonify(response)
 
 
