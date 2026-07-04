@@ -71,7 +71,14 @@ function DayBlock({ day, renderItem }) {
   );
 }
 
-export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUnviewedCountChange }) {
+export default function ProfileActivitiesSection({
+  user,
+  unviewedCount = 0,
+  onUnviewedCountChange,
+  emailNotifyActivities = false,
+  onEmailNotifyActivitiesChange,
+  emailActivitiesPrefSaving = false,
+}) {
   const [currentDay, setCurrentDay] = useState(null);
   const [otherDays, setOtherDays] = useState([]);
   const [activeKeeptrack, setActiveKeeptrack] = useState([]);
@@ -525,6 +532,21 @@ export default function ProfileActivitiesSection({ user, unviewedCount = 0, onUn
       <p className="profile-panel-desc">
         Theo dõi và đăng ký các hoạt động hỗ trợ làm đẹp hồ sơ apply.
       </p>
+
+      <div className="profile-card profile-section-email-pref">
+        <label className="profile-doc-request-check">
+          <input
+            type="checkbox"
+            checked={emailNotifyActivities}
+            disabled={emailActivitiesPrefSaving}
+            onChange={(event) => onEmailNotifyActivitiesChange?.(event.target.checked)}
+          />
+          Nhận email tóm tắt hoạt động (10h sáng hàng ngày, giờ VN)
+        </label>
+        <p className="muted profile-section-email-pref-hint">
+          Email gửi các hoạt động mentor cập nhật trong ngày trước. Thông báo trong app vẫn hoạt động.
+        </p>
+      </div>
 
       {successToast && (
         <div className="profile-activities-success-toast" role="status" aria-live="polite">

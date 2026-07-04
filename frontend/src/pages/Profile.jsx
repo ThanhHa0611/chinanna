@@ -1739,33 +1739,6 @@ function MenteeProfile() {
           </div>
 
           <div className="profile-card">
-            <h3>Thông báo email</h3>
-            <p className="profile-panel-desc profile-email-pref-desc">
-              Bật hoặc tắt email từ mentor. Thông báo trong app vẫn hoạt động bình thường.
-            </p>
-            <div className="profile-email-prefs">
-              <label className="profile-doc-request-check">
-                <input
-                  type="checkbox"
-                  checked={emailNotifyDocuments}
-                  disabled={emailPrefSaving === 'documents'}
-                  onChange={(e) => handleEmailNotifyDocumentsChange(e.target.checked)}
-                />
-                Nhận email khi mentor cập nhật giấy tờ
-              </label>
-              <label className="profile-doc-request-check">
-                <input
-                  type="checkbox"
-                  checked={emailNotifyActivities}
-                  disabled={emailPrefSaving === 'activities'}
-                  onChange={(e) => handleEmailNotifyActivitiesChange(e.target.checked)}
-                />
-                Nhận email tóm tắt hoạt động ngoại khóa (10h sáng hàng ngày)
-              </label>
-            </div>
-          </div>
-
-          <div className="profile-card">
             <h3>Đổi mật khẩu</h3>
             <form onSubmit={handlePasswordSubmit} className="auth-form">
               <label>
@@ -1819,6 +1792,21 @@ function MenteeProfile() {
             <span className="doc-hint-inline">?</span> bên cạnh từng mục để xem hướng dẫn chi
             tiết.
           </p>
+
+          <div className="profile-card profile-section-email-pref">
+            <label className="profile-doc-request-check">
+              <input
+                type="checkbox"
+                checked={emailNotifyDocuments}
+                disabled={emailPrefSaving === 'documents'}
+                onChange={(e) => handleEmailNotifyDocumentsChange(e.target.checked)}
+              />
+              Nhận email khi mentor cập nhật giấy tờ
+            </label>
+            <p className="muted profile-section-email-pref-hint">
+              Gửi ngay khi mentor sửa trạng thái hoặc nhận xét. Thông báo trong app vẫn hoạt động.
+            </p>
+          </div>
 
           <div className="profile-card profile-general-notes">
             <h3>Lưu ý chung</h3>
@@ -1979,6 +1967,9 @@ function MenteeProfile() {
           user={user}
           unviewedCount={profileActivitiesUnreadCount}
           onUnviewedCountChange={setProfileActivitiesUnreadCount}
+          emailNotifyActivities={emailNotifyActivities}
+          onEmailNotifyActivitiesChange={handleEmailNotifyActivitiesChange}
+          emailActivitiesPrefSaving={emailPrefSaving === 'activities'}
         />
       );
     }

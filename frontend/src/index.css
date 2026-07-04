@@ -1092,6 +1092,18 @@ body.screen-protected img {
   flex-shrink: 0;
 }
 
+.profile-section-email-pref {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.profile-section-email-pref-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .profile-doc-col {
   min-width: 0;
 }
