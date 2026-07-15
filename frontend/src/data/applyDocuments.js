@@ -203,9 +203,6 @@ export const MENTOR_APPLY_SETUP = {
   'Thanh Hà': {
     forwardEmail: 'cherrythanh06@gmail.com',
   },
-  'Mai Chi': {
-    forwardEmail: 'mochisjtu@gmail.com',
-  },
 };
 
 export const MENTOR_FORWARD_GUIDE = {

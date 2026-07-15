@@ -6,7 +6,6 @@ import { LOCATION_REQUIRED_MESSAGE, requestLoginLocation } from '../utils/loginL
 
 const MENTOR_TEAMS = [
   { value: 'Thanh Hà', label: 'Team Mentor Thanh Hà' },
-  { value: 'Mai Chi', label: 'Team Mentor Mai Chi' },
 ];
 
 export default function Register() {

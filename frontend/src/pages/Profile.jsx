@@ -101,7 +101,7 @@ function getLastMessagePreview(item) {
   return `${content.slice(0, 96)}…`;
 }
 
-const MENTORS = ['', 'Thanh Hà', 'Mai Chi'];
+const MENTORS = ['', 'Thanh Hà'];
 
 const ACCEPTED_FILE_TYPES = '.jpg,.jpeg,.png,.pdf,.doc,.docx';
 const ACCEPTED_FILE_HINT = 'JPG, PNG, PDF, DOC, DOCX';
