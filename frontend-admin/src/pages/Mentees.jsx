@@ -1806,6 +1806,9 @@ export default function Mentees() {
     );
   };
 
+  const uploadedDocumentsCount = menteeApplyDocuments.filter(
+    (doc) => doc.uploaded,
+  ).length;
   const approvedDocumentsCount = menteeApplyDocuments.filter(
     (doc) => doc.uploaded && doc.mentor_status === 'đã duyệt',
   ).length;
