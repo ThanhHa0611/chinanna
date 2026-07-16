@@ -13,9 +13,12 @@ from auth.validators import normalize_zalo_phone
 from config import ROLE_PARENT
 from database import mentor_inbox, profile_activities, users
 from services.apply_documents import (
+    MENTOR_APPLY_DIRECTION_FIELDS,
     mentee_keeptrack_profile_summary_line,
     mentee_keeptrack_profile_summary_parts,
     mentor_apply_direction_label,
+    mentor_apply_direction_wishes,
+    mentor_apply_directions_combined_label,
 )
 from services.hdnk_nckh import get_hdnk_nckh_entries_raw, normalize_hdnk_nckh_entry
 from services.notifications import notify_mentee_mentor_activity, notify_mentors_mentee_activity
@@ -1692,28 +1695,30 @@ def _get_or_create_state(doc: dict, mentee_id: str) -> dict:
 
 def _mentee_major_values(mentee: dict) -> set[str]:
     values = set()
+    direction_codes = mentor_apply_direction_wishes(mentee)
     free_text = [
         mentee.get("apply_direction", ""),
-        mentee.get("mentor_apply_direction", ""),
-        mentor_apply_direction_label(mentee.get("mentor_apply_direction", "")),
+        *(mentee.get(field, "") for field in MENTOR_APPLY_DIRECTION_FIELDS),
+        *(mentor_apply_direction_label(code) for code in direction_codes),
         mentee.get("scholarship_system", ""),
     ]
     lowered = " | ".join(str(item or "").lower() for item in free_text)
     for major, keywords in _MAJOR_KEYWORDS.items():
         if any(keyword in lowered for keyword in keywords):
             values.add(major)
-    code = (mentee.get("mentor_apply_direction") or "").strip().lower()
-    alias = _MAJOR_ALIASES.get(code)
-    if alias:
-        values.add(alias)
+    for code in direction_codes:
+        alias = _MAJOR_ALIASES.get(code)
+        if alias:
+            values.add(alias)
     return values
 
 
 def _mentee_free_text(mentee: dict) -> str:
+    direction_codes = mentor_apply_direction_wishes(mentee)
     parts = [
         mentee.get("apply_direction", ""),
-        mentee.get("mentor_apply_direction", ""),
-        mentor_apply_direction_label(mentee.get("mentor_apply_direction", "")),
+        *(mentee.get(field, "") for field in MENTOR_APPLY_DIRECTION_FIELDS),
+        *(mentor_apply_direction_label(code) for code in direction_codes),
     ]
     return " | ".join(str(item or "").lower() for item in parts)
 
@@ -1784,7 +1789,7 @@ def serialize_admin_registration(activity: dict, state: dict, mentee: dict) -> d
         "mentee_name": mentee.get("full_name") or mentee.get("username") or mentee.get("email", ""),
         "mentee_profile_summary": mentee_keeptrack_profile_summary_line(mentee),
         "zalo_phone": mentee.get("zalo_phone", ""),
-        "apply_major": mentor_apply_direction_label(mentee.get("mentor_apply_direction", ""))
+        "apply_major": mentor_apply_directions_combined_label(mentee)
         or mentee.get("apply_direction", ""),
         "group_name": _resolve_group_name_for_admin(activity, mentee_id),
         "group_response_status": state.get("group_response_status") or "",

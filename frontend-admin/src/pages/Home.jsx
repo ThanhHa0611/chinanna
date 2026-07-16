@@ -10,8 +10,10 @@ import {
   APPLY_DIRECTION_FILTER_OPTIONS,
   APPLY_LANGUAGE_FILTER_OPTIONS,
   applyDegreeLevelShortDisplay,
+  MENTOR_APPLY_DIRECTION_FIELDS,
+  mentorApplyDirectionCombinedLabel,
   mentorApplyDirectionLabel,
-  normalizeMentorApplyDirectionValue,
+  mentorApplyDirectionWishes,
   normalizeScholarshipSystemValue,
   researchDirectionDisplayText,
   scholarshipLanguageShortLabel,
@@ -144,7 +146,7 @@ export default function Home() {
         if (showDirectionFilter) {
           if (
             directionFilter !== 'all' &&
-            normalizeMentorApplyDirectionValue(mentee.mentor_apply_direction) !== directionFilter
+            !mentorApplyDirectionWishes(mentee).includes(directionFilter)
           ) {
             return false;
           }
@@ -159,7 +161,7 @@ export default function Home() {
           'full_name',
           'username',
           'zalo_phone',
-          ...(showDirectionFilter ? ['mentor_apply_direction'] : []),
+          ...(showDirectionFilter ? MENTOR_APPLY_DIRECTION_FIELDS : []),
         ]);
       }),
     [
@@ -915,7 +917,7 @@ export default function Home() {
                         <td>{mentee.full_name || mentee.username}</td>
                         {showDirectionColumn && (
                           <td>
-                            {mentee.mentor_apply_direction_label ||
+                            {mentorApplyDirectionCombinedLabel(mentee) ||
                               mentorApplyDirectionLabel(mentee.mentor_apply_direction)}
                           </td>
                         )}

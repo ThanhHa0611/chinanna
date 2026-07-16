@@ -374,7 +374,7 @@ def mentee_apply_language_summary(user: dict) -> str:
 def mentee_keeptrack_profile_summary_parts(user: dict) -> dict[str, str]:
     empty = "—"
     system = apply_degree_level_short_label(user.get("apply_degree_level", ""))
-    major = mentor_apply_direction_label(user.get("mentor_apply_direction", ""))
+    major = mentor_apply_directions_combined_label(user)
     if not major:
         major = str(user.get("apply_direction") or "").strip()
     research = research_direction_label(user.get("research_direction", ""))
@@ -445,6 +445,30 @@ def mentor_apply_direction_label(value: str) -> str:
         return MENTOR_APPLY_DIRECTION_LABELS.get(code, "")
     raw = (value or "").strip()
     return raw
+
+
+MENTOR_APPLY_DIRECTION_FIELDS = (
+    "mentor_apply_direction",
+    "mentor_apply_direction_2",
+    "mentor_apply_direction_3",
+)
+
+
+def mentor_apply_direction_wishes(user: dict) -> list[str]:
+    codes: list[str] = []
+    for key in MENTOR_APPLY_DIRECTION_FIELDS:
+        code = normalize_mentor_apply_direction(user.get(key, ""))
+        if code and code not in codes:
+            codes.append(code)
+    return codes
+
+
+def mentor_apply_directions_combined_label(user: dict) -> str:
+    labels = [
+        MENTOR_APPLY_DIRECTION_LABELS.get(code, "")
+        for code in mentor_apply_direction_wishes(user)
+    ]
+    return " / ".join(label for label in labels if label)
 
 
 def apply_doc_display_label(doc_id: str, scholarship_system: str) -> str:

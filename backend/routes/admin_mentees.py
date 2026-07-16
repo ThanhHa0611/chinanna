@@ -701,11 +701,25 @@ def admin_update_mentee_mentor_info(mentee_id: str):
     data = request.get_json(silent=True) or {}
     set_fields: dict = {}
 
-    if "mentor_apply_direction" in data:
-        direction = normalize_mentor_apply_direction(data.get("mentor_apply_direction", ""))
-        if data.get("mentor_apply_direction") and not direction:
-            return jsonify({"detail": "Hướng apply không hợp lệ"}), 400
-        set_fields["mentor_apply_direction"] = direction
+    direction_updates: dict = {}
+    for field in MENTOR_APPLY_DIRECTION_FIELDS:
+        if field in data:
+            code = normalize_mentor_apply_direction(data.get(field, ""))
+            if data.get(field) and not code:
+                return jsonify({"detail": "Hướng apply không hợp lệ"}), 400
+            direction_updates[field] = code
+
+    if direction_updates:
+        merged = {field: mentee.get(field, "") for field in MENTOR_APPLY_DIRECTION_FIELDS}
+        merged.update(direction_updates)
+        filled = [
+            normalize_mentor_apply_direction(merged[field])
+            for field in MENTOR_APPLY_DIRECTION_FIELDS
+            if normalize_mentor_apply_direction(merged[field])
+        ]
+        if len(filled) != len(set(filled)):
+            return jsonify({"detail": "Nguyện vọng không được trùng khối ngành"}), 400
+        set_fields.update(direction_updates)
 
     if "apply_degree_level" in data:
         degree = normalize_apply_degree_level(data.get("apply_degree_level", ""))

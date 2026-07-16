@@ -722,6 +722,26 @@ a:hover {
   min-width: 0;
 }
 
+.mentee-classification-wishes {
+  gap: 0.5rem;
+}
+
+.mentee-classification-wish {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.35rem;
+}
+
+.mentee-classification-wish-label {
+  font-size: 0.78rem;
+  color: var(--muted, #6b7280);
+}
+
+.mentee-info-grid-full {
+  grid-column: 1 / -1;
+}
+
 .mentee-classification-hint {
   margin-top: 0.3rem;
   font-size: 0.78rem;

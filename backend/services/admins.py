@@ -296,6 +296,15 @@ def serialize_admin_mentee_summary(user: dict, admin: dict | None = None) -> dic
         "mentor_apply_direction_label": mentor_apply_direction_label(
             user.get("mentor_apply_direction", ""),
         ),
+        "mentor_apply_direction_2": user.get("mentor_apply_direction_2", ""),
+        "mentor_apply_direction_2_label": mentor_apply_direction_label(
+            user.get("mentor_apply_direction_2", ""),
+        ),
+        "mentor_apply_direction_3": user.get("mentor_apply_direction_3", ""),
+        "mentor_apply_direction_3_label": mentor_apply_direction_label(
+            user.get("mentor_apply_direction_3", ""),
+        ),
+        "mentor_apply_direction_combined_label": mentor_apply_directions_combined_label(user),
         "apply_degree_level": user.get("apply_degree_level", ""),
         "apply_degree_level_label": apply_degree_level_label(user.get("apply_degree_level", "")),
         "preferred_schools_note": user.get("preferred_schools_note", ""),

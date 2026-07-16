@@ -9,8 +9,10 @@ import {
   APPLY_DEGREE_FILTER_OPTIONS,
   APPLY_LANGUAGE_FILTER_OPTIONS,
   applyDegreeLevelLabel,
+  MENTOR_APPLY_DIRECTION_FIELDS,
   menteeClassificationSummaryLine,
   menteeMaiChiClassificationLine,
+  mentorApplyDirectionCombinedLabel,
   mentorApplyDirectionLabel,
   normalizeScholarshipSystemValue,
   patchMenteeSummaryFromDetail,
@@ -259,6 +261,8 @@ function computeSectionSignatures(mentee) {
       mentee.zalo_phone,
       mentee.apply_direction,
       mentee.mentor_apply_direction,
+      mentee.mentor_apply_direction_2,
+      mentee.mentor_apply_direction_3,
       mentee.apply_degree_level,
       mentee.research_direction,
       mentee.term3_2027_language_semester,
@@ -432,7 +436,7 @@ export default function Mentees() {
   const [attentionRevision, setAttentionRevision] = useState(0);
   const [classificationSaving, setClassificationSaving] = useState('');
   const menteeApplyDirectionSubtitle = (mentee) =>
-    mentee?.mentor_apply_direction_label ||
+    mentorApplyDirectionCombinedLabel(mentee) ||
     mentorApplyDirectionLabel(mentee?.mentor_apply_direction);
 
   const menteeDisplayName = (mentee) =>
@@ -1178,6 +1182,9 @@ export default function Mentees() {
   const canEditClassification = Boolean(isLevel1 || isSuperAdmin);
   const showThanhHaClassification = isThanhHaL1 && selectedIsThanhHaMentee;
   const showMaiChiClassification = isMaiChiL1 && selectedIsMaiChiMentee;
+  const selectedTeamMatches =
+    (isThanhHa && selectedIsThanhHaMentee) || (isMaiChi && selectedIsMaiChiMentee);
+  const canL2EditDirection = !canEditClassification && selectedTeamMatches;
 
   const handleDeleteMentee = async () => {
     if (!selectedMentee) return;
@@ -1925,7 +1932,7 @@ export default function Mentees() {
           'email',
           'zalo_phone',
           'apply_direction',
-          'mentor_apply_direction',
+          ...MENTOR_APPLY_DIRECTION_FIELDS,
           'apply_degree_level_label',
         ]);
       }),
@@ -2220,7 +2227,9 @@ export default function Mentees() {
                               ? 'Chọn khối ngành, phương hướng NC, hệ apply, hệ tiếng và kì tiếng — đồng bộ với bảng Tổng quan ở Trang chủ.'
                               : showMaiChiClassification
                                 ? 'Chọn ngành, hệ apply và hệ tiếng — hiển thị dạng Ngành - Hệ - Tiếng ở danh sách mentee.'
-                                : 'Chọn hệ apply cho mentee.'}
+                                : canL2EditDirection
+                                  ? 'Chọn khối ngành (nguyện vọng 1, 2, 3) cho mentee.'
+                                  : 'Chọn hệ apply cho mentee.'}
                           </p>
                         </div>
                         {canEditClassification ? (
@@ -2236,11 +2245,25 @@ export default function Mentees() {
                           />
                         ) : (
                           <div className="mentee-info-grid">
-                            {(showThanhHaClassification || showMaiChiClassification) && (
-                              <div>
-                                <span className="info-label">Ngành / Hướng apply</span>
-                                <strong>{menteeApplyDirectionSubtitle(selectedMentee) || '—'}</strong>
+                            {canL2EditDirection ? (
+                              <div className="mentee-info-grid-full">
+                                <MenteeClassificationFields
+                                  mentee={selectedMentee}
+                                  savingField={classificationSaving}
+                                  onFieldChange={handleClassificationChange}
+                                  showDirection
+                                  showDegree={false}
+                                />
                               </div>
+                            ) : (
+                              (showThanhHaClassification || showMaiChiClassification) && (
+                                <div>
+                                  <span className="info-label">Ngành / Hướng apply</span>
+                                  <strong>
+                                    {menteeApplyDirectionSubtitle(selectedMentee) || '—'}
+                                  </strong>
+                                </div>
+                              )
                             )}
                             {showThanhHaClassification && (
                               <div>

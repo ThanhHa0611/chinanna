@@ -5,6 +5,7 @@ import { formatDateTime } from '../utils/formatDateTime';
 import { formatLevel1MentorLine } from '../utils/mentorDisplay';
 import {
   applyDegreeLevelLabel,
+  mentorApplyDirectionCombinedLabel,
   term3LanguageSemesterLabel,
 } from '../data/applyDegree';
 
@@ -176,16 +177,22 @@ export default function MenteeDetail() {
           <div>
             <span className="info-label">Họ tên</span>
             <strong>{mentee.full_name || '—'}</strong>
-            {(mentee.mentor_apply_direction_label || mentee.mentor_apply_direction || '').trim() && (
+            {(mentorApplyDirectionCombinedLabel(mentee) ||
+              mentee.mentor_apply_direction_label ||
+              mentee.mentor_apply_direction ||
+              '').trim() && (
               <p className="mentee-apply-direction-under-name">
-                {mentee.mentor_apply_direction_label || mentee.mentor_apply_direction}
+                {mentorApplyDirectionCombinedLabel(mentee) ||
+                  mentee.mentor_apply_direction_label ||
+                  mentee.mentor_apply_direction}
               </p>
             )}
           </div>
           <div>
             <span className="info-label">Hướng apply</span>
             <strong>
-              {mentee.mentor_apply_direction_label ||
+              {mentorApplyDirectionCombinedLabel(mentee) ||
+                mentee.mentor_apply_direction_label ||
                 mentee.mentor_apply_direction?.trim() ||
                 '—'}
             </strong>

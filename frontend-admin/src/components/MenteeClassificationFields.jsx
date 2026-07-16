@@ -63,28 +63,51 @@ export default function MenteeClassificationFields({
   if (!mentee) return null;
 
   const id = menteeId || mentee.id;
-  const directionValue = normalizeMentorApplyDirectionValue(mentee.mentor_apply_direction);
 
   const isSaving = (field) => savingField === `${id}:${field}`;
+
+  const wishFields = [
+    { field: 'mentor_apply_direction', label: 'Nguyện vọng 1' },
+    { field: 'mentor_apply_direction_2', label: 'Nguyện vọng 2 (nếu có)' },
+    { field: 'mentor_apply_direction_3', label: 'Nguyện vọng 3 (nếu có)' },
+  ];
+  const wishValues = wishFields.map(({ field }) =>
+    normalizeMentorApplyDirectionValue(mentee[field]),
+  );
 
   return (
     <div className="mentee-classification-grid">
       {showDirection && (
-        <label className="mentee-classification-field">
+        <div className="mentee-classification-field mentee-classification-wishes">
           <span className="info-label">Hướng apply (khối ngành)</span>
-          <select
-            className={selectClassName}
-            value={directionValue}
-            disabled={disabled || isSaving('mentor_apply_direction')}
-            onChange={(e) => onFieldChange(id, 'mentor_apply_direction', e.target.value)}
-          >
-            {MENTOR_APPLY_DIRECTION_OPTIONS.map((option) => (
-              <option key={option.value || 'empty'} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+          {wishFields.map(({ field, label }, index) => {
+            const currentValue = wishValues[index];
+            const takenByOthers = wishValues.filter((_, i) => i !== index);
+            const previousEmpty = index > 0 && !wishValues[index - 1];
+            return (
+              <label key={field} className="mentee-classification-wish">
+                <span className="mentee-classification-wish-label">{label}</span>
+                <select
+                  className={selectClassName}
+                  value={currentValue}
+                  disabled={disabled || isSaving(field) || previousEmpty}
+                  onChange={(e) => onFieldChange(id, field, e.target.value)}
+                >
+                  {MENTOR_APPLY_DIRECTION_OPTIONS.filter(
+                    (option) =>
+                      !option.value ||
+                      option.value === currentValue ||
+                      !takenByOthers.includes(option.value),
+                  ).map((option) => (
+                    <option key={option.value || 'empty'} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            );
+          })}
+        </div>
       )}
       {showResearchDirection && (
         <ResearchDirectionInput

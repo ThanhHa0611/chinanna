@@ -88,6 +88,30 @@ export function normalizeMentorApplyDirectionValue(value) {
   return LEGACY_DIRECTION_MAP[lowered] || LEGACY_DIRECTION_MAP[raw] || '';
 }
 
+export const MENTOR_APPLY_DIRECTION_FIELDS = [
+  'mentor_apply_direction',
+  'mentor_apply_direction_2',
+  'mentor_apply_direction_3',
+];
+
+export function mentorApplyDirectionWishes(mentee) {
+  const codes = [];
+  MENTOR_APPLY_DIRECTION_FIELDS.forEach((field) => {
+    const code = normalizeMentorApplyDirectionValue(mentee?.[field]);
+    if (code && !codes.includes(code)) codes.push(code);
+  });
+  return codes;
+}
+
+export function mentorApplyDirectionCombinedLabel(mentee) {
+  const combined = (mentee?.mentor_apply_direction_combined_label || '').trim();
+  if (combined) return combined;
+  const labels = mentorApplyDirectionWishes(mentee)
+    .map((code) => MENTOR_APPLY_DIRECTION_OPTIONS.find((item) => item.value === code)?.label)
+    .filter(Boolean);
+  return labels.join(' / ');
+}
+
 export function applyDegreeLevelLabel(value) {
   const match = APPLY_DEGREE_LEVELS.find((item) => item.value === (value || '').trim());
   return match?.label || '—';
@@ -167,7 +191,7 @@ export function menteeClassificationMiddleLabel(mentee) {
 
 export function menteeClassificationSummaryLine(mentee) {
   const direction =
-    mentee?.mentor_apply_direction_label ||
+    mentorApplyDirectionCombinedLabel(mentee) ||
     mentorApplyDirectionLabel(mentee?.mentor_apply_direction);
   const middle = menteeClassificationMiddleLabel(mentee);
   const language = scholarshipLanguageShortLabel(mentee);
@@ -177,7 +201,7 @@ export function menteeClassificationSummaryLine(mentee) {
 
 export function menteeMaiChiClassificationLine(mentee) {
   const major =
-    mentee?.mentor_apply_direction_label ||
+    mentorApplyDirectionCombinedLabel(mentee) ||
     mentorApplyDirectionLabel(mentee?.mentor_apply_direction);
   const degree =
     applyDegreeLevelShortLabel(mentee?.apply_degree_level) ||
@@ -190,7 +214,7 @@ export function menteeMaiChiClassificationLine(mentee) {
 /** Tên phụ cho mời tham gia HDNK: khối ngành-hướng NC-hệ */
 export function menteeActivityInviteLabel(mentee) {
   const major =
-    mentee?.mentor_apply_direction_label ||
+    mentorApplyDirectionCombinedLabel(mentee) ||
     mentorApplyDirectionLabel(mentee?.mentor_apply_direction);
   const research = researchDirectionDisplayText(mentee);
   const degree = applyDegreeLevelShortDisplay(mentee);
@@ -210,6 +234,13 @@ export function patchMenteeSummaryFromDetail(summary, detail) {
     mentor_apply_direction_label: detail.mentor_apply_direction_label || mentorApplyDirectionLabel(
       detail.mentor_apply_direction,
     ),
+    mentor_apply_direction_2: detail.mentor_apply_direction_2 || '',
+    mentor_apply_direction_2_label: detail.mentor_apply_direction_2_label || '',
+    mentor_apply_direction_3: detail.mentor_apply_direction_3 || '',
+    mentor_apply_direction_3_label: detail.mentor_apply_direction_3_label || '',
+    mentor_apply_direction_combined_label:
+      detail.mentor_apply_direction_combined_label ||
+      mentorApplyDirectionCombinedLabel(detail),
     apply_degree_level: detail.apply_degree_level || '',
     apply_degree_level_label: detail.apply_degree_level_label || applyDegreeLevelLabel(
       detail.apply_degree_level,
