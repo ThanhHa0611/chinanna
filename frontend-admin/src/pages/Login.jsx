@@ -47,7 +47,7 @@ export default function Login() {
       <div className="center-page">
         <div className="auth-shell">
           <div className="auth-brand">
-            <BrandMark subtitle="Mentor Trơn Tru" />
+            <BrandMark subtitle="Mentor Du học Trung Quốc" />
           </div>
           <div className="auth-card">
             <ForgotPasswordForm
@@ -65,7 +65,7 @@ export default function Login() {
     <div className="center-page">
       <div className="auth-shell">
         <div className="auth-brand">
-          <BrandMark subtitle="Mentor Trơn Tru" />
+          <BrandMark subtitle="Mentor Du học Trung Quốc" />
         </div>
         <div className="auth-card">
           <h2>Đăng nhập</h2>

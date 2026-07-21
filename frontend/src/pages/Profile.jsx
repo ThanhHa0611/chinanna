@@ -1657,7 +1657,7 @@ function MenteeProfile() {
                   autoComplete="off"
                 />
                 <span className="profile-field-hint">
-                  Tài khoản phụ huynh mặc định mật khẩu: TronTru2027 — xem hồ sơ con (chỉ đọc).
+                  Tài khoản phụ huynh mặc định mật khẩu: DuHocTQ2027 — xem hồ sơ con (chỉ đọc).
                 </span>
               </label>
               <label>

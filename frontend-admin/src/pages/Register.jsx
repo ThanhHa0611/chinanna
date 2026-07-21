@@ -48,7 +48,7 @@ export default function Register() {
     <div className="center-page">
       <div className="auth-shell auth-card-wide">
         <div className="auth-brand">
-          <BrandMark subtitle="Mentor Trơn Tru" />
+          <BrandMark subtitle="Mentor Du học Trung Quốc" />
         </div>
         <div className="auth-card">
           <h2>Đăng ký mới</h2>

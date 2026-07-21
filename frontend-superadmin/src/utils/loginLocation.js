@@ -1,5 +1,5 @@
 export const LOCATION_REQUIRED_MESSAGE =
-  'Vì mục đích an toàn và đảm bảo quyền lợi cho mentee Trơn Tru, bạn vui lòng đồng ý cấp quyền vị trí. Trơn Tru chỉ sử dụng thông tin này nội bộ và không mang mục đích doanh nghiệp.';
+  'Vì mục đích an toàn và đảm bảo quyền lợi cho mentee Du học Trung Quốc, bạn vui lòng đồng ý cấp quyền vị trí. Du học Trung Quốc chỉ sử dụng thông tin này nội bộ và không mang mục đích doanh nghiệp.';
 
 function geolocationErrorMessage(error) {
   if (!error) return LOCATION_REQUIRED_MESSAGE;

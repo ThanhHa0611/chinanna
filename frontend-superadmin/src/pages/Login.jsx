@@ -42,7 +42,7 @@ export default function Login() {
     <div className="center-page">
       <div className="auth-shell">
         <div className="auth-brand">
-          <h1>Trơn Tru</h1>
+          <h1>Du học Trung Quốc</h1>
           <p>Super Admin</p>
         </div>
         <div className="auth-card">

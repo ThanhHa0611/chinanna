@@ -23,7 +23,7 @@ export default function Home() {
   return (
     <div className="home-page">
       <section className="hero">
-        <div className="hero-badge">Trơn Tru Hội</div>
+        <div className="hero-badge">Du học Trung Quốc</div>
         <h1>
           Học bổng đang trên đường tới tay{' '}
           <span className="hero-clover" aria-hidden="true">
@@ -34,7 +34,7 @@ export default function Home() {
           Chăm chỉ luyện phỏng vấn để phỏng vấn thật trơn tru nha
         </p>
         <p className="hero-disclaimer">
-          Hệ thống chỉ support mentee Trơn Tru (phi lợi nhuận), vui lòng không chia sẻ dưới mọi hình thức
+          Hệ thống chỉ support mentee Du học Trung Quốc (phi lợi nhuận), vui lòng không chia sẻ dưới mọi hình thức
         </p>
 
         {user ? (
@@ -54,7 +54,7 @@ export default function Home() {
             </div>
             <img
               src={heroImageUrl}
-              alt="Trơn Tru Hội"
+              alt="Du học Trung Quốc"
               className="hero-card-image"
             />
           </div>

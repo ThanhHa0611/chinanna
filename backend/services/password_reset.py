@@ -85,7 +85,7 @@ def request_password_reset_otp(*, email: str, account_type: str) -> tuple[dict, 
         upsert=True,
     )
 
-    label = "Mentor Trơn Tru" if account_type == ACCOUNT_MENTOR else "Trơn Tru"
+    label = "Mentor Du học Trung Quốc" if account_type == ACCOUNT_MENTOR else "Du học Trung Quốc"
     sent = send_password_reset_otp_email(
         to_email=email,
         otp=otp,

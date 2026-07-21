@@ -40,7 +40,7 @@ export default function SuperAdminLayout({ mentorAlertCount = 0, menteeCount = n
 
         <div className="sidebar-brand">
 
-          <span className="sidebar-brand-title">Trơn Tru</span>
+          <span className="sidebar-brand-title">Du học Trung Quốc</span>
 
           <span className="sidebar-brand-sub">Super Admin</span>
 

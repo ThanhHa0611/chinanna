@@ -26,13 +26,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
 ROLE_MENTEE = "mentee"
 ROLE_PARENT = "parent"
 ROLE_ADMIN = "admin"
-PARENT_DEFAULT_PASSWORD = "TronTru2027"
+PARENT_DEFAULT_PASSWORD = "DuHocTQ2027"
 LOGIN_REQUEST_PENDING = "pending"
 LOGIN_REQUEST_APPROVED = "approved"
 LOGIN_REQUEST_REJECTED = "rejected"
 LOCATION_REQUIRED_MESSAGE = (
-    "Vì mục đích an toàn và đảm bảo quyền lợi cho mentee Trơn Tru, "
-    "bạn vui lòng đồng ý cấp quyền vị trí. Trơn Tru chỉ sử dụng thông tin này nội bộ "
+    "Vì mục đích an toàn và đảm bảo quyền lợi cho mentee Du học Trung Quốc, "
+    "bạn vui lòng đồng ý cấp quyền vị trí. Du học Trung Quốc chỉ sử dụng thông tin này nội bộ "
     "và không mang mục đích doanh nghiệp."
 )
 MAX_LOGIN_EVENTS = 100
@@ -135,7 +135,9 @@ APPLY_PROGRESS_PROGRESS_BASE = (
 )
 APPLY_PROGRESS_PROGRESS_L1_ONLY = "Chờ UP hồ sơ"
 APPLY_PROGRESS_PROGRESS_L2_ONLY = "Đã up xong còn thiếu tài liệu"
-HDNK_NCKH_PARTICIPATION_TYPES = ("cá nhân", "nhóm ngoài", "nhóm Trơn Tru")
+HDNK_NCKH_GROUP_INTERNAL = "nhóm Du học Trung Quốc"
+HDNK_NCKH_GROUP_INTERNAL_LEGACY = "nhóm Trơn Tru"
+HDNK_NCKH_PARTICIPATION_TYPES = ("cá nhân", "nhóm ngoài", HDNK_NCKH_GROUP_INTERNAL)
 HDNK_NCKH_PROGRESS_OPTIONS = ("mới tạo nhóm", "đang tiến hành", "đã hoàn thành")
 HDNK_NCKH_AWARD_LEVELS = ("giải 1", "giải 2", "giải 3", "khác")
 HDNK_NCKH_MAX_ENTRIES = 20

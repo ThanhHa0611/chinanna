@@ -53,7 +53,7 @@ if errorlevel 1 (
 echo.
 echo [Backend]  http://127.0.0.1:8000
 echo [Mentee]   http://localhost:5173  ^(珍珠群 - do^)
-echo [Mentor]   http://localhost:5174/login  ^(Mentor Tron Tru - hong pastel^)
+echo [Mentor]   http://localhost:5174/login  ^(Mentor Du hoc Trung Quoc - hong pastel^)
 echo [Super]    http://localhost:5175/login  ^(Super Admin^)
 echo.
 echo Dang dong server cu tren cong 8000, 5173, 5174, 5175...
@@ -84,7 +84,7 @@ if not exist "%BACKEND%\service-account.json" (
 
 echo.
 echo Dang mo 4 cua so server...
-echo  - Mentor Tron Tru PHAI mo cua so "Phong Van - Mentor"
+echo  - Mentor Du hoc Trung Quoc PHAI mo cua so "Phong Van - Mentor"
 echo  - Super Admin PHAI mo cua so "Phong Van - Super Admin"
 echo  - Mentee PHAI mo cua so "Phong Van - Mentee"
 echo.

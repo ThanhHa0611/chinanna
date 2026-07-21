@@ -16,7 +16,7 @@ export function isLevel1MentorAccount(admin) {
 }
 
 export function getSidebarBrand(admin) {
-  const lines = [{ text: 'Trơn Tru', variant: 'title' }];
+  const lines = [{ text: 'Du học Trung Quốc', variant: 'title' }];
 
   if (admin?.is_super_admin && !admin?.mentor_name) {
     lines.push({ text: 'Quản trị hệ thống', variant: 'mentor' });

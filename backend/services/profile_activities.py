@@ -10,7 +10,7 @@ import openpyxl
 from bson import ObjectId
 
 from auth.validators import normalize_zalo_phone
-from config import ROLE_PARENT
+from config import ROLE_PARENT, HDNK_NCKH_GROUP_INTERNAL
 from database import mentor_inbox, profile_activities, users
 from services.apply_documents import (
     MENTOR_APPLY_DIRECTION_FIELDS,
@@ -556,7 +556,7 @@ def _resolve_keeptrack_hdnk_fields(activity: dict, state: dict, mentee_id: str) 
     if _is_individual_participant(activity, state):
         return "cá nhân", ""
     group = _find_mentee_display_group(activity, mentee_id, state)
-    return "nhóm Trơn Tru", (group or {}).get("group_name", "") or ""
+    return HDNK_NCKH_GROUP_INTERNAL, (group or {}).get("group_name", "") or ""
 
 
 def _compose_keeptrack_category(activity: dict) -> str:

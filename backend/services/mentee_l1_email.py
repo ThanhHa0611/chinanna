@@ -77,7 +77,7 @@ def _find_l1_reviewer(mentor_name: str) -> dict:
     if doc:
         return doc
     return {
-        "email": "l1-email-action@tronttru.local",
+        "email": "l1-email-action@duhoctrungquoc.local",
         "full_name": "Mentor cấp 1",
         "mentor_name": mentor_name,
         "is_level1_mentor": True,
@@ -128,7 +128,7 @@ def notify_l1_mentee_registration(mentee: dict) -> bool:
     for email in emails:
         if send_l1_mentee_request_email(
             to_email=email,
-            subject="[Mentor Trơn Tru] Mentee đăng ký mới cần duyệt",
+            subject="[Mentor Du học Trung Quốc] Mentee đăng ký mới cần duyệt",
             title="Mentee đăng ký mới",
             description=(
                 f"Mentee {mentee.get('username', '')} "

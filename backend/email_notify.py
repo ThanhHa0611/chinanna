@@ -226,11 +226,11 @@ def send_admin_access_request_email(
 
     admin_page_url = admin_page_url or MENTOR_ADMIN_URL
 
-    subject = "[Mentor Trơn Tru] Yêu cầu đăng ký mentor mới"
+    subject = "[Mentor Du học Trung Quốc] Yêu cầu đăng ký mentor mới"
 
     text_body = (
 
-        "Có yêu cầu đăng ký tài khoản mentor mới trên hệ thống Mentor Trơn Tru.\n\n"
+        "Có yêu cầu đăng ký tài khoản mentor mới trên hệ thống Mentor Du học Trung Quốc.\n\n"
 
         f"Email: {applicant_email}\n"
 
@@ -360,7 +360,7 @@ def send_mentee_document_upload_email(
     mentee_page_url = mentee_page_url or os.getenv(
         "MENTOR_MENTEES_URL", "http://localhost:5174/mentees"
     ).strip()
-    subject = "[Mentor Trơn Tru] Mentee upload giấy tờ mới"
+    subject = "[Mentor Du học Trung Quốc] Mentee upload giấy tờ mới"
     action_lines = []
     if view_url:
         action_lines.append(f"Xem giấy tờ (PDF): {view_url}")
@@ -368,7 +368,7 @@ def send_mentee_document_upload_email(
         action_lines.append(f"Xác nhận đã xử lí: {confirm_url}")
     action_lines.append(f"Mở app mentor: {mentee_page_url}")
     text_body = (
-        "Có giấy tờ apply mới cần xem trên hệ thống Mentor Trơn Tru.\n\n"
+        "Có giấy tờ apply mới cần xem trên hệ thống Mentor Du học Trung Quốc.\n\n"
         f"Mentee: {mentee_name}\n"
         f"Email mentee: {mentee_email}\n"
         f"Mentor phụ trách: {mentor_name}\n"
@@ -423,9 +423,9 @@ def send_mentor_inbox_activity_email(
     confirm_url: str = "",
     snooze_urls: list[dict] | None = None,
 ) -> bool:
-    subject = f"[Mentor Trơn Tru] {title}"
+    subject = f"[Mentor Du học Trung Quốc] {title}"
     text_body = (
-        "Có cập nhật mới từ mentee trên hệ thống Mentor Trơn Tru.\n\n"
+        "Có cập nhật mới từ mentee trên hệ thống Mentor Du học Trung Quốc.\n\n"
         f"Mentee: {mentee_name}\n"
         f"Email: {mentee_email}\n"
         f"Nội dung: {description}\n\n"
@@ -472,9 +472,9 @@ def send_mentee_activity_email(
     profile_url: str = "",
 ) -> bool:
     profile_url = profile_url or os.getenv("MENTEE_PROFILE_URL", "http://localhost:5173/profile").strip()
-    subject = f"[Trơn Tru] {title}"
+    subject = f"[Du học Trung Quốc] {title}"
     text_body = (
-        "Có cập nhật mới từ mentor trên hệ thống Trơn Tru.\n\n"
+        "Có cập nhật mới từ mentor trên hệ thống Du học Trung Quốc.\n\n"
         f"Mentee: {mentee_name}\n"
         f"Mentor: {mentor_name or 'Mentor'}\n"
         f"{description}\n\n"
@@ -513,9 +513,9 @@ def send_mentee_mentor_document_upload_email(
     view_url: str = "",
 ) -> bool:
     profile_url = profile_url or os.getenv("MENTEE_PROFILE_URL", "http://localhost:5173/profile").strip()
-    subject = "[Trơn Tru] Mentor đã tải lên giấy tờ cho bạn"
+    subject = "[Du học Trung Quốc] Mentor đã tải lên giấy tờ cho bạn"
     text_body = (
-        "Mentor đã tải lên giấy tờ apply trên hệ thống Trơn Tru.\n\n"
+        "Mentor đã tải lên giấy tờ apply trên hệ thống Du học Trung Quốc.\n\n"
         f"Mentee: {mentee_name}\n"
         f"Mentor: {mentor_name}\n"
         f"Giấy tờ: {document_label}\n\n"
@@ -560,9 +560,9 @@ def send_mentee_document_feedback_email(
     view_url: str = "",
 ) -> bool:
     profile_url = profile_url or os.getenv("MENTEE_PROFILE_URL", "http://localhost:5173/profile").strip()
-    subject = "[Trơn Tru] Mentor đã phản hồi giấy tờ của bạn"
+    subject = "[Du học Trung Quốc] Mentor đã phản hồi giấy tờ của bạn"
     text_body = (
-        "Mentor đã phản hồi giấy tờ apply trên hệ thống Trơn Tru.\n\n"
+        "Mentor đã phản hồi giấy tờ apply trên hệ thống Du học Trung Quốc.\n\n"
         f"Mentee: {mentee_name}\n"
         f"Giấy tờ: {document_label}\n"
         f"Trạng thái: {mentor_status}\n"
@@ -611,7 +611,7 @@ def send_mentee_activity_digest_email(
         return False
 
     intro = f"Mentor cập nhật {count} hoạt động ngoại khóa, hãy tham gia ngay nhé"
-    subject = f"[Trơn Tru] {intro}"
+    subject = f"[Du học Trung Quốc] {intro}"
     numbered_lines = [f"{index}. {name}" for index, name in enumerate(activity_names, start=1)]
     list_text = "\n".join(numbered_lines)
     text_body = (
@@ -654,7 +654,7 @@ def send_mentor_inbox_digest_email(
         return False
 
     intro = f"Bạn có {count} việc chưa xử lí:"
-    subject = f"[Mentor Trơn Tru] {intro}"
+    subject = f"[Mentor Du học Trung Quốc] {intro}"
     numbered_lines = [f"{index}. {line}" for index, line in enumerate(item_lines, start=1)]
     list_text = "\n".join(numbered_lines)
     text_body = (
@@ -699,7 +699,7 @@ def send_mentee_login_anomaly_email(
         "MENTOR_MENTEES_URL",
         "http://localhost:5174/mentees",
     ).strip()
-    subject = "[Mentor Trơn Tru] Cảnh báo: mentee đăng nhập nhiều thiết bị/IP"
+    subject = "[Mentor Du học Trung Quốc] Cảnh báo: mentee đăng nhập nhiều thiết bị/IP"
     text_body = (
         "Phát hiện mentee đăng nhập từ nhiều thiết bị hoặc nhiều IP.\n\n"
         f"Mentee: {mentee_name}\n"
@@ -748,9 +748,9 @@ def send_mentee_feedback_to_mentor_email(
     mentee_page_url = mentee_page_url or os.getenv(
         "MENTOR_MENTEES_URL", "http://localhost:5174/mentees"
     ).strip()
-    subject = "[Mentor Trơn Tru] Mentee gửi phản hồi mới"
+    subject = "[Mentor Du học Trung Quốc] Mentee gửi phản hồi mới"
     text_body = (
-        "Mentee gửi phản hồi mới trên hệ thống Mentor Trơn Tru.\n\n"
+        "Mentee gửi phản hồi mới trên hệ thống Mentor Du học Trung Quốc.\n\n"
         f"Mentee: {mentee_name}\n"
         f"Email: {mentee_email}\n"
         f"Mentor: {mentor_name}\n\n"
@@ -799,9 +799,9 @@ def send_inbox_reminder_email(
     confirm_url: str = "",
     snooze_urls: list[dict] | None = None,
 ) -> bool:
-    subject = f"[Mentor Trơn Tru] Nhắc nhở: {title}"
+    subject = f"[Mentor Du học Trung Quốc] Nhắc nhở: {title}"
     text_body = (
-        "Bạn còn việc chưa xử lí trên hệ thống Mentor Trơn Tru.\n\n"
+        "Bạn còn việc chưa xử lí trên hệ thống Mentor Du học Trung Quốc.\n\n"
         f"Mentee: {mentee_name}\n"
         f"Việc: {title}\n"
         f"{description}\n\n"
@@ -839,7 +839,7 @@ def send_daily_inbox_summary_email(
     items: list[dict],
 ) -> bool:
     title = f"Tóm tắt ngày {date_label}"
-    subject = f"[Mentor Trơn Tru] {title}"
+    subject = f"[Mentor Du học Trung Quốc] {title}"
     lines_text = []
     rows_html = []
     for item in items:

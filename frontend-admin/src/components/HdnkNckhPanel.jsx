@@ -4,6 +4,7 @@ import {
   HDNK_NCKH_PARTICIPATION_TYPES,
   HDNK_NCKH_PROGRESS_OPTIONS,
   emptyHdnkNckhEntry,
+  isInternalGroupParticipation,
   normalizeHdnkNckhEntries,
 } from '../data/hdnkNckh';
 import { isLevel1MentorAccount } from '../utils/mentorDisplay';
@@ -46,7 +47,7 @@ export default function HdnkNckhPanel({ menteeId, initialData, admin, onUpdated 
       prev.map((entry, idx) => {
         if (idx !== index) return entry;
         const next = { ...entry, [key]: value };
-        if (key === 'participation_type' && value !== 'nhóm Trơn Tru') {
+        if (key === 'participation_type' && !isInternalGroupParticipation(value)) {
           next.zalo_group_name = '';
         }
         if (key === 'has_award' && !value) {
@@ -178,7 +179,7 @@ export default function HdnkNckhPanel({ menteeId, initialData, admin, onUpdated 
               </select>
             </label>
 
-            {entry.participation_type === 'nhóm Trơn Tru' && (
+            {isInternalGroupParticipation(entry.participation_type) && (
               <label>
                 Tên nhóm Zalo
                 <input

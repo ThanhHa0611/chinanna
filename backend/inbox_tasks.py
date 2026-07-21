@@ -567,7 +567,7 @@ def build_daily_board(items: list[dict]) -> dict:
         )
     return {
         "date_label": today_label,
-        "title": f"Mail · Tổng hợp Trơn Tru ngày {today_label}",
+        "title": f"Mail · Tổng hợp Du học Trung Quốc ngày {today_label}",
         "sections": sections,
     }
 

@@ -13,7 +13,7 @@ export default function BrandMark({ lines = [], subtitle }) {
           ))
         ) : (
           <>
-            <span className="brand-mark-line brand-mark-title">Trơn Tru</span>
+            <span className="brand-mark-line brand-mark-title">Du học Trung Quốc</span>
             {subtitle ? <span className="brand-mark-line brand-mark-subtitle">{subtitle}</span> : null}
           </>
         )}

@@ -45,6 +45,8 @@ def normalize_hdnk_nckh_entry(
 ) -> dict:
     source = raw or {}
     participation = (source.get("participation_type") or "").strip()
+    if participation == HDNK_NCKH_GROUP_INTERNAL_LEGACY:
+        participation = HDNK_NCKH_GROUP_INTERNAL
     if participation not in HDNK_NCKH_PARTICIPATION_TYPES:
         participation = ""
     progress = (source.get("progress") or "").strip()
@@ -55,7 +57,7 @@ def normalize_hdnk_nckh_entry(
     if not has_award or award_level not in HDNK_NCKH_AWARD_LEVELS:
         award_level = ""
     zalo_group_name = (source.get("zalo_group_name") or "").strip()
-    if participation != "nhóm Trơn Tru":
+    if participation != HDNK_NCKH_GROUP_INTERNAL:
         zalo_group_name = ""
 
     mentor_note = ""
@@ -259,7 +261,7 @@ def validate_hdnk_nckh_entries(entries: list[dict]) -> str | None:
             return f"Mục {index}: cần hạng mục tham gia"
         if not normalized["participation_type"]:
             return f"Mục {index}: cần chọn loại tham gia"
-        if normalized["participation_type"] == "nhóm Trơn Tru" and not normalized["zalo_group_name"]:
+        if normalized["participation_type"] == HDNK_NCKH_GROUP_INTERNAL and not normalized["zalo_group_name"]:
             return f"Mục {index}: cần tên nhóm Zalo"
         if not normalized["progress"]:
             return f"Mục {index}: cần tiến độ"

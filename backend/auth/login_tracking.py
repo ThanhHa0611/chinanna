@@ -199,7 +199,7 @@ def reverse_geocode_label(latitude: float, longitude: float) -> str:
         )
         req = urllib_request.Request(
             url,
-            headers={"User-Agent": "PhongVanMentorTronTru/1.0 (internal login tracking)"},
+            headers={"User-Agent": "PhongVanMentorDuHocTQ/1.0 (internal login tracking)"},
         )
         with urllib_request.urlopen(req, timeout=6) as response:
             payload = json.loads(response.read().decode("utf-8"))

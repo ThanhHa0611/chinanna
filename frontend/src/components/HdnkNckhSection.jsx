@@ -4,6 +4,7 @@ import {
   HDNK_NCKH_PARTICIPATION_TYPES,
   HDNK_NCKH_PROGRESS_OPTIONS,
   emptyHdnkNckhEntry,
+  isInternalGroupParticipation,
   normalizeHdnkNckhEntries,
 } from '../data/hdnkNckh';
 import { api } from '../services/api';
@@ -53,7 +54,7 @@ export default function HdnkNckhSection() {
       prev.map((entry, idx) => {
         if (idx !== index) return entry;
         const next = { ...entry, [key]: value };
-        if (key === 'participation_type' && value !== 'nhóm Trơn Tru') {
+        if (key === 'participation_type' && !isInternalGroupParticipation(value)) {
           next.zalo_group_name = '';
         }
         if (key === 'has_award' && !value) {
@@ -158,14 +159,14 @@ export default function HdnkNckhSection() {
                 </select>
               </label>
 
-              {entry.participation_type === 'nhóm Trơn Tru' && (
+              {isInternalGroupParticipation(entry.participation_type) && (
                 <label className="hdnk-nckh-field-zalo">
                   Tên nhóm Zalo
                   <input
                     type="text"
                     value={entry.zalo_group_name}
                     onChange={(e) => updateEntry(index, 'zalo_group_name', e.target.value)}
-                    placeholder="Tên nhóm Zalo Trơn Tru"
+                    placeholder="Tên nhóm Zalo Du học Trung Quốc"
                   />
                 </label>
               )}

@@ -2,7 +2,7 @@ export default function DeviceChoice({ title, subtitle, onChoose }) {
   return (
     <div className="device-choice-page">
       <div className="device-choice-shell">
-        <p className="device-choice-kicker">Trơn Tru</p>
+        <p className="device-choice-kicker">Du học Trung Quốc</p>
         <h1>{title}</h1>
         <p className="device-choice-subtitle">{subtitle}</p>
         <div className="device-choice-options">

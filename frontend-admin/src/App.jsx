@@ -21,7 +21,7 @@ export default function App() {
   return (
     <DeviceModeProvider
       appKey="mentor"
-      title="Mentor Trơn Tru"
+      title="Mentor Du học Trung Quốc"
       subtitle="Bạn đang đăng nhập bằng điện thoại hay laptop?"
     >
       <AuthProvider>
