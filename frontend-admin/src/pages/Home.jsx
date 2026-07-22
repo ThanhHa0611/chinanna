@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import MenteeFilterDropdown from '../components/MenteeFilterDropdown';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { isLevel1MentorAccount } from '../utils/mentorDisplay';
+import { isLevel1MentorAccount, formatMenteeNameForMentor } from '../utils/mentorDisplay';
 import { matchesNameSearch } from '../utils/searchByName';
 import {
   APPLY_DEGREE_FILTER_OPTIONS,
@@ -913,7 +913,7 @@ export default function Home() {
                   <tbody>
                     {filteredMentees.map((mentee) => (
                       <tr key={mentee.id}>
-                        <td>{mentee.full_name || mentee.username}</td>
+                        <td>{formatMenteeNameForMentor(mentee)}</td>
                         {showDirectionColumn && (
                           <td>
                             {mentorApplyDirectionCombinedLabel(mentee) ||

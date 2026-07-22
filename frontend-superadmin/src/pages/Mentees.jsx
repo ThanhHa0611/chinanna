@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { matchesNameSearch } from '../utils/searchByName';
-import { formatLevel1MentorLine } from '../utils/mentorDisplay';
+import { formatLevel1MentorLine, formatMenteeNameForMentor } from '../utils/mentorDisplay';
 
 export default function Mentees({ onCountChange }) {
   const [groups, setGroups] = useState([]);
@@ -130,7 +130,7 @@ export default function Mentees({ onCountChange }) {
                         className="mentee-row"
                       >
                         <span className="mentee-row-name">
-                          {mentee.full_name || mentee.username}
+                          {formatMenteeNameForMentor(mentee)}
                           {mentee.unread_documents_count > 0 && (
                             <span className="notify-dot notify-dot-soft" title="Có giấy tờ mới" />
                           )}

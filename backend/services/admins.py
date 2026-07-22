@@ -37,6 +37,7 @@ from services.hdnk_nckh import *
 from services.inbox import *
 from services.notifications import *
 from services.utils import *
+from services.mentee_display import format_mentee_name_for_mentor, mentee_shows_vmh_tag
 
 def admin_display_name(admin: dict) -> str:
     return (
@@ -277,6 +278,8 @@ def serialize_admin_mentee_summary(user: dict, admin: dict | None = None) -> dic
         "username": user["username"],
         "email": user["email"],
         "full_name": user.get("full_name", ""),
+        "display_name": format_mentee_name_for_mentor(user),
+        "shows_vmh_tag": mentee_shows_vmh_tag(user),
         "date_of_birth": user.get("date_of_birth", ""),
         "mentor": user.get("mentor", ""),
         "parent_email": user.get("parent_email", ""),

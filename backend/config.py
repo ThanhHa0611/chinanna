@@ -265,6 +265,8 @@ _last_inbox_reminder_check = 0.0
 
 EMAIL_REGEX = re.compile(r'^[^@]+@[^@]+\.[^@]+$')
 MENTOR_OPTIONS = {'Thanh Hà'}
+# Học sinh đăng ký sau ngày này (Asia/Ho_Chi_Minh) thì mentor thấy hậu tố (VMH).
+VMH_REGISTRATION_CUTOFF_DATE = "2023-07-23"
 
 OTP_EXPIRE_MINUTES = int(os.getenv("OTP_EXPIRE_MINUTES", "10"))
 OTP_RESEND_SECONDS = int(os.getenv("OTP_RESEND_SECONDS", "60"))

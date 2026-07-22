@@ -19,7 +19,7 @@ import {
   scholarshipLanguageShortLabel,
   term3LanguageSemesterLabel,
 } from '../data/applyDegree';
-import { isLevel1MentorAccount } from '../utils/mentorDisplay';
+import { isLevel1MentorAccount, formatMenteeNameForMentor, formatLevel1MentorLine } from '../utils/mentorDisplay';
 import { getUnreadL2Activity, mergeL2ActivityPayload } from '../utils/l2Activity';
 import {
   dismissMenteeAttention,
@@ -32,7 +32,6 @@ import { useDeviceMode } from '../context/DeviceModeContext';
 import { api } from '../services/api';
 import { matchesNameSearch } from '../utils/searchByName';
 import { formatDateTime } from '../utils/formatDateTime';
-import { formatLevel1MentorLine } from '../utils/mentorDisplay';
 
 const MENTOR_STATUS_LABELS = {
   'chờ phản hồi': 'Chờ phản hồi',
@@ -438,7 +437,7 @@ export default function Mentees() {
     mentorApplyDirectionLabel(mentee?.mentor_apply_direction);
 
   const menteeDisplayName = (mentee) =>
-    (mentee?.full_name || '').trim() || mentee?.username || mentee?.email || '—';
+    (mentee?.display_name || '').trim() || formatMenteeNameForMentor(mentee);
 
   const showThanhHaFolderMeta = (mentee) => isThanhHa && mentee?.mentor === 'Thanh Hà';
 
@@ -1209,7 +1208,7 @@ export default function Mentees() {
   const handleDeleteMentee = async () => {
     if (!selectedMentee) return;
 
-    const label = selectedMentee.full_name || selectedMentee.username || selectedMentee.email;
+    const label = menteeDisplayName(selectedMentee);
     if (
       !window.confirm(
         `Xóa mentee "${label}"?\n\nToàn bộ hồ sơ, giấy tờ và phản hồi sẽ bị xóa vĩnh viễn.`,
@@ -2192,7 +2191,7 @@ export default function Mentees() {
                       <div className="mentee-info-grid">
                         <div>
                           <span className="info-label">Họ tên</span>
-                          <strong>{selectedMentee.full_name || '—'}</strong>
+                          <strong>{menteeDisplayName(selectedMentee)}</strong>
                         </div>
                         <div>
                           <span className="info-label">Email</span>

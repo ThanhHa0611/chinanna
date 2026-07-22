@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, documentFileUrl } from '../services/api';
 import { formatDateTime } from '../utils/formatDateTime';
-import { formatLevel1MentorLine } from '../utils/mentorDisplay';
+import { formatLevel1MentorLine, formatMenteeNameForMentor } from '../utils/mentorDisplay';
 import {
   applyDegreeLevelLabel,
   mentorApplyDirectionCombinedLabel,
@@ -157,7 +157,7 @@ export default function MenteeDetail() {
       </Link>
 
       <div className="page-head">
-        <h2>{mentee.full_name || mentee.username}</h2>
+        <h2>{formatMenteeNameForMentor(mentee)}</h2>
         {(mentee.mentor_apply_direction_label || mentee.mentor_apply_direction || '').trim() && (
           <p className="mentee-apply-direction-under-name">
             {mentee.mentor_apply_direction_label || mentee.mentor_apply_direction}
@@ -176,7 +176,7 @@ export default function MenteeDetail() {
         <div className="info-grid">
           <div>
             <span className="info-label">Họ tên</span>
-            <strong>{mentee.full_name || '—'}</strong>
+            <strong>{formatMenteeNameForMentor(mentee)}</strong>
             {(mentorApplyDirectionCombinedLabel(mentee) ||
               mentee.mentor_apply_direction_label ||
               mentee.mentor_apply_direction ||

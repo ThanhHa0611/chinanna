@@ -1,3 +1,5 @@
+import { formatMenteeNameForMentor } from '../utils/mentorDisplay';
+
 export const APPLY_DEGREE_LEVELS = [
   { value: 'undergrad', label: 'Hệ đại (本科)' },
   { value: 'master', label: 'Hệ thạc (硕士)' },
@@ -211,7 +213,10 @@ export function menteeActivityInviteLabel(mentee) {
 }
 
 export function formatMenteeActivityInviteOption(mentee) {
-  const name = (mentee?.full_name || mentee?.username || mentee?.email || 'Mentee').trim();
+  const name = (
+    (mentee?.display_name || '').trim() ||
+    formatMenteeNameForMentor(mentee, 'Mentee')
+  );
   return `${name} (${menteeActivityInviteLabel(mentee)})`;
 }
 

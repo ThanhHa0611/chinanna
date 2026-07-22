@@ -20,6 +20,7 @@ from services.apply_documents import (
     mentor_apply_direction_wishes,
     mentor_apply_directions_combined_label,
 )
+from services.mentee_display import format_mentee_name_for_mentor, mentee_shows_vmh_tag
 from services.hdnk_nckh import get_hdnk_nckh_entries_raw, normalize_hdnk_nckh_entry
 from services.notifications import notify_mentee_mentor_activity, notify_mentors_mentee_activity
 from services.referrals import award_referrer_phone_for_activity
@@ -1118,13 +1119,14 @@ def serialize_pending_keeptrack_abandon(activity: dict, state: dict, mentee: dic
         "activity_id": str(activity["_id"]),
         "activity_name": compose_activity_name(activity),
         "mentee_id": mentee_id,
-        "mentee_name": mentee.get("full_name") or mentee.get("username") or mentee.get("email", ""),
+        "mentee_name": format_mentee_name_for_mentor(mentee),
         "mentee_email": mentee.get("email", ""),
         "mentee_profile_summary": mentee_keeptrack_profile_summary_line(mentee),
         "mentee_apply_system": profile_parts["apply_system"],
         "mentee_apply_major": profile_parts["apply_major"],
         "mentee_research_direction": profile_parts["research_direction"],
         "mentee_apply_language": profile_parts["apply_language"],
+        "shows_vmh_tag": mentee_shows_vmh_tag(mentee),
         "requested_at": pending.get("requested_at").isoformat() if pending.get("requested_at") else "",
         "note": pending.get("note") or "",
         "start_date": keeptrack.get("start_date") or "",
@@ -1231,13 +1233,14 @@ def serialize_pending_keeptrack_review(activity: dict, state: dict, mentee: dict
         "activity_id": str(activity["_id"]),
         "activity_name": compose_activity_name(activity),
         "mentee_id": mentee_id,
-        "mentee_name": mentee.get("full_name") or mentee.get("username") or mentee.get("email", ""),
+        "mentee_name": format_mentee_name_for_mentor(mentee),
         "mentee_email": mentee.get("email", ""),
         "mentee_profile_summary": mentee_keeptrack_profile_summary_line(mentee),
         "mentee_apply_system": profile_parts["apply_system"],
         "mentee_apply_major": profile_parts["apply_major"],
         "mentee_research_direction": profile_parts["research_direction"],
         "mentee_apply_language": profile_parts["apply_language"],
+        "shows_vmh_tag": mentee_shows_vmh_tag(mentee),
         "submitted_at": pending.get("submitted_at").isoformat() if pending.get("submitted_at") else "",
         "start_date": submitted.get("start_date") or "",
         "progress_status": submitted.get("progress_status") or "",
@@ -1786,11 +1789,13 @@ def serialize_admin_registration(activity: dict, state: dict, mentee: dict) -> d
     pending_reject = state.get("mentor_reject_pending") or {}
     return {
         "mentee_id": mentee_id,
-        "mentee_name": mentee.get("full_name") or mentee.get("username") or mentee.get("email", ""),
+        "mentee_name": format_mentee_name_for_mentor(mentee),
         "mentee_profile_summary": mentee_keeptrack_profile_summary_line(mentee),
         "zalo_phone": mentee.get("zalo_phone", ""),
         "apply_major": mentor_apply_directions_combined_label(mentee)
         or mentee.get("apply_direction", ""),
+        "created_at": mentee.get("created_at").isoformat() if mentee.get("created_at") else "",
+        "shows_vmh_tag": mentee_shows_vmh_tag(mentee),
         "group_name": _resolve_group_name_for_admin(activity, mentee_id),
         "group_response_status": state.get("group_response_status") or "",
         "group_response_note": state.get("group_response_note", ""),
@@ -3216,7 +3221,7 @@ def list_pending_l1_group_actions(activity: dict) -> list[dict]:
                 "action_type": "reject_mentee",
                 "mentee_id": mentee_id,
                 "mentee_name": (
-                    (mentee.get("full_name") or mentee.get("username") or mentee.get("email", ""))
+                    format_mentee_name_for_mentor(mentee, fallback=mentee_id)
                     if mentee
                     else mentee_id
                 ),
@@ -3239,9 +3244,7 @@ def _mentee_display_name(mentee_id: str) -> str:
     mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
     if not mentee:
         return mentee_id
-    return (
-        mentee.get("full_name") or mentee.get("username") or mentee.get("email") or mentee_id
-    ).strip()
+    return format_mentee_name_for_mentor(mentee, fallback=mentee_id)
 
 
 def _parse_profile_activity_timestamp(value) -> datetime:
@@ -3533,7 +3536,7 @@ def _aggregate_group_keeptrack_status(member_states: list[dict]) -> tuple[str, s
 
 
 def _mentee_display_name(mentee: dict) -> str:
-    return mentee.get("full_name") or mentee.get("username") or mentee.get("email", "")
+    return format_mentee_name_for_mentor(mentee)
 
 
 def _build_progress_tracking_members(group: dict) -> list[dict]:
