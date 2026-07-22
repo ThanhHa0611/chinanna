@@ -3662,6 +3662,37 @@ html.device-phone .daily-summary-status {
   margin-bottom: 1rem;
 }
 
+.profile-activity-pending-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.profile-activity-pending-head h3 {
+  margin: 0;
+}
+
+.profile-activity-pending-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.profile-activity-pending-select-all {
+  margin-right: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.profile-activity-pending-check {
+  flex-shrink: 0;
+  margin: 0;
+  align-self: center;
+}
+
 .profile-activity-keeptrack-mentee-summary {
   margin-top: 0.15rem;
   font-size: 0.76rem;
@@ -3683,6 +3714,7 @@ html.device-phone .daily-summary-status {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 0.5rem;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--border);

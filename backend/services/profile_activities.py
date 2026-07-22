@@ -2042,6 +2042,70 @@ def reject_profile_activity(activity: dict, admin: dict) -> dict:
     return profile_activities.find_one({"_id": activity["_id"]}) or activity
 
 
+def bulk_approve_profile_activities(activity_ids: list[str], admin: dict) -> dict:
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    now = datetime.now(timezone.utc)
+    oids = []
+    for activity_id in activity_ids:
+        try:
+            oids.append(ObjectId(str(activity_id)))
+        except (InvalidId, TypeError, ValueError):
+            continue
+    if not oids:
+        return {"updated_count": 0}
+
+    result = profile_activities.update_many(
+        {
+            "_id": {"$in": oids},
+            "approval_status": PROFILE_ACTIVITY_APPROVAL_PENDING,
+        },
+        {
+            "$set": {
+                "approval_status": PROFILE_ACTIVITY_APPROVAL_APPROVED,
+                "approved_at": now,
+                "approved_by_admin_id": str(admin["_id"]),
+                "rejected_at": None,
+                "rejected_by_admin_id": "",
+                "updated_at": now,
+            }
+        },
+    )
+    return {"updated_count": int(result.modified_count)}
+
+
+def bulk_reject_profile_activities(activity_ids: list[str], admin: dict) -> dict:
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    now = datetime.now(timezone.utc)
+    oids = []
+    for activity_id in activity_ids:
+        try:
+            oids.append(ObjectId(str(activity_id)))
+        except (InvalidId, TypeError, ValueError):
+            continue
+    if not oids:
+        return {"updated_count": 0}
+
+    result = profile_activities.update_many(
+        {
+            "_id": {"$in": oids},
+            "approval_status": PROFILE_ACTIVITY_APPROVAL_PENDING,
+        },
+        {
+            "$set": {
+                "approval_status": PROFILE_ACTIVITY_APPROVAL_REJECTED,
+                "rejected_at": now,
+                "rejected_by_admin_id": str(admin["_id"]),
+                "updated_at": now,
+            }
+        },
+    )
+    return {"updated_count": int(result.modified_count)}
+
+
 def _sorted_activities_for_mentee(mentee: dict) -> list[dict]:
     query = {
         "created_at": {"$exists": True},

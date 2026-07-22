@@ -568,6 +568,8 @@ export default function ProfileActivities() {
   const [bulkImportSkipped, setBulkImportSkipped] = useState([]);
   const [bulkImportLoading, setBulkImportLoading] = useState(false);
   const [bulkApproving, setBulkApproving] = useState(false);
+  const [selectedPendingIds, setSelectedPendingIds] = useState([]);
+  const [pendingBulkSaving, setPendingBulkSaving] = useState(false);
   const [manageFormCollapsed, setManageFormCollapsed] = useState(true);
   const [pendingEditActivityId, setPendingEditActivityId] = useState('');
   const manageSectionRef = useRef(null);
@@ -659,6 +661,15 @@ export default function ProfileActivities() {
     () => activities.filter((item) => item.approval_status === 'pending_l1_approval'),
     [activities],
   );
+
+  const allPendingSelected =
+    pendingActivities.length > 0 &&
+    pendingActivities.every((item) => selectedPendingIds.includes(item.id));
+
+  useEffect(() => {
+    const pendingIds = new Set(pendingActivities.map((item) => item.id));
+    setSelectedPendingIds((prev) => prev.filter((id) => pendingIds.has(id)));
+  }, [pendingActivities]);
 
   const pendingGroupActions = useMemo(() => {
     const items = [];
@@ -1125,6 +1136,74 @@ export default function ProfileActivities() {
       setError(err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const togglePendingSelection = (activityId) => {
+    setSelectedPendingIds((prev) =>
+      prev.includes(activityId)
+        ? prev.filter((id) => id !== activityId)
+        : [...prev, activityId],
+    );
+  };
+
+  const toggleSelectAllPending = () => {
+    if (allPendingSelected) {
+      setSelectedPendingIds([]);
+      return;
+    }
+    setSelectedPendingIds(pendingActivities.map((item) => item.id));
+  };
+
+  const handleBulkApprovePending = async () => {
+    if (!selectedPendingIds.length) {
+      setError('Chọn ít nhất một hoạt động để duyệt.');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Duyệt hàng loạt ${selectedPendingIds.length} hoạt động đang chờ? Mentee sẽ thấy trên feed.`,
+      )
+    ) {
+      return;
+    }
+    setPendingBulkSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.bulkApproveProfileActivities(selectedPendingIds);
+      setSelectedPendingIds([]);
+      await loadActivities();
+      setMessage(result?.message || `Đã duyệt ${selectedPendingIds.length} hoạt động.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPendingBulkSaving(false);
+    }
+  };
+
+  const handleBulkRejectPending = async () => {
+    if (!selectedPendingIds.length) {
+      setError('Chọn ít nhất một hoạt động để từ chối.');
+      return;
+    }
+    if (
+      !window.confirm(`Từ chối hàng loạt ${selectedPendingIds.length} hoạt động đang chờ?`)
+    ) {
+      return;
+    }
+    setPendingBulkSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.bulkRejectProfileActivities(selectedPendingIds);
+      setSelectedPendingIds([]);
+      await loadActivities();
+      setMessage(result?.message || `Đã từ chối ${selectedPendingIds.length} hoạt động.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPendingBulkSaving(false);
     }
   };
 
@@ -2176,10 +2255,50 @@ export default function ProfileActivities() {
 
       {canReview && pendingActivities.length > 0 && (
         <div className="panel-card profile-activity-pending-queue">
-          <h3>Chờ duyệt ({pendingActivities.length})</h3>
+          <div className="profile-activity-pending-head">
+            <h3>Chờ duyệt ({pendingActivities.length})</h3>
+            <div className="profile-activity-pending-bulk-actions">
+              <label className="checkbox-label profile-activity-pending-select-all">
+                <input
+                  type="checkbox"
+                  checked={allPendingSelected}
+                  onChange={toggleSelectAllPending}
+                  disabled={saving || pendingBulkSaving}
+                />
+                Chọn tất cả
+              </label>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleBulkApprovePending}
+                disabled={saving || pendingBulkSaving || selectedPendingIds.length === 0}
+              >
+                {pendingBulkSaving
+                  ? 'Đang xử lý...'
+                  : `Duyệt hàng loạt (${selectedPendingIds.length})`}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={handleBulkRejectPending}
+                disabled={saving || pendingBulkSaving || selectedPendingIds.length === 0}
+              >
+                Từ chối hàng loạt ({selectedPendingIds.length})
+              </button>
+            </div>
+          </div>
           <ul className="profile-activity-pending-list">
             {pendingActivities.map((item) => (
               <li key={item.id} className="profile-activity-pending-item">
+                <label className="checkbox-label profile-activity-pending-check">
+                  <input
+                    type="checkbox"
+                    checked={selectedPendingIds.includes(item.id)}
+                    onChange={() => togglePendingSelection(item.id)}
+                    disabled={saving || pendingBulkSaving}
+                    aria-label={`Chọn hoạt động ${item.activity_name || item.id}`}
+                  />
+                </label>
                 <div className="profile-activity-pending-line">
                   <span className="importance-stars-display" title="Mức độ quan trọng">
                     {formatImportanceStars(item.importance)}
@@ -2192,7 +2311,7 @@ export default function ProfileActivities() {
                     type="button"
                     className="btn btn-primary btn-sm"
                     onClick={() => handleApprove(item.id)}
-                    disabled={saving}
+                    disabled={saving || pendingBulkSaving}
                   >
                     Duyệt
                   </button>
@@ -2200,7 +2319,7 @@ export default function ProfileActivities() {
                     type="button"
                     className="btn btn-outline btn-sm"
                     onClick={() => openPendingActivityEdit(item.id)}
-                    disabled={saving || editSaving}
+                    disabled={saving || editSaving || pendingBulkSaving}
                   >
                     Chỉnh sửa
                   </button>
@@ -2208,7 +2327,7 @@ export default function ProfileActivities() {
                     type="button"
                     className="btn btn-outline btn-sm"
                     onClick={() => handleReject(item.id)}
-                    disabled={saving}
+                    disabled={saving || pendingBulkSaving}
                   >
                     Từ chối
                   </button>

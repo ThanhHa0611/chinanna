@@ -19,6 +19,8 @@ from services.profile_activities import (
     approve_pending_mentor_reject,
     approve_keeptrack_abandon,
     approve_profile_activity,
+    bulk_approve_profile_activities,
+    bulk_reject_profile_activities,
     bulk_view_individual_keeptrack_reviews,
     create_profile_activity,
     delete_activity,
@@ -298,6 +300,81 @@ def admin_reject_profile_activity(activity_id: str):
         return error
     updated = reject_profile_activity(activity, admin)
     return jsonify(serialize_admin_profile_activity(updated, admin=admin))
+
+
+def _parse_bulk_activity_ids(data: dict) -> list[str]:
+    raw_ids = data.get("activity_ids") or []
+    if not isinstance(raw_ids, list):
+        return []
+    cleaned = []
+    seen = set()
+    for item in raw_ids:
+        activity_id = str(item or "").strip()
+        if not activity_id or activity_id in seen:
+            continue
+        seen.add(activity_id)
+        cleaned.append(activity_id)
+    return cleaned
+
+
+def _filter_accessible_pending_activity_ids(activity_ids: list[str], admin: dict) -> list[str]:
+    accessible = []
+    for activity_id in activity_ids:
+        activity, error = _get_activity_or_404(activity_id, admin)
+        if error or not activity:
+            continue
+        if activity.get("approval_status") != "pending_l1_approval":
+            continue
+        accessible.append(activity_id)
+    return accessible
+
+
+@app.post("/api/admin/profile-activities/bulk-approve")
+@with_db
+def admin_bulk_approve_profile_activities():
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới được duyệt hoạt động."}), 403
+
+    data = request.get_json(silent=True) or {}
+    activity_ids = _filter_accessible_pending_activity_ids(_parse_bulk_activity_ids(data), admin)
+    if not activity_ids:
+        return jsonify({"detail": "Chọn ít nhất một hoạt động đang chờ duyệt."}), 400
+
+    result = bulk_approve_profile_activities(activity_ids, admin)
+    count = result.get("updated_count", 0)
+    return jsonify({
+        "updated_count": count,
+        "message": f"Đã duyệt {count} hoạt động.",
+    })
+
+
+@app.post("/api/admin/profile-activities/bulk-reject")
+@with_db
+def admin_bulk_reject_profile_activities():
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới được từ chối hoạt động."}), 403
+
+    data = request.get_json(silent=True) or {}
+    activity_ids = _filter_accessible_pending_activity_ids(_parse_bulk_activity_ids(data), admin)
+    if not activity_ids:
+        return jsonify({"detail": "Chọn ít nhất một hoạt động đang chờ duyệt."}), 400
+
+    result = bulk_reject_profile_activities(activity_ids, admin)
+    count = result.get("updated_count", 0)
+    return jsonify({
+        "updated_count": count,
+        "message": f"Đã từ chối {count} hoạt động.",
+    })
 
 
 @app.get("/api/admin/profile-activities/<activity_id>/registrations")

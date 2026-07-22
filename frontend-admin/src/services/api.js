@@ -492,6 +492,18 @@ export const api = {
   rejectProfileActivity: (activityId) =>
     request(`/api/admin/profile-activities/${activityId}/reject`, { method: 'POST' }),
 
+  bulkApproveProfileActivities: (activityIds) =>
+    request('/api/admin/profile-activities/bulk-approve', {
+      method: 'POST',
+      body: JSON.stringify({ activity_ids: activityIds }),
+    }),
+
+  bulkRejectProfileActivities: (activityIds) =>
+    request('/api/admin/profile-activities/bulk-reject', {
+      method: 'POST',
+      body: JSON.stringify({ activity_ids: activityIds }),
+    }),
+
   approveProfileActivityGroup: (activityId, groupId) =>
     request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/approve`, {
       method: 'POST',
