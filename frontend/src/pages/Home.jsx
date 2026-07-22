@@ -31,10 +31,10 @@ export default function Home() {
           </span>
         </h1>
         <p className="hero-text">
-          Chăm chỉ luyện phỏng vấn để phỏng vấn thật trơn tru nha
+          Hãy cố gắng mỗi ngày để trở thành phiên bản tốt hơn nhé
         </p>
         <p className="hero-disclaimer">
-          Hệ thống chỉ support mentee Du học Trung Quốc (phi lợi nhuận), vui lòng không chia sẻ dưới mọi hình thức
+          Hệ thống chỉ support mentee Viên Mộng Hiên (phi lợi nhuận), vui lòng không chia sẻ dưới mọi hình thức
         </p>
 
         {user ? (

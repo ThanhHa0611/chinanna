@@ -52,7 +52,7 @@ if errorlevel 1 (
 
 echo.
 echo [Backend]  http://127.0.0.1:8000
-echo [Mentee]   http://localhost:5173  ^(珍珠群 - do^)
+echo [Mentee]   http://localhost:5173  ^(圆梦轩 - do^)
 echo [Mentor]   http://localhost:5174/login  ^(Mentor Du hoc Trung Quoc - hong pastel^)
 echo [Super]    http://localhost:5175/login  ^(Super Admin^)
 echo.

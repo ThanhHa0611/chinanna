@@ -24,7 +24,7 @@ export default function Navbar() {
         {user ? (
           <>
             <Link to="/" className="navbar-brand navbar-brand-pearl">
-              珍珠群
+              圆梦轩
             </Link>
             <NavLink to="/profile" className="nav-link" onClick={openProfileSection}>
               Tôi
@@ -35,7 +35,7 @@ export default function Navbar() {
           </>
         ) : (
           <Link to="/" className="navbar-brand navbar-brand-pearl">
-            珍珠群
+            圆梦轩
           </Link>
         )}
       </div>

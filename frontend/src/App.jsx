@@ -41,7 +41,7 @@ function App() {
   return (
     <DeviceModeProvider
       appKey="mentee"
-      title="珍珠群"
+      title="圆梦轩"
       subtitle="Bạn đang dùng điện thoại hay laptop?"
     >
       <AuthProvider>
