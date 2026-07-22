@@ -13,10 +13,6 @@ export function isThanhHaTeam(admin) {
   return (admin?.mentor_name || '').trim() === 'Thanh Hà';
 }
 
-export function isMaiChiTeam(admin) {
-  return (admin?.mentor_name || '').trim() === 'Mai Chi';
-}
-
 export function emptyHdnkNckhEntry() {
   return {
     entry_id: '',

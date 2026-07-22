@@ -88,7 +88,7 @@ export default function Register() {
                 ))}
               </select>
               <span className="field-hint">
-                Chọn nhánh mentor cấp 1: Mentor Mai Chi hoặc Mentor Thanh Hà.
+                Chọn nhánh mentor cấp 1: Mentor Thanh Hà.
               </span>
             </label>
             <label>

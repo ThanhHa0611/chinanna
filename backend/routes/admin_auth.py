@@ -253,7 +253,7 @@ def admin_register():
     if len(password) < 6:
         return jsonify({"detail": "Mật khẩu phải có ít nhất 6 ký tự"}), 400
     if mentor_name not in MENTOR_OPTIONS:
-        return jsonify({"detail": "Chọn mentor cấp 1: Thanh Hà hoặc Mai Chi"}), 400
+        return jsonify({"detail": "Chọn mentor cấp 1: Thanh Hà"}), 400
 
     existing = admins.find_one({"email": email})
     if existing:

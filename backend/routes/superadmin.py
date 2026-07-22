@@ -133,7 +133,7 @@ def superadmin_list_mentors():
         )
         teams.setdefault(team, []).append(item)
 
-    team_order = ["Thanh Hà", "Mai Chi"]
+    team_order = ["Thanh Hà"]
     team_order = [name for name in team_order if name in teams]
     for team_name in sorted(teams.keys()):
         if team_name not in team_order:
@@ -217,7 +217,7 @@ def superadmin_list_mentees():
         mentor = (mentee.get("mentor") or "").strip() or "Chưa gán mentor"
         groups.setdefault(mentor, []).append(serialize_admin_mentee_summary(mentee, admin))
 
-    team_order = ["Thanh Hà", "Mai Chi"]
+    team_order = ["Thanh Hà"]
     team_order = [name for name in team_order if name in groups]
     for mentor_name in sorted(groups.keys()):
         if mentor_name not in team_order:

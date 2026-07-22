@@ -47,7 +47,6 @@ def mentor_teams():
     return jsonify({
         "teams": [
             {"value": "Thanh Hà", "label": "Team Mentor Thanh Hà"},
-            {"value": "Mai Chi", "label": "Team Mentor Mai Chi"},
         ]
     })
 

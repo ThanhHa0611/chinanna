@@ -125,9 +125,8 @@ export default function Home() {
   );
 
   const isThanhHaL1 = isLevel1MentorAccount(admin) && (admin?.mentor_name || '').trim() === 'Thanh Hà';
-  const isMaiChiL1 = isLevel1MentorAccount(admin) && (admin?.mentor_name || '').trim() === 'Mai Chi';
-  const showDegreeLanguageFilters = isThanhHaL1 || isMaiChiL1;
-  const showDirectionFilter = isThanhHaL1 || isMaiChiL1;
+  const showDegreeLanguageFilters = isThanhHaL1;
+  const showDirectionFilter = isThanhHaL1;
   const showDirectionColumn = showDirectionFilter;
   const showLanguageColumn = showDegreeLanguageFilters;
 

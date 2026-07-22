@@ -199,18 +199,6 @@ export function menteeClassificationSummaryLine(mentee) {
   return parts.length ? parts.join(' - ') : 'Chưa phân loại';
 }
 
-export function menteeMaiChiClassificationLine(mentee) {
-  const major =
-    mentee?.mentor_apply_direction_label ||
-    mentorApplyDirectionLabel(mentee?.mentor_apply_direction);
-  const degree =
-    applyDegreeLevelShortLabel(mentee?.apply_degree_level) ||
-    (mentee?.apply_degree_level_label || '').replace(/\s*\([^)]*\)/, '').trim();
-  const language = scholarshipLanguageShortLabel(mentee);
-  const parts = [major, degree, language].filter((part) => part && part !== '—');
-  return parts.length ? parts.join(' - ') : 'Chưa phân loại';
-}
-
 export function patchMenteeSummaryFromDetail(summary, detail) {
   return {
     ...summary,

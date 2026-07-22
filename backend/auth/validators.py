@@ -55,7 +55,7 @@ def validate_register(data: dict) -> str | None:
     if not mentor:
         return "Vui lòng chọn team mentor"
     if mentor not in MENTOR_OPTIONS:
-        return "Chọn team mentor: Team Mentor Thanh Hà hoặc Team Mentor Mai Chi"
+        return "Chọn team mentor: Team Mentor Thanh Hà"
     zalo_error = validate_zalo_phone(zalo_phone)
     if zalo_error:
         return zalo_error

@@ -48,7 +48,7 @@ export default function Login() {
         <div className="auth-card">
           <h2>Đăng nhập hệ thống</h2>
           <p className="auth-note">
-            Máy tổng quản trị — xem mentor và mentee toàn hệ thống (Thanh Hà · Mai Chi).
+            Máy tổng quản trị — xem mentor và mentee toàn hệ thống.
           </p>
           <LocationPermissionBlock
             value={locationPayload}

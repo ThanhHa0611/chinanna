@@ -4,14 +4,13 @@ import HdnkNckhPanel from '../components/HdnkNckhPanel';
 import MenteeClassificationFields from '../components/MenteeClassificationFields';
 import MenteeFilterDropdown from '../components/MenteeFilterDropdown';
 import { buildWatermarkLabel } from '../components/ScreenProtection';
-import { isMaiChiTeam, isThanhHaTeam } from '../data/hdnkNckh';
+import { isThanhHaTeam } from '../data/hdnkNckh';
 import {
   APPLY_DEGREE_FILTER_OPTIONS,
   APPLY_LANGUAGE_FILTER_OPTIONS,
   applyDegreeLevelLabel,
   MENTOR_APPLY_DIRECTION_FIELDS,
   menteeClassificationSummaryLine,
-  menteeMaiChiClassificationLine,
   mentorApplyDirectionCombinedLabel,
   mentorApplyDirectionLabel,
   normalizeScholarshipSystemValue,
@@ -378,9 +377,7 @@ export default function Mentees() {
   const isSuperAdmin = Boolean(admin?.is_super_admin);
   const isLevel1 = isLevel1MentorAccount(admin);
   const isThanhHa = isThanhHaTeam(admin);
-  const isMaiChi = isMaiChiTeam(admin);
   const isThanhHaL1 = isLevel1 && isThanhHa;
-  const isMaiChiL1 = isLevel1 && isMaiChi;
   const [mentees, setMentees] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [degreeFilter, setDegreeFilter] = useState('all');
@@ -444,19 +441,14 @@ export default function Mentees() {
     (mentee?.full_name || '').trim() || mentee?.username || mentee?.email || '—';
 
   const showThanhHaFolderMeta = (mentee) => isThanhHa && mentee?.mentor === 'Thanh Hà';
-  const showMaiChiFolderMeta = (mentee) => mentee?.mentor === 'Mai Chi';
 
   const menteeInfoSectionMeta = (mentee) =>
     showThanhHaFolderMeta(mentee)
       ? [menteeDisplayName(mentee), menteeClassificationSummaryLine(mentee)]
           .filter(Boolean)
           .join(' · ')
-      : showMaiChiFolderMeta(mentee)
-        ? [menteeDisplayName(mentee), menteeMaiChiClassificationLine(mentee)]
-            .filter(Boolean)
-            .join(' · ')
-        : [mentee?.full_name, menteeApplyDirectionSubtitle(mentee)].filter(Boolean).join(' · ') ||
-          '—';
+      : [mentee?.full_name, menteeApplyDirectionSubtitle(mentee)].filter(Boolean).join(' · ') ||
+        '—';
 
   const menteeAttentionOptions = { isSuperAdmin, isLevel1 };
 
@@ -1209,12 +1201,9 @@ export default function Mentees() {
   };
 
   const selectedIsThanhHaMentee = selectedMentee?.mentor === 'Thanh Hà';
-  const selectedIsMaiChiMentee = selectedMentee?.mentor === 'Mai Chi';
   const canEditClassification = Boolean(isLevel1 || isSuperAdmin);
   const showThanhHaClassification = isThanhHaL1 && selectedIsThanhHaMentee;
-  const showMaiChiClassification = isMaiChiL1 && selectedIsMaiChiMentee;
-  const selectedTeamMatches =
-    (isThanhHa && selectedIsThanhHaMentee) || (isMaiChi && selectedIsMaiChiMentee);
+  const selectedTeamMatches = isThanhHa && selectedIsThanhHaMentee;
   const canL2EditDirection = !canEditClassification && selectedTeamMatches;
 
   const handleDeleteMentee = async () => {
@@ -2072,10 +2061,6 @@ export default function Mentees() {
                     <span className="mentee-folder-meta mentee-folder-classification">
                       {menteeClassificationSummaryLine(mentee)}
                     </span>
-                  ) : showMaiChiFolderMeta(mentee) ? (
-                    <span className="mentee-folder-meta mentee-folder-classification">
-                      {menteeMaiChiClassificationLine(mentee)}
-                    </span>
                   ) : (
                     <>
                       <span
@@ -2130,7 +2115,6 @@ export default function Mentees() {
                     <p
                         className={`muted mentee-detail-subtitle${
                         showThanhHaFolderMeta(selectedMentee) ||
-                        showMaiChiFolderMeta(selectedMentee) ||
                         menteeApplyDirectionSubtitle(selectedMentee)
                           ? ' mentee-detail-direction'
                           : ''
@@ -2138,9 +2122,7 @@ export default function Mentees() {
                     >
                       {showThanhHaFolderMeta(selectedMentee)
                         ? menteeClassificationSummaryLine(selectedMentee)
-                        : showMaiChiFolderMeta(selectedMentee)
-                          ? menteeMaiChiClassificationLine(selectedMentee)
-                          : menteeApplyDirectionSubtitle(selectedMentee) || 'Chưa điền phương hướng'}
+                        : menteeApplyDirectionSubtitle(selectedMentee) || 'Chưa điền phương hướng'}
                     </p>
                     <p className="muted mentee-detail-email">{selectedMentee.email}</p>
                     </div>
@@ -2265,11 +2247,9 @@ export default function Mentees() {
                           <p className="muted">
                             {showThanhHaClassification
                               ? 'Chọn khối ngành, phương hướng NC, hệ apply, hệ tiếng và kì tiếng — đồng bộ với bảng Tổng quan ở Trang chủ.'
-                              : showMaiChiClassification
-                                ? 'Chọn ngành, hệ apply và hệ tiếng — hiển thị dạng Ngành - Hệ - Tiếng ở danh sách mentee.'
-                                : canL2EditDirection
-                                  ? 'Chọn khối ngành (nguyện vọng 1, 2, 3) cho mentee.'
-                                  : 'Chọn hệ apply cho mentee.'}
+                              : canL2EditDirection
+                                ? 'Chọn khối ngành (nguyện vọng 1, 2, 3) cho mentee.'
+                                : 'Chọn hệ apply cho mentee.'}
                           </p>
                         </div>
                         {canEditClassification ? (
@@ -2277,9 +2257,9 @@ export default function Mentees() {
                             mentee={selectedMentee}
                             savingField={classificationSaving}
                             onFieldChange={handleClassificationChange}
-                            showDirection={showThanhHaClassification || showMaiChiClassification}
+                            showDirection={showThanhHaClassification}
                             showResearchDirection={showThanhHaClassification}
-                            showLanguage={showThanhHaClassification || showMaiChiClassification}
+                            showLanguage={showThanhHaClassification}
                             showTerm={showThanhHaClassification}
                             showDegree
                           />
@@ -2296,7 +2276,7 @@ export default function Mentees() {
                                 />
                               </div>
                             ) : (
-                              (showThanhHaClassification || showMaiChiClassification) && (
+                              showThanhHaClassification && (
                                 <div>
                                   <span className="info-label">Ngành / Hướng apply</span>
                                   <strong>
@@ -2321,7 +2301,7 @@ export default function Mentees() {
                                   '—'}
                               </strong>
                             </div>
-                            {(showThanhHaClassification || showMaiChiClassification) && (
+                            {showThanhHaClassification && (
                               <div>
                                 <span className="info-label">Hệ tiếng</span>
                                 <strong>{scholarshipLanguageShortLabel(selectedMentee) || '—'}</strong>

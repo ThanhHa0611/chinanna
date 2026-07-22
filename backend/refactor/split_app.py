@@ -340,7 +340,7 @@ def main() -> None:
         + "".join(env_block)
         + "\n"
         + config_body
-        + "\nEMAIL_REGEX = re.compile(r'^[^@]+@[^@]+\\.[^@]+$')\nMENTOR_OPTIONS = {'Thanh Hà', 'Mai Chi'}\n",
+        + "\nEMAIL_REGEX = re.compile(r'^[^@]+@[^@]+\\.[^@]+$')\nMENTOR_OPTIONS = {'Thanh Hà'}\n",
         encoding="utf-8",
     )
 

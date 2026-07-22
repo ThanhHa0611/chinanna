@@ -104,7 +104,7 @@ export default function SuperAdminLayout({ mentorAlertCount = 0, menteeCount = n
         <header className="topbar">
           <div>
             <h1>Quản trị hệ thống</h1>
-            <p>Theo dõi mentor và mentee toàn hệ thống (Thanh Hà · Mai Chi)</p>
+            <p>Theo dõi mentor và mentee toàn hệ thống</p>
           </div>
           {isPhone && (
             <button type="button" className="btn btn-outline btn-sm" onClick={handleLogout}>

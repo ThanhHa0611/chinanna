@@ -79,7 +79,7 @@ export function getProgressOptionsForAdmin(admin) {
   const displayName = (admin?.full_name || admin?.username || '').trim();
   const isLevel1 =
     Boolean(admin?.is_level1_mentor) ||
-    (['Mai Chi', 'Thanh Hà'].includes(mentor) && displayName === mentor);
+    (mentor === 'Thanh Hà' && displayName === mentor);
 
   if (isSuperAdmin) {
     return [...PROGRESS_BASE_OPTIONS, PROGRESS_L1_ONLY, PROGRESS_L2_ONLY];

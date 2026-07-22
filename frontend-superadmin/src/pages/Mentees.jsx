@@ -69,7 +69,7 @@ export default function Mentees({ onCountChange }) {
           )}
         </div>
         <p>
-          Theo dõi mentee của Mentor Thanh Hà và Mentor Mai Chi. Bấm mentee để xem đầy đủ hồ sơ.
+          Theo dõi mentee của Mentor Thanh Hà. Bấm mentee để xem đầy đủ hồ sơ.
         </p>
       </div>
 

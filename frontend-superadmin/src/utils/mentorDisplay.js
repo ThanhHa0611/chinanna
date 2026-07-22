@@ -1,4 +1,4 @@
-export const LEVEL1_MENTORS = ['Mai Chi', 'Thanh Hà'];
+export const LEVEL1_MENTORS = ['Thanh Hà'];
 export const THANH_HA_MENTOR = 'Thanh Hà';
 
 export function isThanhHaSuperAdmin(admin) {
@@ -9,7 +9,6 @@ export function isThanhHaSuperAdmin(admin) {
 export function formatLevel1MentorLine(mentorName) {
   const name = (mentorName || '').trim();
   if (name === 'Thanh Hà') return 'Mentor Thanh Hà';
-  if (name === 'Mai Chi') return 'Mentor Mai Chi';
   return name ? `Mentor ${name}` : '';
 }
 

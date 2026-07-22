@@ -180,7 +180,6 @@ APPLY_DOC_LABELS = {
 }
 MENTOR_BRANCH_NOTIFY_EMAILS = {
     "Thanh Hà": "cherrythanh06@gmail.com",
-    "Mai Chi": "mochisjtu@gmail.com",
 }
 SCHOLARSHIP_SYSTEMS = {"english", "chinese"}
 SUPPORTING_MATERIAL_DOC_IDS = ("cv", "research", "award")
@@ -265,7 +264,7 @@ _last_inbox_reminder_check = 0.0
 
 
 EMAIL_REGEX = re.compile(r'^[^@]+@[^@]+\.[^@]+$')
-MENTOR_OPTIONS = {'Thanh Hà', 'Mai Chi'}
+MENTOR_OPTIONS = {'Thanh Hà'}
 
 OTP_EXPIRE_MINUTES = int(os.getenv("OTP_EXPIRE_MINUTES", "10"))
 OTP_RESEND_SECONDS = int(os.getenv("OTP_RESEND_SECONDS", "60"))
