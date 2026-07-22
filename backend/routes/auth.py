@@ -451,6 +451,131 @@ def mentee_ack_profile_reminder():
     })
 
 
+AVATAR_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+AVATAR_MAX_BYTES = 5 * 1024 * 1024
+
+
+@app.post("/api/auth/avatar")
+@with_db
+def upload_mentee_avatar():
+    user, error_response = get_authenticated_user()
+    if error_response:
+        return error_response
+
+    user, error_response = require_mentee_account(user)
+    if error_response:
+        return error_response
+
+    uploaded = request.files.get("file")
+    if not uploaded or not uploaded.filename:
+        return jsonify({"detail": "Vui lòng chọn ảnh để tải lên"}), 400
+
+    original_name = uploaded.filename.strip()
+    ext = Path(original_name).suffix.lower()
+    if ext not in AVATAR_ALLOWED_EXTENSIONS:
+        return jsonify({"detail": "Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP"}), 400
+
+    uploaded.seek(0, os.SEEK_END)
+    size = uploaded.tell()
+    uploaded.seek(0)
+    if size <= 0:
+        return jsonify({"detail": "File ảnh trống"}), 400
+    if size > AVATAR_MAX_BYTES:
+        return jsonify({"detail": "Ảnh không được vượt quá 5MB"}), 400
+
+    from services import storage
+
+    user_id = str(user["_id"])
+    old_name = (user.get("avatar_stored_name") or "").strip()
+    if old_name:
+        storage.delete(storage.storage_key(user_id, "avatar", old_name))
+
+    stored_name = f"{uuid.uuid4().hex}{ext}"
+    mime_type = uploaded.mimetype or "image/jpeg"
+    storage.save_fileobj(
+        storage.storage_key(user_id, "avatar", stored_name),
+        uploaded,
+        mime_type,
+    )
+
+    now = datetime.now(timezone.utc)
+    users.update_one(
+        {"_id": ObjectId(user_id)},
+        {
+            "$set": {
+                "avatar_stored_name": stored_name,
+                "avatar_original_name": original_name,
+                "avatar_mime_type": mime_type,
+                "avatar_updated_at": now,
+            }
+        },
+    )
+    fresh = users.find_one({"_id": ObjectId(user_id)}) or user
+    return jsonify(user_response(fresh))
+
+
+@app.get("/api/auth/avatar")
+@with_db
+def get_mentee_avatar():
+    user, error_response = get_authenticated_user()
+    if error_response:
+        return error_response
+
+    user, error_response = require_mentee_account(user)
+    if error_response:
+        return error_response
+
+    stored_name = (user.get("avatar_stored_name") or "").strip()
+    if not stored_name:
+        return jsonify({"detail": "Chưa có ảnh đại diện"}), 404
+
+    from services import storage
+
+    key = storage.storage_key(user["_id"], "avatar", stored_name)
+    if not storage.exists(key):
+        return jsonify({"detail": "Không tìm thấy ảnh đại diện"}), 404
+
+    data = storage.read_bytes(key)
+    return make_inline_file_response(
+        data,
+        user.get("avatar_original_name") or stored_name,
+        user.get("avatar_mime_type") or "image/jpeg",
+    )
+
+
+@app.delete("/api/auth/avatar")
+@with_db
+def delete_mentee_avatar():
+    user, error_response = get_authenticated_user()
+    if error_response:
+        return error_response
+
+    user, error_response = require_mentee_account(user)
+    if error_response:
+        return error_response
+
+    from services import storage
+
+    user_id = str(user["_id"])
+    old_name = (user.get("avatar_stored_name") or "").strip()
+    if old_name:
+        storage.delete(storage.storage_key(user_id, "avatar", old_name))
+
+    users.update_one(
+        {"_id": ObjectId(user_id)},
+        {
+            "$unset": {
+                "avatar_stored_name": "",
+                "avatar_original_name": "",
+                "avatar_mime_type": "",
+                "avatar_updated_at": "",
+            }
+        },
+    )
+    fresh = users.find_one({"_id": ObjectId(user_id)}) or user
+    return jsonify(user_response(fresh))
+
+
 @app.post("/api/auth/logout")
 def logout():
     return jsonify({"message": "Đăng xuất thành công"})

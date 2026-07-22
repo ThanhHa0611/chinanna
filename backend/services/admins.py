@@ -319,6 +319,7 @@ def serialize_admin_mentee_summary(user: dict, admin: dict | None = None) -> dic
         "total_documents_count": len(VALID_APPLY_DOC_IDS),
         "submitted_schools_count": count_submitted_apply_schools(user),
         "total_schools_count": get_apply_progress_row_count(user),
+        "has_avatar": bool((user.get("avatar_stored_name") or "").strip()),
     }
     if admin and admin_is_level1_mentor(admin):
         activity = get_mentor_l2_activity_raw(user)

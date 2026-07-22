@@ -1,13 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-
-const heroImageUrl = `${import.meta.env.BASE_URL}tron-tru-girl.svg`;
+import { api } from '../services/api';
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const location = useLocation();
+  const fileInputRef = useRef(null);
   const [quote, setQuote] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
 
   useEffect(() => {
     if (!user) {
@@ -19,6 +23,71 @@ export default function Home() {
       setQuote(pickRandomQuote());
     });
   }, [user?.id, location.key]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = '';
+
+    if (!user?.has_avatar || user?.role === 'parent') {
+      setAvatarUrl('');
+      setAvatarLoading(false);
+      return undefined;
+    }
+
+    setAvatarLoading(true);
+    setAvatarError('');
+    api
+      .fetchAvatarObjectUrl()
+      .then((url) => {
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        objectUrl = url;
+        setAvatarUrl(url);
+      })
+      .catch((err) => {
+        if (!cancelled) setAvatarError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setAvatarLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [user?.id, user?.has_avatar]);
+
+  const handleAvatarPick = () => {
+    if (avatarUploading) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleAvatarChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setAvatarUploading(true);
+    setAvatarError('');
+    try {
+      const updated = await api.uploadAvatar(file);
+      updateUser(updated);
+    } catch (err) {
+      setAvatarError(err.message);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const displayName = (user?.full_name || user?.username || 'Mentee').trim();
+  const initials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('');
 
   return (
     <div className="home-page">
@@ -48,16 +117,42 @@ export default function Home() {
               </blockquote>
             )}
             <div className="hero-card">
-            <div className="hero-card-content">
-              <h2>Xin chào, {user.username}!</h2>
-              <p>Bạn đã đăng nhập thành công với email: {user.email}</p>
+              <div className="hero-card-content">
+                <h2>Xin chào, {user.username}!</h2>
+                <p>Bạn đã đăng nhập thành công với email: {user.email}</p>
+              </div>
+              {user.role !== 'parent' && (
+              <div className="hero-avatar-wrap">
+                <button
+                  type="button"
+                  className="hero-avatar-btn"
+                  onClick={handleAvatarPick}
+                  disabled={avatarUploading}
+                  aria-label="Đổi ảnh đại diện"
+                  title="Bấm để tải ảnh đại diện"
+                >
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="Ảnh đại diện của bạn" className="hero-card-image hero-avatar-image" />
+                  ) : (
+                    <span className="hero-card-image hero-avatar-placeholder" aria-hidden="true">
+                      {avatarLoading || avatarUploading ? '…' : initials || 'M'}
+                    </span>
+                  )}
+                  <span className="hero-avatar-hint">
+                    {avatarUploading ? 'Đang tải…' : user.has_avatar ? 'Đổi ảnh' : 'Thêm ảnh'}
+                  </span>
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                  hidden
+                  onChange={handleAvatarChange}
+                />
+                {avatarError && <p className="hero-avatar-error">{avatarError}</p>}
+              </div>
+              )}
             </div>
-            <img
-              src={heroImageUrl}
-              alt="Du học Trung Quốc"
-              className="hero-card-image"
-            />
-          </div>
           </>
         ) : (
           <div className="hero-actions">

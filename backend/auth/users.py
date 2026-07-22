@@ -75,6 +75,7 @@ def user_response(user: dict) -> dict:
         payload["profile_info_reminder_unread"] = profile_info_reminder_unread(user)
         payload["email_notify_documents"] = mentee_email_notify_documents_enabled(user)
         payload["email_notify_activities"] = mentee_email_notify_activities_enabled(user)
+        payload["has_avatar"] = bool((user.get("avatar_stored_name") or "").strip())
     return payload
 
 

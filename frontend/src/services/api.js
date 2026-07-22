@@ -160,6 +160,41 @@ export const api = {
   ackProfileInfoReminder: () =>
     request('/api/auth/ack-profile-reminder', { method: 'POST' }),
 
+  uploadAvatar: async (file) => {
+    const token = localStorage.getItem('token');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/api/auth/avatar`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || `Có lỗi xảy ra (HTTP ${response.status})`);
+    }
+    return data;
+  },
+
+  fetchAvatarObjectUrl: async () => {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/api/auth/avatar`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || `Không tải được ảnh đại diện (HTTP ${response.status})`);
+    }
+
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  },
+
+  deleteAvatar: () => request('/api/auth/avatar', { method: 'DELETE' }),
+
   uploadApplyDocument: async (docId, file) => {
     const token = localStorage.getItem('token');
     const formData = new FormData();

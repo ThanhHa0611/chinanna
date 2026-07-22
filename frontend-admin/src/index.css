@@ -1536,6 +1536,23 @@ th {
   gap: 0.75rem;
 }
 
+.mentee-detail-head-main {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.mentee-detail-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--bg-soft, #f6f1ed);
+}
+
 .mentee-detail-title {
   margin: 0 0 0.2rem;
   font-size: 1.05rem;

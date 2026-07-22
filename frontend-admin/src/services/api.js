@@ -166,6 +166,21 @@ export const api = {
 
   getMentee: (id) => request(`/api/admin/mentees/${id}`),
 
+  fetchMenteeAvatarObjectUrl: async (menteeId) => {
+    const token = localStorage.getItem('admin_token');
+    const response = await fetch(`${API_BASE}/api/admin/mentees/${menteeId}/avatar`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || `Không tải được ảnh đại diện (HTTP ${response.status})`);
+    }
+
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  },
+
   deleteMentee: (id) =>
     request(`/api/admin/mentees/${id}`, {
       method: 'DELETE',

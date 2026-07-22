@@ -65,6 +65,38 @@ def admin_get_mentee(mentee_id: str):
     return jsonify(serialize_admin_mentee_detail(mentee, admin))
 
 
+@app.get("/api/admin/mentees/<mentee_id>/avatar")
+@with_db
+def admin_get_mentee_avatar(mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    mentee, error = get_mentee_for_admin(admin, mentee_id)
+    if error:
+        return error
+
+    stored_name = (mentee.get("avatar_stored_name") or "").strip()
+    if not stored_name:
+        return jsonify({"detail": "Mentee chưa có ảnh đại diện"}), 404
+
+    from services import storage
+
+    key = storage.storage_key(mentee["_id"], "avatar", stored_name)
+    if not storage.exists(key):
+        return jsonify({"detail": "Không tìm thấy ảnh đại diện"}), 404
+
+    data = storage.read_bytes(key)
+    return make_inline_file_response(
+        data,
+        mentee.get("avatar_original_name") or stored_name,
+        mentee.get("avatar_mime_type") or "image/jpeg",
+    )
+
+
 @app.delete("/api/admin/mentees/<mentee_id>")
 @with_db
 def admin_delete_mentee(mentee_id: str):

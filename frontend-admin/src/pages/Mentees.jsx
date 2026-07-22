@@ -435,6 +435,7 @@ export default function Mentees() {
   const ackL2ActivityRequestId = useRef(0);
   const [attentionRevision, setAttentionRevision] = useState(0);
   const [classificationSaving, setClassificationSaving] = useState('');
+  const [menteeAvatarUrl, setMenteeAvatarUrl] = useState('');
   const menteeApplyDirectionSubtitle = (mentee) =>
     mentorApplyDirectionCombinedLabel(mentee) ||
     mentorApplyDirectionLabel(mentee?.mentor_apply_direction);
@@ -482,6 +483,35 @@ export default function Mentees() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    let objectUrl = '';
+
+    if (!selectedMentee?.id || !selectedMentee?.has_avatar) {
+      setMenteeAvatarUrl('');
+      return undefined;
+    }
+
+    api
+      .fetchMenteeAvatarObjectUrl(selectedMentee.id)
+      .then((url) => {
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        objectUrl = url;
+        setMenteeAvatarUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setMenteeAvatarUrl('');
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [selectedMentee?.id, selectedMentee?.has_avatar]);
+
+  useEffect(() => {
     if (!selectedId) {
       setSelectedMentee(null);
       return;
@@ -513,6 +543,7 @@ export default function Mentees() {
                   scholarship_system_label: data.scholarship_system_label,
                   uploaded_count: data.uploaded_count,
                   approved_count: data.approved_count,
+                  has_avatar: Boolean(data.has_avatar),
                 }
               : item,
           ),
@@ -2084,7 +2115,15 @@ export default function Mentees() {
             ) : (
               <>
                 <div className="mentee-detail-head">
-                  <div>
+                  <div className="mentee-detail-head-main">
+                    {menteeAvatarUrl ? (
+                      <img
+                        src={menteeAvatarUrl}
+                        alt={`Ảnh đại diện ${menteeDisplayName(selectedMentee)}`}
+                        className="mentee-detail-avatar"
+                      />
+                    ) : null}
+                    <div>
                     <h3 className="mentee-detail-title">
                       {menteeDisplayName(selectedMentee)}
                     </h3>
@@ -2104,6 +2143,7 @@ export default function Mentees() {
                           : menteeApplyDirectionSubtitle(selectedMentee) || 'Chưa điền phương hướng'}
                     </p>
                     <p className="muted mentee-detail-email">{selectedMentee.email}</p>
+                    </div>
                   </div>
                   {canPinMenteeUnread && (
                     <button
