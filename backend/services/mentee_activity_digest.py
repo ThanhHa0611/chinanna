@@ -18,6 +18,9 @@ from services.profile_activities import (
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
+# Temporary pause: set True to resume daily extracurricular digest emails at 10:00 VN.
+MENTEE_ACTIVITY_DIGEST_ENABLED = False
+
 
 def _digest_since(mentee: dict) -> datetime:
     last_sent = mentee.get("last_activity_digest_sent_at")
@@ -104,6 +107,16 @@ def send_activity_digest_for_mentee(mentee: dict, *, dry_run: bool = False) -> d
 
 
 def process_mentee_activity_digests(*, dry_run: bool = False) -> dict:
+    if not MENTEE_ACTIVITY_DIGEST_ENABLED:
+        return {
+            "processed": 0,
+            "sent_count": 0,
+            "skipped_empty": 0,
+            "dry_run": dry_run,
+            "disabled": True,
+            "results": None,
+        }
+
     query = {
         "role": ROLE_MENTEE,
         "email_notify_activities": True,

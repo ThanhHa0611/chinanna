@@ -7,7 +7,11 @@ from flask import request
 from database import ensure_db, mentor_inbox
 from extensions import app
 from services.inbox import send_daily_inbox_summary_for_mentor
-from services.mentee_activity_digest import is_activity_digest_window, process_mentee_activity_digests
+from services.mentee_activity_digest import (
+    MENTEE_ACTIVITY_DIGEST_ENABLED,
+    is_activity_digest_window,
+    process_mentee_activity_digests,
+)
 from services.mentor_inbox_digest import process_mentor_inbox_digests
 
 _last_inbox_reminder_check = 0.0
@@ -45,7 +49,8 @@ def maybe_process_inbox_reminders():
             today_key = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d")
             if _last_daily_digest_date != today_key:
                 _last_daily_digest_date = today_key
-                process_mentee_activity_digests()
+                if MENTEE_ACTIVITY_DIGEST_ENABLED:
+                    process_mentee_activity_digests()
                 process_mentor_inbox_digests()
     except Exception:
         pass
