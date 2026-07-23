@@ -65,6 +65,9 @@ def register():
     mentor = data["mentor"].strip()
     zalo_phone = normalize_zalo_phone(data.get("zalo_phone", ""))
 
+    if is_disabled_system_email(email):
+        return jsonify({"detail": "Email này không được phép đăng ký trên hệ thống."}), 400
+
     username_owner = users.find_one({"username": username})
     if username_owner and username_owner.get("email") != email:
         return jsonify({"detail": "Tên đăng nhập đã tồn tại"}), 400
@@ -172,6 +175,11 @@ def login():
     if not user or not verify_password(password, user["password"]):
         return jsonify({"detail": "Email hoặc mật khẩu không đúng"}), 401
 
+    if is_disabled_system_email(email):
+        return jsonify({
+            "detail": "Tài khoản này đã bị ngắt khỏi hệ thống và không còn quyền đăng nhập.",
+        }), 403
+
     role = user.get("role") or ROLE_MENTEE
     if role not in (ROLE_MENTEE, ROLE_PARENT):
         return jsonify({"detail": "Email hoặc mật khẩu không đúng"}), 401
@@ -229,6 +237,11 @@ def auto_login():
                 "login_blocked": True,
             }
         ), 403
+
+    if is_disabled_system_email(email):
+        return jsonify({
+            "detail": "Tài khoản này đã bị ngắt khỏi hệ thống và không còn quyền đăng nhập.",
+        }), 403
 
     payload, status = create_trusted_auto_login_for_user(user)
     return jsonify(payload), status

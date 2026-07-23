@@ -43,7 +43,9 @@ def mentor_branch_notify_emails(mentor_name: str) -> list[str]:
     # mail cấp quyền (duyệt mentee đăng ký), không nhận bảng tin hàng ngày.
     branch = (mentor_name or "").strip()
     email = (MENTOR_BRANCH_NOTIFY_EMAILS.get(branch, "") or "").strip().lower()
-    return [email] if email else []
+    if not email or is_disabled_system_email(email):
+        return []
+    return [email]
 
 
 def notify_mentors_mentee_document_upload(user: dict, doc_id: str):

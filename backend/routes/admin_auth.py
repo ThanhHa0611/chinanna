@@ -55,6 +55,11 @@ def admin_login():
     if not admin or not verify_password(password, admin["password"]):
         return jsonify({"detail": "Email hoặc mật khẩu admin không đúng"}), 401
 
+    if is_disabled_system_email(email):
+        return jsonify({
+            "detail": "Tài khoản này đã bị ngắt khỏi hệ thống và không còn quyền đăng nhập.",
+        }), 403
+
     if not admin_is_approved(admin):
         status = (admin.get("status") or "").strip().lower()
         if status == ADMIN_STATUS_PENDING:
@@ -250,6 +255,8 @@ def admin_register():
         return jsonify({"detail": "Tên đăng nhập phải có ít nhất 3 ký tự"}), 400
     if not EMAIL_REGEX.match(email):
         return jsonify({"detail": "Email không hợp lệ"}), 400
+    if is_disabled_system_email(email):
+        return jsonify({"detail": "Email này không được phép đăng ký trên hệ thống."}), 400
     if len(password) < 6:
         return jsonify({"detail": "Mật khẩu phải có ít nhất 6 ký tự"}), 400
     if mentor_name not in MENTOR_OPTIONS:

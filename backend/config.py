@@ -3,12 +3,6 @@ import os
 import re
 from pathlib import Path
 
-def _parse_email_list(env_key: str, fallback: str) -> list[str]:
-    raw = os.getenv(env_key, "").strip()
-    if not raw:
-        raw = os.getenv("SUPER_ADMIN_EMAIL", fallback).strip()
-    return [email.strip().lower() for email in raw.split(",") if email.strip()]
-
 BACKEND_DIR = Path(__file__).resolve().parent
 UPLOAD_ROOT = BACKEND_DIR / "uploads"
 
@@ -65,9 +59,35 @@ def _parse_email_list(env_key: str, fallback: str) -> list[str]:
     return [email.strip().lower() for email in raw.split(",") if email.strip()]
 
 
-SUPER_ADMIN_EMAILS = _parse_email_list("SUPER_ADMIN_EMAILS", "cherrythanh06@gmail.com")
+# Email bị ngắt hoàn toàn khỏi 3 app (không login, không nhận mail hệ thống, không quyền admin).
+DISABLED_SYSTEM_EMAILS = frozenset(
+    email.strip().lower()
+    for email in os.getenv(
+        "DISABLED_SYSTEM_EMAILS",
+        "mochisjtu@gmail.com",
+    ).split(",")
+    if email.strip()
+)
+
+
+def is_disabled_system_email(email: str | None) -> bool:
+    return (email or "").strip().lower() in DISABLED_SYSTEM_EMAILS
+
+
+def filter_active_emails(emails: list[str] | tuple[str, ...] | set[str]) -> list[str]:
+    return [email for email in emails if email and not is_disabled_system_email(email)]
+
+
+SUPER_ADMIN_EMAILS = filter_active_emails(
+    _parse_email_list("SUPER_ADMIN_EMAILS", "cherrythanh06@gmail.com")
+)
 SUPER_ADMIN_EMAIL = SUPER_ADMIN_EMAILS[0] if SUPER_ADMIN_EMAILS else "cherrythanh06@gmail.com"
-ADMIN_NOTIFY_EMAIL = os.getenv("ADMIN_NOTIFY_EMAIL", SUPER_ADMIN_EMAIL).strip().lower()
+_raw_admin_notify = os.getenv("ADMIN_NOTIFY_EMAIL", SUPER_ADMIN_EMAIL).strip().lower()
+ADMIN_NOTIFY_EMAIL = (
+    SUPER_ADMIN_EMAIL
+    if is_disabled_system_email(_raw_admin_notify)
+    else _raw_admin_notify
+)
 BACKEND_PUBLIC_URL = os.getenv("BACKEND_PUBLIC_URL", "http://127.0.0.1:8000").strip().rstrip("/")
 EMAIL_ACTION_TOKEN_DAYS = int(os.getenv("EMAIL_ACTION_TOKEN_DAYS", "7"))
 
@@ -179,7 +199,11 @@ APPLY_DOC_LABELS = {
     "supporting-materials": "Supporting Materials",
 }
 MENTOR_BRANCH_NOTIFY_EMAILS = {
-    "Thanh Hà": "cherrythanh06@gmail.com",
+    branch: email
+    for branch, email in {
+        "Thanh Hà": "cherrythanh06@gmail.com",
+    }.items()
+    if email and not is_disabled_system_email(email)
 }
 SCHOLARSHIP_SYSTEMS = {"english", "chinese"}
 SUPPORTING_MATERIAL_DOC_IDS = ("cv", "research", "award")

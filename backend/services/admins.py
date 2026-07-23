@@ -73,10 +73,14 @@ def admin_response(admin: dict) -> dict:
 
 
 def is_super_admin(admin: dict) -> bool:
+    if not admin or is_disabled_system_email(admin.get("email")):
+        return False
     return bool(admin.get("is_super_admin")) or admin.get("email", "").lower() in SUPER_ADMIN_EMAILS
 
 
 def admin_is_approved(admin: dict) -> bool:
+    if not admin or is_disabled_system_email(admin.get("email")):
+        return False
     if is_super_admin(admin):
         return True
     return admin.get("status", ADMIN_STATUS_APPROVED) == ADMIN_STATUS_APPROVED

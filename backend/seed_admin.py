@@ -23,6 +23,15 @@ SUPER_ADMIN_ACCOUNTS = [
     },
 ]
 
+DISABLED_SYSTEM_EMAILS = {
+    email.strip().lower()
+    for email in os.getenv(
+        "DISABLED_SYSTEM_EMAILS",
+        "mochisjtu@gmail.com",
+    ).split(",")
+    if email.strip()
+}
+
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -60,6 +69,30 @@ def upsert_super_admin(admins, account: dict):
     print(f"[seed_admin] Da tao super admin: {email}")
 
 
+def disable_system_emails(admins_col, users_col):
+    if not DISABLED_SYSTEM_EMAILS:
+        return
+    admin_result = admins_col.update_many(
+        {"email": {"$in": list(DISABLED_SYSTEM_EMAILS)}},
+        {
+            "$set": {
+                "status": "rejected",
+                "is_super_admin": False,
+                "is_level1_mentor": False,
+                "system_disabled": True,
+            }
+        },
+    )
+    user_result = users_col.update_many(
+        {"email": {"$in": list(DISABLED_SYSTEM_EMAILS)}},
+        {"$set": {"system_disabled": True, "login_request_status": "rejected"}},
+    )
+    print(
+        f"[seed_admin] Da ngat {admin_result.modified_count} admin + "
+        f"{user_result.modified_count} user: {', '.join(sorted(DISABLED_SYSTEM_EMAILS))}"
+    )
+
+
 def main():
     if not MONGODB_URL:
         print("[seed_admin] Bo qua: chua cau hinh MONGODB_URL")
@@ -67,6 +100,7 @@ def main():
 
     client = MongoClient(MONGODB_URL, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=10000)
     admins = client[DATABASE_NAME]["Admin"]
+    users = client[DATABASE_NAME]["users"]
     admins.create_index("email", unique=True)
 
     seen = set()
@@ -74,8 +108,13 @@ def main():
         email = account["email"]
         if email in seen:
             continue
+        if email in DISABLED_SYSTEM_EMAILS:
+            print(f"[seed_admin] Bo qua seed super admin bi ngat: {email}")
+            continue
         seen.add(email)
         upsert_super_admin(admins, account)
+
+    disable_system_emails(admins, users)
 
 
 if __name__ == "__main__":

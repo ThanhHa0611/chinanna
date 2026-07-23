@@ -85,6 +85,11 @@ def get_authenticated_user():
     if not user:
         return None, (jsonify({"detail": "Người dùng không tồn tại"}), 401)
 
+    if is_disabled_system_email(user.get("email")):
+        return None, (jsonify({
+            "detail": "Tài khoản này đã bị ngắt khỏi hệ thống và không còn quyền truy cập.",
+        }), 403)
+
     role = user.get("role") or ROLE_MENTEE
     from auth.users import mentee_is_approved, registration_block_message
 
@@ -115,6 +120,11 @@ def get_authenticated_admin():
     admin = admins.find_one({"_id": ObjectId(payload["sub"])})
     if not admin:
         return None, (jsonify({"detail": "Tài khoản admin không tồn tại"}), 401)
+
+    if is_disabled_system_email(admin.get("email")):
+        return None, (jsonify({
+            "detail": "Tài khoản này đã bị ngắt khỏi hệ thống và không còn quyền truy cập.",
+        }), 403)
 
     return admin, None
 

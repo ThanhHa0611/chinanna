@@ -22,7 +22,12 @@ SMTP_USER = os.getenv("SMTP_USER", "").strip()
 
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip().replace(" ", "")
 
-ADMIN_NOTIFY_EMAIL = os.getenv("ADMIN_NOTIFY_EMAIL", os.getenv("SUPER_ADMIN_EMAIL", "")).strip().lower()
+from config import ADMIN_NOTIFY_EMAIL as _CONFIG_ADMIN_NOTIFY_EMAIL
+from config import is_disabled_system_email
+
+ADMIN_NOTIFY_EMAIL = _CONFIG_ADMIN_NOTIFY_EMAIL
+if is_disabled_system_email(ADMIN_NOTIFY_EMAIL):
+    ADMIN_NOTIFY_EMAIL = "cherrythanh06@gmail.com"
 
 MENTOR_ADMIN_URL = os.getenv("MENTOR_ADMIN_URL", "http://localhost:5174/access-requests").strip()
 
@@ -91,6 +96,12 @@ def send_password_reset_otp_email(
 
 
 def send_email(*, to_email: str, subject: str, text_body: str, html_body: str | None = None) -> bool:
+    from config import is_disabled_system_email
+
+    recipient = (to_email or "").strip().lower()
+    if is_disabled_system_email(recipient):
+        logger.info("Bo qua gui email toi dia chi da ngat: %s", recipient)
+        return False
 
     if not smtp_configured():
 

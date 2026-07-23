@@ -32,6 +32,8 @@ MENTOR_MENTEES_URL = os.getenv("MENTOR_MENTEES_URL", "http://localhost:5174/ment
 
 
 def level1_mentor_notify_emails(mentor_name: str) -> list[str]:
+    from config import filter_active_emails
+
     branch = (mentor_name or "").strip()
     emails: set[str] = set()
     for doc in admins.find({
@@ -42,7 +44,7 @@ def level1_mentor_notify_emails(mentor_name: str) -> list[str]:
         email = (doc.get("email") or "").strip().lower()
         if email:
             emails.add(email)
-    return sorted(emails)
+    return sorted(filter_active_emails(emails))
 
 
 def _token_expiry() -> datetime:
