@@ -56,7 +56,7 @@ services:
     schedule: "0 3 * * *"
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    # mentee-activity-digest paused (MENTEE_ACTIVITY_DIGEST_ENABLED=False); mentor inbox digest kept.
+    # mentee-activity-digest removed; mentor inbox digest only (optional — also runs via middleware at 10:00 VN).
     startCommand: >-
       python -c "import os,urllib.request; s=os.environ['CRON_SECRET']; b=os.environ.get('BACKEND_PUBLIC_URL','').rstrip('/'); h={'X-Cron-Secret': s};
       urllib.request.urlopen(urllib.request.Request(f'{b}/api/cron/mentor-inbox-digest', method='POST', headers=h))"
