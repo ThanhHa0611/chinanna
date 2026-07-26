@@ -7,7 +7,8 @@ from flask import request
 from database import ensure_db, mentor_inbox
 from extensions import app
 from services.inbox import send_daily_inbox_summary_for_mentor
-from services.mentor_inbox_digest import is_inbox_digest_window, process_mentor_inbox_digests
+from services.mentee_activity_digest import is_activity_digest_window, process_mentee_activity_digests
+from services.mentor_inbox_digest import process_mentor_inbox_digests
 
 _last_inbox_reminder_check = 0.0
 _last_daily_digest_date = ""
@@ -39,11 +40,12 @@ def maybe_process_inbox_reminders():
         ensure_stale_pending_daily_reminders(mentor_inbox)
         process_due_reminders(mentor_inbox, send_daily_inbox_summary_for_mentor)
 
-        # Mentee extracurricular activity digest emails removed.
-        if is_inbox_digest_window():
+        # Next 10:00 VN slot: activity updates before 10h go out today; after 10h → tomorrow.
+        if is_activity_digest_window():
             today_key = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d")
             if _last_daily_digest_date != today_key:
                 _last_daily_digest_date = today_key
+                process_mentee_activity_digests()
                 process_mentor_inbox_digests()
     except Exception:
         pass
