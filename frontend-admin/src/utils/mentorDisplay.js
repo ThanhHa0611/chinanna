@@ -1,7 +1,7 @@
 export const LEVEL1_MENTORS = ['Thanh Hà'];
 
 /** Học sinh đăng ký sau ngày này thì mentor thấy hậu tố (VMH) bên tên. */
-export const VMH_REGISTRATION_CUTOFF_DATE = '2023-07-23';
+export const VMH_REGISTRATION_CUTOFF_DATE = '2026-07-25';
 
 export function menteeCreatedDateKey(mentee) {
   const raw = mentee?.created_at || '';

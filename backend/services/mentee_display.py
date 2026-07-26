@@ -35,7 +35,7 @@ def mentee_shows_vmh_tag(user: dict) -> bool:
         year, month, day = (int(part) for part in VMH_REGISTRATION_CUTOFF_DATE.split("-"))
         cutoff = date(year, month, day)
     except (TypeError, ValueError, AttributeError):
-        cutoff = date(2023, 7, 23)
+        cutoff = date(2026, 7, 25)
     return reg_date > cutoff
 
 
