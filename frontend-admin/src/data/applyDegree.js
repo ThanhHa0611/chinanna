@@ -125,17 +125,16 @@ function mentorApplyDirectionFieldLabel(mentee, field) {
   );
 }
 
-/** Các dòng hiển thị: "Nguyện vọng 1: Kinh tế", ... */
+/** Các nhãn nguyện vọng theo thứ tự (chỉ nguyện vọng đã điền). */
 export function mentorApplyDirectionWishesDisplayParts(mentee) {
-  return MENTOR_APPLY_DIRECTION_FIELDS.map((field, index) => {
-    const label = mentorApplyDirectionFieldLabel(mentee, field);
-    return label ? `Nguyện vọng ${index + 1}: ${label}` : '';
-  }).filter(Boolean);
+  return MENTOR_APPLY_DIRECTION_FIELDS.map((field) =>
+    mentorApplyDirectionFieldLabel(mentee, field),
+  ).filter(Boolean);
 }
 
 export function mentorApplyDirectionWishesDisplayLine(mentee) {
   const parts = mentorApplyDirectionWishesDisplayParts(mentee);
-  if (parts.length) return parts.join(' · ');
+  if (parts.length) return parts.join(' / ');
   return mentorApplyDirectionCombinedLabel(mentee) || mentorApplyDirectionLabel(mentee?.mentor_apply_direction);
 }
 

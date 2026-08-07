@@ -13,7 +13,6 @@ import {
   menteeClassificationSummaryLine,
   mentorApplyDirectionLabel,
   mentorApplyDirectionWishesDisplayLine,
-  mentorApplyDirectionWishesDisplayParts,
   normalizeScholarshipSystemValue,
   patchMenteeSummaryFromDetail,
   researchDirectionDisplayText,
@@ -2264,19 +2263,9 @@ export default function Mentees() {
                               </div>
                             ) : (
                               showThanhHaClassification && (
-                                <div className="mentee-info-grid-full">
+                                <div>
                                   <span className="info-label">Ngành / Hướng apply</span>
-                                  {mentorApplyDirectionWishesDisplayParts(selectedMentee).length ? (
-                                    <div className="mentee-apply-wishes-readonly">
-                                      {mentorApplyDirectionWishesDisplayParts(selectedMentee).map(
-                                        (line) => (
-                                          <strong key={line}>{line}</strong>
-                                        ),
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <strong>—</strong>
-                                  )}
+                                  <strong>{menteeApplyDirectionSubtitle(selectedMentee) || '—'}</strong>
                                 </div>
                               )
                             )}
