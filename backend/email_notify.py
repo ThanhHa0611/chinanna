@@ -5,8 +5,8 @@ import os
 import smtplib
 
 from email.mime.multipart import MIMEMultipart
-
 from email.mime.text import MIMEText
+from email.utils import formataddr
 
 
 
@@ -95,7 +95,14 @@ def send_password_reset_otp_email(
 
 
 
-def send_email(*, to_email: str, subject: str, text_body: str, html_body: str | None = None) -> bool:
+def send_email(
+    *,
+    to_email: str,
+    subject: str,
+    text_body: str,
+    html_body: str | None = None,
+    from_name: str | None = None,
+) -> bool:
     from config import is_disabled_system_email
 
     recipient = (to_email or "").strip().lower()
@@ -104,45 +111,26 @@ def send_email(*, to_email: str, subject: str, text_body: str, html_body: str | 
         return False
 
     if not smtp_configured():
-
         logger.warning("SMTP chua cau hinh — bo qua gui email toi %s", to_email)
-
         return False
 
-
-
     message = MIMEMultipart("alternative")
-
     message["Subject"] = subject
-
-    message["From"] = SMTP_USER
-
+    display_name = (from_name or "").strip()
+    message["From"] = formataddr((display_name, SMTP_USER)) if display_name else SMTP_USER
     message["To"] = to_email
-
     message.attach(MIMEText(text_body, "plain", "utf-8"))
-
     if html_body:
-
         message.attach(MIMEText(html_body, "html", "utf-8"))
 
-
-
     try:
-
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
-
             server.starttls()
-
             server.login(SMTP_USER, SMTP_PASSWORD)
-
             server.sendmail(SMTP_USER, [to_email], message.as_string())
-
         return True
-
     except Exception:
-
         logger.exception("Gui email that bai toi %s", to_email)
-
         return False
 
 
@@ -621,18 +609,27 @@ def send_mentee_activity_digest_email(
     if count == 0:
         return False
 
+    brand = "Hiên Mộng Viên"
+
+    def _brand_text(value: str) -> str:
+        text = value or ""
+        for old in ("Trơn Tru", "Tron Tru", "trơn tru", "tron tru"):
+            text = text.replace(old, brand)
+        return text
+
+    display_names = [_brand_text(name) for name in activity_names]
     intro = f"Mentor cập nhật {count} hoạt động ngoại khóa, hãy tham gia ngay nhé"
-    subject = f"[Du học Trung Quốc] {intro}"
-    numbered_lines = [f"{index}. {name}" for index, name in enumerate(activity_names, start=1)]
+    subject = f"[{brand}] {intro}"
+    numbered_lines = [f"{index}. {name}" for index, name in enumerate(display_names, start=1)]
     list_text = "\n".join(numbered_lines)
     text_body = (
         f"{intro}\n\n"
         f"{list_text}\n\n"
-        f"Mở hồ sơ: {profile_url}\n\n— Hệ thống Phong Van"
+        f"Mở hồ sơ: {profile_url}\n\n— Hệ thống {brand}"
     )
     list_html = "".join(
         f"<li style=\"margin:0.35rem 0;\">{index}. {name}</li>"
-        for index, name in enumerate(activity_names, start=1)
+        for index, name in enumerate(display_names, start=1)
     )
     html_body = f"""
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -643,6 +640,7 @@ def send_mentee_activity_digest_email(
       <p style="margin-top: 1.25rem;">
         <a href="{profile_url}" style="color:#eb2233;font-weight:600;">Xem hoạt động ngoại khóa</a>
       </p>
+      <p style="margin-top:1.25rem;color:#666;font-size:0.9rem;">— Hệ thống {brand}</p>
     </div>
     """
     return send_email(
@@ -650,6 +648,7 @@ def send_mentee_activity_digest_email(
         subject=subject,
         text_body=text_body,
         html_body=html_body,
+        from_name=brand,
     )
 
 

@@ -1,4 +1,10 @@
-"""Daily 10:00 AM Vietnam-time digest of mentor profile activities for mentees."""
+"""Daily 10:00 AM Vietnam-time digest of mentor profile activities for mentees.
+
+Scheduling (Asia/Ho_Chi_Minh):
+- Updates before 10:00 today → included in today's 10:00 digest
+- Updates at/after 10:00 today → included in tomorrow's 10:00 digest
+One email per mentee per day (batch of all pending activity updates).
+"""
 
 from __future__ import annotations
 
@@ -8,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from auth.users import approved_mentee_status_filter
 from config import ROLE_MENTEE
-from database import profile_activities, users
+from database import db, profile_activities, users
 from services.mentee_email_prefs import mentee_email_notify_activities_enabled
 from services.profile_activities import (
     PROFILE_ACTIVITY_APPROVAL_APPROVED,
@@ -17,9 +23,38 @@ from services.profile_activities import (
 )
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
+_digest_state = db["digest_state"]
 
-# Temporary pause: set True to resume daily extracurricular digest emails at 10:00 VN.
-MENTEE_ACTIVITY_DIGEST_ENABLED = False
+
+def is_activity_digest_window() -> bool:
+    """True during the 10:00–10:59 Asia/Ho_Chi_Minh hour."""
+    return datetime.now(VN_TZ).hour == 10
+
+
+def _today_date_key() -> str:
+    return datetime.now(VN_TZ).strftime("%Y-%m-%d")
+
+
+def _previous_digest_cutoff() -> datetime:
+    """Start of the previous 10:00 VN digest window (UTC)."""
+    local_now = datetime.now(VN_TZ)
+    today_ten = local_now.replace(hour=10, minute=0, second=0, microsecond=0)
+    if local_now >= today_ten:
+        cutoff_local = today_ten
+    else:
+        cutoff_local = today_ten - timedelta(days=1)
+    return cutoff_local.astimezone(timezone.utc)
+
+
+def _claim_daily_run(date_key: str) -> bool:
+    """Return True only for the first caller claiming today's digest run."""
+    now = datetime.now(timezone.utc)
+    result = _digest_state.update_one(
+        {"kind": "mentee_activity_daily_run", "date_key": date_key},
+        {"$setOnInsert": {"started_at": now}},
+        upsert=True,
+    )
+    return result.upserted_id is not None
 
 
 def _digest_since(mentee: dict) -> datetime:
@@ -28,7 +63,7 @@ def _digest_since(mentee: dict) -> datetime:
         if getattr(last_sent, "tzinfo", None) is None:
             return last_sent.replace(tzinfo=timezone.utc)
         return last_sent
-    return datetime.now(timezone.utc) - timedelta(hours=24)
+    return _previous_digest_cutoff()
 
 
 def list_activities_for_mentee_digest(mentee: dict) -> list[dict]:
@@ -107,13 +142,16 @@ def send_activity_digest_for_mentee(mentee: dict, *, dry_run: bool = False) -> d
 
 
 def process_mentee_activity_digests(*, dry_run: bool = False) -> dict:
-    if not MENTEE_ACTIVITY_DIGEST_ENABLED:
+    date_key = _today_date_key()
+
+    if not dry_run and not _claim_daily_run(date_key):
         return {
             "processed": 0,
             "sent_count": 0,
             "skipped_empty": 0,
-            "dry_run": dry_run,
-            "disabled": True,
+            "dry_run": False,
+            "date_key": date_key,
+            "already_ran": True,
             "results": None,
         }
 
@@ -139,10 +177,6 @@ def process_mentee_activity_digests(*, dry_run: bool = False) -> dict:
         "sent_count": sent_count,
         "skipped_empty": skipped_count,
         "dry_run": dry_run,
+        "date_key": date_key,
         "results": results if dry_run else None,
     }
-
-
-def is_activity_digest_window() -> bool:
-    """True during the 10:00–10:59 Asia/Ho_Chi_Minh hour."""
-    return datetime.now(VN_TZ).hour == 10

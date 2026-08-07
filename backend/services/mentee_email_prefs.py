@@ -12,7 +12,7 @@ def mentee_email_notify_documents_enabled(user: dict) -> bool:
 
 
 def mentee_email_notify_activities_enabled(user: dict) -> bool:
-    """Default False — daily activity digest is opt-in."""
+    """Default False — opt-in for next-10:00-VN activity digest emails."""
     return bool(user.get("email_notify_activities"))
 
 
