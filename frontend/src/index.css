@@ -600,6 +600,13 @@ body.screen-protected {
   -webkit-user-select: none;
 }
 
+body.screen-protected input:not([readonly]):not([disabled]),
+body.screen-protected textarea:not([readonly]):not([disabled]),
+body.screen-protected .allow-clipboard {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 body.screen-protected img {
   pointer-events: none;
   -webkit-user-drag: none;

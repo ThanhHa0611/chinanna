@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react';
 
+function clipboardAllowedTarget(target) {
+  if (!(target instanceof Element)) return false;
+  const el = target.closest(
+    'input:not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled]), [contenteditable="true"], .allow-clipboard',
+  );
+  return Boolean(el);
+}
+
 export default function ScreenProtection({ user }) {
   const [hidden, setHidden] = useState(false);
 
@@ -10,7 +18,10 @@ export default function ScreenProtection({ user }) {
   }, []);
 
   useEffect(() => {
-    const blockContextMenu = (event) => event.preventDefault();
+    const blockContextMenu = (event) => {
+      if (clipboardAllowedTarget(event.target)) return;
+      event.preventDefault();
+    };
 
     const blockShortcuts = (event) => {
       const key = event.key.toLowerCase();
@@ -21,11 +32,15 @@ export default function ScreenProtection({ user }) {
         }
       }
       if ((event.ctrlKey || event.metaKey) && ['p', 's', 'u', 'c'].includes(key)) {
+        if (key === 'c' && clipboardAllowedTarget(event.target)) return;
         event.preventDefault();
       }
     };
 
-    const blockCopy = (event) => event.preventDefault();
+    const blockCopy = (event) => {
+      if (clipboardAllowedTarget(event.target)) return;
+      event.preventDefault();
+    };
 
     document.body.classList.add('screen-protected');
     document.addEventListener('contextmenu', blockContextMenu);

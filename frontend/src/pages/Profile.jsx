@@ -1228,7 +1228,7 @@ function MenteeProfile() {
             <div className="profile-declaration-link-box">
               <p className="profile-note">
                 Bấm vào đây để tạo bản sao google docx, điền xong bạn vui lòng mở quyền và dán
-                link tại đây
+                link tại đây (Ctrl+V hoặc chuột phải → Dán).
               </p>
               {manualCopyUrl && (
                 <a
@@ -1242,7 +1242,7 @@ function MenteeProfile() {
               )}
               <input
                 type="url"
-                className="profile-declaration-link-input"
+                className="profile-declaration-link-input allow-clipboard"
                 value={declarationLinkDraft}
                 onChange={(e) => setDeclarationLinkDraft(e.target.value)}
                 placeholder="https://docs.google.com/document/d/..."

@@ -114,6 +114,31 @@ export function mentorApplyDirectionCombinedLabel(mentee) {
   return labels.join(' / ');
 }
 
+function mentorApplyDirectionFieldLabel(mentee, field) {
+  const code = normalizeMentorApplyDirectionValue(mentee?.[field]);
+  if (!code) return '';
+  const fromApi = (mentee?.[`${field}_label`] || '').trim();
+  return (
+    fromApi ||
+    MENTOR_APPLY_DIRECTION_OPTIONS.find((item) => item.value === code)?.label ||
+    ''
+  );
+}
+
+/** Các dòng hiển thị: "Nguyện vọng 1: Kinh tế", ... */
+export function mentorApplyDirectionWishesDisplayParts(mentee) {
+  return MENTOR_APPLY_DIRECTION_FIELDS.map((field, index) => {
+    const label = mentorApplyDirectionFieldLabel(mentee, field);
+    return label ? `Nguyện vọng ${index + 1}: ${label}` : '';
+  }).filter(Boolean);
+}
+
+export function mentorApplyDirectionWishesDisplayLine(mentee) {
+  const parts = mentorApplyDirectionWishesDisplayParts(mentee);
+  if (parts.length) return parts.join(' · ');
+  return mentorApplyDirectionCombinedLabel(mentee) || mentorApplyDirectionLabel(mentee?.mentor_apply_direction);
+}
+
 export function applyDegreeLevelLabel(value) {
   const match = APPLY_DEGREE_LEVELS.find((item) => item.value === (value || '').trim());
   return match?.label || '—';
@@ -192,9 +217,7 @@ export function menteeClassificationMiddleLabel(mentee) {
 }
 
 export function menteeClassificationSummaryLine(mentee) {
-  const direction =
-    mentorApplyDirectionCombinedLabel(mentee) ||
-    mentorApplyDirectionLabel(mentee?.mentor_apply_direction);
+  const direction = mentorApplyDirectionWishesDisplayLine(mentee);
   const middle = menteeClassificationMiddleLabel(mentee);
   const language = scholarshipLanguageShortLabel(mentee);
   const parts = [direction, middle, language].filter((part) => part && part !== '—');

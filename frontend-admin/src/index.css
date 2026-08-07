@@ -738,6 +738,16 @@ a:hover {
   color: var(--muted, #6b7280);
 }
 
+.mentee-apply-wishes-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.mentee-apply-wishes-readonly strong {
+  font-weight: 600;
+}
+
 .mentee-info-grid-full {
   grid-column: 1 / -1;
 }

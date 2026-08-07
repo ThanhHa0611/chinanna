@@ -11,8 +11,7 @@ import {
   APPLY_LANGUAGE_FILTER_OPTIONS,
   applyDegreeLevelShortDisplay,
   MENTOR_APPLY_DIRECTION_FIELDS,
-  mentorApplyDirectionCombinedLabel,
-  mentorApplyDirectionLabel,
+  mentorApplyDirectionWishesDisplayLine,
   mentorApplyDirectionWishes,
   normalizeScholarshipSystemValue,
   researchDirectionDisplayText,
@@ -916,8 +915,7 @@ export default function Home() {
                         <td>{formatMenteeNameForMentor(mentee)}</td>
                         {showDirectionColumn && (
                           <td>
-                            {mentorApplyDirectionCombinedLabel(mentee) ||
-                              mentorApplyDirectionLabel(mentee.mentor_apply_direction)}
+                            {mentorApplyDirectionWishesDisplayLine(mentee) || '—'}
                           </td>
                         )}
                         {isThanhHaL1 && (

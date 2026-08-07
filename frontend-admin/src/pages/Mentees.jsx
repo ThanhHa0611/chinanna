@@ -11,8 +11,9 @@ import {
   applyDegreeLevelLabel,
   MENTOR_APPLY_DIRECTION_FIELDS,
   menteeClassificationSummaryLine,
-  mentorApplyDirectionCombinedLabel,
   mentorApplyDirectionLabel,
+  mentorApplyDirectionWishesDisplayLine,
+  mentorApplyDirectionWishesDisplayParts,
   normalizeScholarshipSystemValue,
   patchMenteeSummaryFromDetail,
   researchDirectionDisplayText,
@@ -432,9 +433,7 @@ export default function Mentees() {
   const [attentionRevision, setAttentionRevision] = useState(0);
   const [classificationSaving, setClassificationSaving] = useState('');
   const [menteeAvatarUrl, setMenteeAvatarUrl] = useState('');
-  const menteeApplyDirectionSubtitle = (mentee) =>
-    mentorApplyDirectionCombinedLabel(mentee) ||
-    mentorApplyDirectionLabel(mentee?.mentor_apply_direction);
+  const menteeApplyDirectionSubtitle = (mentee) => mentorApplyDirectionWishesDisplayLine(mentee);
 
   const menteeDisplayName = (mentee) =>
     (mentee?.display_name || '').trim() || formatMenteeNameForMentor(mentee);
@@ -520,18 +519,7 @@ export default function Mentees() {
           prev.map((item) =>
             item.id === data.id
               ? {
-                  ...item,
-                  full_name: data.full_name,
-                  mentor_apply_direction: data.mentor_apply_direction,
-                  mentor_apply_direction_label: data.mentor_apply_direction_label,
-                  apply_degree_level: data.apply_degree_level,
-                  apply_degree_level_label: data.apply_degree_level_label,
-                  term3_2027_language_semester: data.term3_2027_language_semester,
-                  term3_2027_language_semester_label: data.term3_2027_language_semester_label,
-                  research_direction: data.research_direction,
-                  research_direction_label: data.research_direction_label,
-                  scholarship_system: data.scholarship_system,
-                  scholarship_system_label: data.scholarship_system_label,
+                  ...patchMenteeSummaryFromDetail(item, data),
                   uploaded_count: data.uploaded_count,
                   approved_count: data.approved_count,
                   has_avatar: Boolean(data.has_avatar),
@@ -2276,11 +2264,19 @@ export default function Mentees() {
                               </div>
                             ) : (
                               showThanhHaClassification && (
-                                <div>
+                                <div className="mentee-info-grid-full">
                                   <span className="info-label">Ngành / Hướng apply</span>
-                                  <strong>
-                                    {menteeApplyDirectionSubtitle(selectedMentee) || '—'}
-                                  </strong>
+                                  {mentorApplyDirectionWishesDisplayParts(selectedMentee).length ? (
+                                    <div className="mentee-apply-wishes-readonly">
+                                      {mentorApplyDirectionWishesDisplayParts(selectedMentee).map(
+                                        (line) => (
+                                          <strong key={line}>{line}</strong>
+                                        ),
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <strong>—</strong>
+                                  )}
                                 </div>
                               )
                             )}
