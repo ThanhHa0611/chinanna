@@ -21,6 +21,8 @@ export const MENTOR_APPLY_DIRECTION_OPTIONS = [
   { value: 'truyen_thong', label: 'Truyền thông' },
   { value: 'quan_he_quoc_te', label: 'Quan hệ quốc tế' },
   { value: 'duoc', label: 'Dược' },
+  { value: 'stem', label: 'STEM' },
+  { value: 'luat', label: 'Luật' },
   { value: 'khac', label: 'Khác' },
 ];
 
@@ -74,6 +76,9 @@ const LEGACY_DIRECTION_MAP = {
   'quan he quoc te': 'quan_he_quoc_te',
   'dược': 'duoc',
   'duoc': 'duoc',
+  stem: 'stem',
+  'luật': 'luat',
+  luat: 'luat',
   'khác': 'khac',
   'khac': 'khac',
 };

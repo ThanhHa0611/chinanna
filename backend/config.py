@@ -254,6 +254,8 @@ MENTOR_APPLY_DIRECTIONS = {
     "truyen_thong",
     "quan_he_quoc_te",
     "duoc",
+    "stem",
+    "luat",
     "khac",
 }
 MENTOR_APPLY_DIRECTION_LABELS = {
@@ -262,6 +264,8 @@ MENTOR_APPLY_DIRECTION_LABELS = {
     "truyen_thong": "Truyền thông",
     "quan_he_quoc_te": "Quan hệ quốc tế",
     "duoc": "Dược",
+    "stem": "STEM",
+    "luat": "Luật",
     "khac": "Khác",
 }
 MENTOR_APPLY_DIRECTION_LEGACY = {
@@ -275,6 +279,9 @@ MENTOR_APPLY_DIRECTION_LEGACY = {
     "quan he quoc te": "quan_he_quoc_te",
     "dược": "duoc",
     "duoc": "duoc",
+    "stem": "stem",
+    "luật": "luat",
+    "luat": "luat",
     "khác": "khac",
     "khac": "khac",
 }
