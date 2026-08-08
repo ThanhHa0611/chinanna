@@ -430,17 +430,42 @@ def research_direction_label(value: str) -> str:
 
 
 def normalize_mentor_apply_direction(value: str) -> str:
+    # Đọc trực tiếp từ config để tránh lệch do star-import / worker cũ.
+    import config as cfg
+
     raw = str(value or "").strip()
     if not raw:
         return ""
     lowered = raw.lower()
-    if lowered in MENTOR_APPLY_DIRECTIONS:
+    allowed = set(getattr(cfg, "MENTOR_APPLY_DIRECTIONS", set()) or set()) | {
+        "kinh_te",
+        "giao_duc",
+        "truyen_thong",
+        "quan_he_quoc_te",
+        "duoc",
+        "stem",
+        "luat",
+        "bba",
+        "khac",
+    }
+    if lowered in allowed:
         return lowered
-    legacy = MENTOR_APPLY_DIRECTION_LEGACY.get(lowered) or MENTOR_APPLY_DIRECTION_LEGACY.get(raw)
+    legacy_map = dict(getattr(cfg, "MENTOR_APPLY_DIRECTION_LEGACY", {}) or {})
+    legacy_map.update(
+        {
+            "stem": "stem",
+            "luật": "luat",
+            "luat": "luat",
+            "bba": "bba",
+        }
+    )
+    legacy = legacy_map.get(lowered) or legacy_map.get(raw)
     if legacy:
         return legacy
-    for code, label in MENTOR_APPLY_DIRECTION_LABELS.items():
-        if label.lower() == lowered or label == raw:
+    labels = dict(getattr(cfg, "MENTOR_APPLY_DIRECTION_LABELS", {}) or {})
+    labels.update({"stem": "STEM", "luat": "Luật", "bba": "BBA"})
+    for code, label in labels.items():
+        if str(label).lower() == lowered or label == raw:
             return code
     return ""
 

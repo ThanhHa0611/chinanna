@@ -1172,9 +1172,18 @@ export default function Mentees() {
     setClassificationSaving(`${menteeId}:${field}`);
     setError('');
     try {
-      const updated = await api.updateMenteeMentorInfo(menteeId, {
-        [field]: value == null ? '' : String(value),
-      });
+      const nextValue = value == null ? '' : String(value);
+      const payload = MENTOR_APPLY_DIRECTION_FIELDS.includes(field)
+        ? Object.fromEntries(
+            MENTOR_APPLY_DIRECTION_FIELDS.map((wishField) => {
+              if (wishField === field) return [wishField, nextValue];
+              const current =
+                selectedMentee?.id === menteeId ? selectedMentee?.[wishField] : '';
+              return [wishField, current == null ? '' : String(current)];
+            }),
+          )
+        : { [field]: nextValue };
+      const updated = await api.updateMenteeMentorInfo(menteeId, payload);
       setSelectedMentee(updated);
       setMentees((prev) =>
         prev.map((item) =>

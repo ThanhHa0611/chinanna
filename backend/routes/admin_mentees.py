@@ -735,28 +735,32 @@ def admin_update_mentee_mentor_info(mentee_id: str):
         return jsonify({"detail": "Dữ liệu cập nhật không hợp lệ"}), 400
     set_fields: dict = {}
 
+    direction_fields = tuple(MENTOR_APPLY_DIRECTION_FIELDS)
     direction_updates: dict = {}
-    for field in MENTOR_APPLY_DIRECTION_FIELDS:
-        if field in data:
-            raw_value = str(data.get(field) or "").strip()
-            code = normalize_mentor_apply_direction(raw_value)
-            if raw_value and not code:
-                return jsonify({"detail": "Hướng apply không hợp lệ"}), 400
-            direction_updates[field] = code
+    for field in direction_fields:
+        if field not in data:
+            continue
+        raw_value = str(data.get(field) or "").strip()
+        code = normalize_mentor_apply_direction(raw_value)
+        if raw_value and not code:
+            return jsonify(
+                {"detail": f"Hướng apply không hợp lệ: {raw_value}"},
+            ), 400
+        direction_updates[field] = code
 
     if direction_updates:
         merged = {
             field: normalize_mentor_apply_direction(mentee.get(field, ""))
-            for field in MENTOR_APPLY_DIRECTION_FIELDS
+            for field in direction_fields
         }
         merged.update(direction_updates)
         # Nếu xóa nguyện vọng trước thì xóa luôn các nguyện vọng sau.
-        for index, field in enumerate(MENTOR_APPLY_DIRECTION_FIELDS):
-            if index > 0 and not merged[MENTOR_APPLY_DIRECTION_FIELDS[index - 1]]:
+        for index, field in enumerate(direction_fields):
+            if index > 0 and not merged[direction_fields[index - 1]]:
                 if merged[field]:
                     merged[field] = ""
                     direction_updates[field] = ""
-        filled = [code for code in merged.values() if code]
+        filled = [code for code in (merged[field] for field in direction_fields) if code]
         if len(filled) != len(set(filled)):
             return jsonify({"detail": "Nguyện vọng không được trùng khối ngành"}), 400
         set_fields.update(direction_updates)
@@ -792,7 +796,10 @@ def admin_update_mentee_mentor_info(mentee_id: str):
         set_fields["scholarship_system"] = scholarship_value
 
     if not set_fields:
-        return jsonify({"detail": "Không có dữ liệu để cập nhật"}), 400
+        received = ", ".join(sorted(str(key) for key in data.keys())) or "rỗng"
+        return jsonify(
+            {"detail": f"Không có dữ liệu để cập nhật (payload: {received})"},
+        ), 400
 
     from bson import ObjectId
 
