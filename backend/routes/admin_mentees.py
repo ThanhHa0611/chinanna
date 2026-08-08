@@ -736,9 +736,8 @@ def admin_update_mentee_mentor_info(mentee_id: str):
     direction_updates: dict = {}
     for field in MENTOR_APPLY_DIRECTION_FIELDS:
         if field in data:
-            raw_value = str(data.get(field) or "").strip()
-            code = normalize_mentor_apply_direction(raw_value)
-            if raw_value and not code:
+            code = normalize_mentor_apply_direction(data.get(field, ""))
+            if data.get(field) and not code:
                 return jsonify({"detail": "Hướng apply không hợp lệ"}), 400
             direction_updates[field] = code
 
