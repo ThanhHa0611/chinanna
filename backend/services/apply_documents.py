@@ -430,13 +430,19 @@ def research_direction_label(value: str) -> str:
 
 
 def normalize_mentor_apply_direction(value: str) -> str:
-    raw = (value or "").strip()
+    raw = str(value or "").strip()
     if not raw:
         return ""
     lowered = raw.lower()
     if lowered in MENTOR_APPLY_DIRECTIONS:
         return lowered
-    return MENTOR_APPLY_DIRECTION_LEGACY.get(lowered) or MENTOR_APPLY_DIRECTION_LEGACY.get(raw) or ""
+    legacy = MENTOR_APPLY_DIRECTION_LEGACY.get(lowered) or MENTOR_APPLY_DIRECTION_LEGACY.get(raw)
+    if legacy:
+        return legacy
+    for code, label in MENTOR_APPLY_DIRECTION_LABELS.items():
+        if label.lower() == lowered or label == raw:
+            return code
+    return ""
 
 
 def mentor_apply_direction_label(value: str) -> str:

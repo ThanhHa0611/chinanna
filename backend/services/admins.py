@@ -299,15 +299,21 @@ def serialize_admin_mentee_summary(user: dict, admin: dict | None = None) -> dic
         "scholarship_system": user.get("scholarship_system", ""),
         "scholarship_system_label": scholarship_system_label(user.get("scholarship_system", "")),
         "apply_direction": user.get("apply_direction", ""),
-        "mentor_apply_direction": user.get("mentor_apply_direction", ""),
+        "mentor_apply_direction": normalize_mentor_apply_direction(
+            user.get("mentor_apply_direction", ""),
+        ),
         "mentor_apply_direction_label": mentor_apply_direction_label(
             user.get("mentor_apply_direction", ""),
         ),
-        "mentor_apply_direction_2": user.get("mentor_apply_direction_2", ""),
+        "mentor_apply_direction_2": normalize_mentor_apply_direction(
+            user.get("mentor_apply_direction_2", ""),
+        ),
         "mentor_apply_direction_2_label": mentor_apply_direction_label(
             user.get("mentor_apply_direction_2", ""),
         ),
-        "mentor_apply_direction_3": user.get("mentor_apply_direction_3", ""),
+        "mentor_apply_direction_3": normalize_mentor_apply_direction(
+            user.get("mentor_apply_direction_3", ""),
+        ),
         "mentor_apply_direction_3_label": mentor_apply_direction_label(
             user.get("mentor_apply_direction_3", ""),
         ),
