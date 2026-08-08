@@ -730,25 +730,33 @@ def admin_update_mentee_mentor_info(mentee_id: str):
     if error:
         return error
 
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(force=True, silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"detail": "Dữ liệu cập nhật không hợp lệ"}), 400
     set_fields: dict = {}
 
     direction_updates: dict = {}
     for field in MENTOR_APPLY_DIRECTION_FIELDS:
         if field in data:
-            code = normalize_mentor_apply_direction(data.get(field, ""))
-            if data.get(field) and not code:
+            raw_value = str(data.get(field) or "").strip()
+            code = normalize_mentor_apply_direction(raw_value)
+            if raw_value and not code:
                 return jsonify({"detail": "Hướng apply không hợp lệ"}), 400
             direction_updates[field] = code
 
     if direction_updates:
-        merged = {field: mentee.get(field, "") for field in MENTOR_APPLY_DIRECTION_FIELDS}
-        merged.update(direction_updates)
-        filled = [
-            normalize_mentor_apply_direction(merged[field])
+        merged = {
+            field: normalize_mentor_apply_direction(mentee.get(field, ""))
             for field in MENTOR_APPLY_DIRECTION_FIELDS
-            if normalize_mentor_apply_direction(merged[field])
-        ]
+        }
+        merged.update(direction_updates)
+        # Nếu xóa nguyện vọng trước thì xóa luôn các nguyện vọng sau.
+        for index, field in enumerate(MENTOR_APPLY_DIRECTION_FIELDS):
+            if index > 0 and not merged[MENTOR_APPLY_DIRECTION_FIELDS[index - 1]]:
+                if merged[field]:
+                    merged[field] = ""
+                    direction_updates[field] = ""
+        filled = [code for code in merged.values() if code]
         if len(filled) != len(set(filled)):
             return jsonify({"detail": "Nguyện vọng không được trùng khối ngành"}), 400
         set_fields.update(direction_updates)

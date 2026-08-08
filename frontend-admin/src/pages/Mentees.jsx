@@ -1172,7 +1172,9 @@ export default function Mentees() {
     setClassificationSaving(`${menteeId}:${field}`);
     setError('');
     try {
-      const updated = await api.updateMenteeMentorInfo(menteeId, { [field]: value });
+      const updated = await api.updateMenteeMentorInfo(menteeId, {
+        [field]: value == null ? '' : String(value),
+      });
       setSelectedMentee(updated);
       setMentees((prev) =>
         prev.map((item) =>
