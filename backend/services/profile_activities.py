@@ -320,8 +320,6 @@ _MAJOR_ALIASES = {
     "truyen_thong": "Truyền thông",
     "quan_he_quoc_te": "Quan hệ quốc tế",
     "duoc": "Y sinh",
-    "stem": "Khác",
-    "luat": "Luật",
     "khac": "Khác",
 }
 
