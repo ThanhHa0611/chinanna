@@ -583,13 +583,18 @@ def serialize_apply_document_for_admin(doc_id: str, record: dict | None, user: d
     record_data = record or {}
     item["has_file"] = bool(item["uploaded"] and record_data.get("stored_name"))
     if doc_id == "personal-declaration":
-        from google_docs import get_manual_copy_url
-
         declaration = user.get("personal_declaration") or {}
         item["declaration_url"] = get_personal_declaration_mentor_url(declaration)
         item["declaration_has_online"] = bool(get_personal_declaration_online_url(declaration))
         item["declaration_has_local"] = bool(declaration.get("stored_name"))
-        item["manual_copy_url"] = "" if item["declaration_has_online"] else get_manual_copy_url()
+        item["manual_copy_url"] = ""
+        if not item["declaration_has_online"]:
+            try:
+                from google_docs import get_manual_copy_url
+
+                item["manual_copy_url"] = get_manual_copy_url()
+            except Exception:
+                item["manual_copy_url"] = ""
         if declaration.get("stored_name") or record_data.get("stored_name"):
             item["has_file"] = True
         # Hệ tiếng Trung/Anh: không để subtitle Việt "Kê khai..." dưới tên đã dịch.
@@ -1114,8 +1119,10 @@ def save_personal_declaration_link(user: dict, doc_url: str) -> tuple[dict, dict
     ):
         return existing, user
 
-    users.update_one({"_id": ObjectId(user["_id"])}, {"$set": {"personal_declaration": record}})
-    fresh = users.find_one({"_id": ObjectId(user["_id"])}) or {**user, "personal_declaration": record}
+    raw_id = user.get("_id")
+    user_oid = raw_id if isinstance(raw_id, ObjectId) else ObjectId(raw_id)
+    users.update_one({"_id": user_oid}, {"$set": {"personal_declaration": record}})
+    fresh = users.find_one({"_id": user_oid}) or {**user, "personal_declaration": record}
     return fresh.get("personal_declaration") or record, fresh
 
 

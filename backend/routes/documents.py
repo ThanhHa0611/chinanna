@@ -89,6 +89,10 @@ def register_personal_declaration_link():
         return error_response
 
     from bson import ObjectId
+    from services.apply_documents import (
+        save_personal_declaration_link,
+        serialize_personal_declaration_response,
+    )
 
     data = request.get_json(silent=True) or {}
     doc_url = (data.get("url") or "").strip()

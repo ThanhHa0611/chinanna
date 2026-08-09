@@ -625,115 +625,136 @@ def admin_language_updates():
     return jsonify(items)
 
 
-@app.post("/api/admin/mentees/<mentee_id>/personal-declaration/link")
-@app.patch("/api/admin/mentees/<mentee_id>/personal-declaration/link")
-@app.patch("/api/admin/mentees/<mentee_id>/documents/personal-declaration/link")
+@app.route(
+    "/api/admin/mentees/<mentee_id>/personal-declaration/link",
+    methods=["POST", "PATCH"],
+)
 @with_db
 def admin_register_personal_declaration_link(mentee_id: str):
-    admin, error_response = get_authenticated_admin()
-    if error_response:
-        return error_response
-
-    if not admin_is_approved(admin):
-        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
-
-    mentee, error = get_mentee_for_admin(admin, mentee_id)
-    if error:
-        return error
-
-    data = request.get_json(force=True, silent=True) or {}
-    doc_url = str(data.get("url") or data.get("link") or "").strip()
-    if not doc_url:
-        return jsonify({"detail": "Chưa có link Google Docs để lưu"}), 400
-    try:
-        _saved, fresh = save_personal_declaration_link(mentee, doc_url)
-    except ValueError as exc:
-        return jsonify({"detail": str(exc)}), 400
-
+    # Import tường minh trong hàm — tránh NameError do star-import / circular import.
     from bson import ObjectId
+    from services.apply_documents import (
+        apply_doc_display_label,
+        get_personal_declaration_mentor_url,
+        get_personal_declaration_online_url,
+        save_personal_declaration_link,
+        serialize_apply_document_for_admin,
+    )
+    from services.admins import admin_display_name as resolve_admin_display_name
 
-    now = datetime.now(timezone.utc)
     try:
-        apply_record = (fresh.get("apply_documents") or {}).get("personal-declaration") or {}
-        if not apply_record.get("mentor_status"):
-            users.update_one(
-                {"_id": ObjectId(mentee_id)},
-                {
-                    "$set": {
-                        "apply_documents.personal-declaration.mentor_status": DOC_MENTOR_STATUS_WAITING,
-                        "apply_documents.personal-declaration.mentor_updated_at": now,
-                        "apply_documents.personal-declaration.uploaded_by": "mentor",
-                        "apply_documents.personal-declaration.uploaded_by_name": admin_display_name(admin),
-                    }
-                },
-            )
-            fresh = users.find_one({"_id": ObjectId(mentee_id)}) or fresh
+        admin, error_response = get_authenticated_admin()
+        if error_response:
+            return error_response
 
-        prune_apply_missing_reminder(ObjectId(mentee_id), "personal-declaration")
-    except Exception:
-        pass
+        if not admin_is_approved(admin):
+            return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    # Không để email/inbox làm fail hoặc treo request lưu link.
-    try:
-        notify_mentee_mentor_activity(
-            fresh,
-            action="document_upload",
-            title="Mentor đã dán link kê khai thông tin",
-            description="Mentor đã lưu link Google Docs kê khai thông tin cá nhân cho bạn.",
-            doc_id="personal-declaration",
-            mentor_admin=admin,
-        )
-    except Exception:
-        pass
-    try:
-        log_mentor_activity(
-            admin,
-            "declaration_link",
-            f"Mentor dán link kê khai cho {mentee.get('email', mentee_id)}",
-            mentee_id=mentee_id,
-            doc_id="personal-declaration",
-        )
-    except Exception:
-        pass
-    try:
-        if is_l2_mentor_admin(admin):
-            push_l2_mentor_activity(
-                mentee_id,
-                admin,
-                "documents",
-                "declaration_link",
-                "Mentor dán link kê khai thông tin",
-            )
-    except Exception:
-        pass
+        mentee, error = get_mentee_for_admin(admin, mentee_id)
+        if error:
+            return error
 
-    fresh_record = (fresh.get("apply_documents") or {}).get("personal-declaration") or {}
-    try:
-        return jsonify(
-            serialize_apply_document_for_admin(
-                "personal-declaration",
-                fresh_record,
+        data = request.get_json(force=True, silent=True) or {}
+        doc_url = str(data.get("url") or data.get("link") or "").strip()
+        if not doc_url:
+            return jsonify({"detail": "Chưa có link Google Docs để lưu"}), 400
+
+        try:
+            _saved, fresh = save_personal_declaration_link(mentee, doc_url)
+        except ValueError as exc:
+            return jsonify({"detail": str(exc)}), 400
+
+        mentee_oid = mentee.get("_id") or ObjectId(mentee_id)
+        now = datetime.now(timezone.utc)
+        try:
+            apply_record = (fresh.get("apply_documents") or {}).get("personal-declaration") or {}
+            if not apply_record.get("mentor_status"):
+                users.update_one(
+                    {"_id": mentee_oid},
+                    {
+                        "$set": {
+                            "apply_documents.personal-declaration.mentor_status": DOC_MENTOR_STATUS_WAITING,
+                            "apply_documents.personal-declaration.mentor_updated_at": now,
+                            "apply_documents.personal-declaration.uploaded_by": "mentor",
+                            "apply_documents.personal-declaration.uploaded_by_name": resolve_admin_display_name(
+                                admin
+                            ),
+                        }
+                    },
+                )
+                fresh = users.find_one({"_id": mentee_oid}) or fresh
+            prune_apply_missing_reminder(mentee_oid, "personal-declaration")
+        except Exception:
+            pass
+
+        try:
+            notify_mentee_mentor_activity(
                 fresh,
-                mentee_id,
+                action="document_upload",
+                title="Mentor đã dán link kê khai thông tin",
+                description="Mentor đã lưu link Google Docs kê khai thông tin cá nhân cho bạn.",
+                doc_id="personal-declaration",
+                mentor_admin=admin,
             )
-        )
-    except Exception:
-        declaration = fresh.get("personal_declaration") or {}
-        return jsonify(
-            {
-                "doc_id": "personal-declaration",
-                "uploaded": True,
-                "declaration_url": get_personal_declaration_mentor_url(declaration),
-                "declaration_has_online": bool(get_personal_declaration_online_url(declaration)),
-                "declaration_has_local": bool(declaration.get("stored_name")),
-                "has_file": bool(declaration.get("stored_name") or fresh_record.get("stored_name")),
-                "label": APPLY_DOC_LABELS.get("personal-declaration", "personal-declaration"),
-                "download_label": apply_doc_display_label(
+        except Exception:
+            pass
+        try:
+            log_mentor_activity(
+                admin,
+                "declaration_link",
+                f"Mentor dán link kê khai cho {mentee.get('email', mentee_id)}",
+                mentee_id=str(mentee_oid),
+                doc_id="personal-declaration",
+            )
+        except Exception:
+            pass
+        try:
+            if is_l2_mentor_admin(admin):
+                push_l2_mentor_activity(
+                    str(mentee_oid),
+                    admin,
+                    "documents",
+                    "declaration_link",
+                    "Mentor dán link kê khai thông tin",
+                )
+        except Exception:
+            pass
+
+        fresh_record = (fresh.get("apply_documents") or {}).get("personal-declaration") or {}
+        try:
+            return jsonify(
+                serialize_apply_document_for_admin(
                     "personal-declaration",
-                    fresh.get("scholarship_system", ""),
-                ),
-            }
-        )
+                    fresh_record,
+                    fresh,
+                    str(mentee_oid),
+                )
+            )
+        except Exception:
+            declaration = fresh.get("personal_declaration") or {}
+            online = get_personal_declaration_online_url(declaration)
+            return jsonify(
+                {
+                    "doc_id": "personal-declaration",
+                    "uploaded": True,
+                    "declaration_url": get_personal_declaration_mentor_url(declaration) or online,
+                    "declaration_has_online": bool(online),
+                    "declaration_has_local": bool(declaration.get("stored_name")),
+                    "has_file": bool(
+                        declaration.get("stored_name") or fresh_record.get("stored_name")
+                    ),
+                    "label": APPLY_DOC_LABELS.get(
+                        "personal-declaration", "personal-declaration"
+                    ),
+                    "download_label": apply_doc_display_label(
+                        "personal-declaration",
+                        fresh.get("scholarship_system", ""),
+                    ),
+                    "mentor_status": fresh_record.get("mentor_status") or DOC_MENTOR_STATUS_WAITING,
+                }
+            )
+    except Exception as exc:
+        return jsonify({"detail": f"Không lưu được link kê khai: {exc}"}), 500
 
 
 @app.post("/api/admin/mentees/<mentee_id>/documents/<doc_id>/upload")
