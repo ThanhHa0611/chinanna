@@ -66,10 +66,20 @@ async function request(endpoint, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch (err) {
+    const reason = (err && err.message) || 'Failed to fetch';
+    throw new Error(
+      reason === 'Failed to fetch'
+        ? 'Không kết nối được máy chủ. Thử lại sau vài giây (hoặc kiểm tra mạng / deploy API).'
+        : reason,
+    );
+  }
 
   const data = await response.json().catch(() => ({}));
 
@@ -619,8 +629,8 @@ export const api = {
   },
 
   registerMenteePersonalDeclarationLink: (menteeId, body) =>
-    request(`/api/admin/mentees/${menteeId}/documents/personal-declaration/link`, {
-      method: 'PATCH',
+    request(`/api/admin/mentees/${menteeId}/personal-declaration/link`, {
+      method: 'POST',
       body: JSON.stringify(body),
     }),
 

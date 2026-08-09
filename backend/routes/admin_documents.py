@@ -625,6 +625,8 @@ def admin_language_updates():
     return jsonify(items)
 
 
+@app.post("/api/admin/mentees/<mentee_id>/personal-declaration/link")
+@app.patch("/api/admin/mentees/<mentee_id>/personal-declaration/link")
 @app.patch("/api/admin/mentees/<mentee_id>/documents/personal-declaration/link")
 @with_db
 def admin_register_personal_declaration_link(mentee_id: str):
@@ -640,64 +642,98 @@ def admin_register_personal_declaration_link(mentee_id: str):
         return error
 
     data = request.get_json(force=True, silent=True) or {}
-    doc_url = str(data.get("url") or "").strip()
+    doc_url = str(data.get("url") or data.get("link") or "").strip()
+    if not doc_url:
+        return jsonify({"detail": "Chưa có link Google Docs để lưu"}), 400
     try:
-        saved, fresh = save_personal_declaration_link(mentee, doc_url)
+        _saved, fresh = save_personal_declaration_link(mentee, doc_url)
     except ValueError as exc:
         return jsonify({"detail": str(exc)}), 400
 
     from bson import ObjectId
 
     now = datetime.now(timezone.utc)
-    apply_record = (fresh.get("apply_documents") or {}).get("personal-declaration") or {}
-    if not apply_record.get("mentor_status"):
-        users.update_one(
-            {"_id": ObjectId(mentee_id)},
-            {
-                "$set": {
-                    "apply_documents.personal-declaration.mentor_status": DOC_MENTOR_STATUS_WAITING,
-                    "apply_documents.personal-declaration.mentor_updated_at": now,
-                    "apply_documents.personal-declaration.uploaded_by": "mentor",
-                    "apply_documents.personal-declaration.uploaded_by_name": admin_display_name(admin),
-                }
-            },
-        )
-        fresh = users.find_one({"_id": ObjectId(mentee_id)}) or fresh
+    try:
+        apply_record = (fresh.get("apply_documents") or {}).get("personal-declaration") or {}
+        if not apply_record.get("mentor_status"):
+            users.update_one(
+                {"_id": ObjectId(mentee_id)},
+                {
+                    "$set": {
+                        "apply_documents.personal-declaration.mentor_status": DOC_MENTOR_STATUS_WAITING,
+                        "apply_documents.personal-declaration.mentor_updated_at": now,
+                        "apply_documents.personal-declaration.uploaded_by": "mentor",
+                        "apply_documents.personal-declaration.uploaded_by_name": admin_display_name(admin),
+                    }
+                },
+            )
+            fresh = users.find_one({"_id": ObjectId(mentee_id)}) or fresh
 
-    prune_apply_missing_reminder(ObjectId(mentee_id), "personal-declaration")
-    notify_mentee_mentor_activity(
-        fresh,
-        action="document_upload",
-        title="Mentor đã dán link kê khai thông tin",
-        description="Mentor đã lưu link Google Docs kê khai thông tin cá nhân cho bạn.",
-        doc_id="personal-declaration",
-        mentor_admin=admin,
-    )
-    log_mentor_activity(
-        admin,
-        "declaration_link",
-        f"Mentor dán link kê khai cho {mentee.get('email', mentee_id)}",
-        mentee_id=mentee_id,
-        doc_id="personal-declaration",
-    )
-    if is_l2_mentor_admin(admin):
-        push_l2_mentor_activity(
-            mentee_id,
-            admin,
-            "documents",
-            "declaration_link",
-            "Mentor dán link kê khai thông tin",
+        prune_apply_missing_reminder(ObjectId(mentee_id), "personal-declaration")
+    except Exception:
+        pass
+
+    # Không để email/inbox làm fail hoặc treo request lưu link.
+    try:
+        notify_mentee_mentor_activity(
+            fresh,
+            action="document_upload",
+            title="Mentor đã dán link kê khai thông tin",
+            description="Mentor đã lưu link Google Docs kê khai thông tin cá nhân cho bạn.",
+            doc_id="personal-declaration",
+            mentor_admin=admin,
         )
+    except Exception:
+        pass
+    try:
+        log_mentor_activity(
+            admin,
+            "declaration_link",
+            f"Mentor dán link kê khai cho {mentee.get('email', mentee_id)}",
+            mentee_id=mentee_id,
+            doc_id="personal-declaration",
+        )
+    except Exception:
+        pass
+    try:
+        if is_l2_mentor_admin(admin):
+            push_l2_mentor_activity(
+                mentee_id,
+                admin,
+                "documents",
+                "declaration_link",
+                "Mentor dán link kê khai thông tin",
+            )
+    except Exception:
+        pass
 
     fresh_record = (fresh.get("apply_documents") or {}).get("personal-declaration") or {}
-    return jsonify(
-        serialize_apply_document_for_admin(
-            "personal-declaration",
-            fresh_record,
-            fresh,
-            mentee_id,
+    try:
+        return jsonify(
+            serialize_apply_document_for_admin(
+                "personal-declaration",
+                fresh_record,
+                fresh,
+                mentee_id,
+            )
         )
-    )
+    except Exception:
+        declaration = fresh.get("personal_declaration") or {}
+        return jsonify(
+            {
+                "doc_id": "personal-declaration",
+                "uploaded": True,
+                "declaration_url": get_personal_declaration_mentor_url(declaration),
+                "declaration_has_online": bool(get_personal_declaration_online_url(declaration)),
+                "declaration_has_local": bool(declaration.get("stored_name")),
+                "has_file": bool(declaration.get("stored_name") or fresh_record.get("stored_name")),
+                "label": APPLY_DOC_LABELS.get("personal-declaration", "personal-declaration"),
+                "download_label": apply_doc_display_label(
+                    "personal-declaration",
+                    fresh.get("scholarship_system", ""),
+                ),
+            }
+        )
 
 
 @app.post("/api/admin/mentees/<mentee_id>/documents/<doc_id>/upload")
