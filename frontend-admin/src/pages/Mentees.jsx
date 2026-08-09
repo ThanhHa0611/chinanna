@@ -39,10 +39,8 @@ const MENTOR_STATUS_LABELS = {
   'cần chỉnh sửa': 'Cần chỉnh sửa',
 };
 
-const MENTOR_CANNOT_UPLOAD_DOC_IDS = new Set(['personal-declaration']);
-
 function mentorCanUploadDoc(docId) {
-  return docId && !MENTOR_CANNOT_UPLOAD_DOC_IDS.has(docId);
+  return Boolean(docId);
 }
 const MENTOR_UPLOAD_ACCEPT = '.jpg,.jpeg,.png,.pdf,.doc,.docx';
 
@@ -903,7 +901,16 @@ export default function Mentees() {
       setViewingDocId(doc.doc_id);
       setError('');
       try {
-        if (doc.declaration_url) {
+        // File mentor upload / docx local xem trong app; Google Docs thì mở tab mới.
+        if (doc.has_file && !doc.declaration_has_online) {
+          const preview = await api.fetchMenteeDocumentPreview(
+            selectedMentee.id,
+            doc.doc_id,
+          );
+          setViewerDoc(doc);
+          setViewerUrl(preview.url);
+          setViewerMime(preview.mimeType);
+        } else if (doc.declaration_url) {
           window.open(doc.declaration_url, '_blank', 'noopener,noreferrer');
         } else if (doc.declaration_has_local || doc.has_file) {
           const preview = await api.fetchMenteeDocumentPreview(
@@ -2585,7 +2592,9 @@ export default function Mentees() {
                                 <span className="notify-dot" title="Cần xử lí" />
                               )}
                             </span>
-                            {doc.download_label && doc.label && (
+                            {doc.download_label &&
+                              doc.label &&
+                              doc.download_label !== doc.label && (
                               <span className="apply-doc-subtitle">{doc.label}</span>
                             )}
                             {doc.uploaded ? (

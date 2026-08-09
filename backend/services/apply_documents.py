@@ -138,12 +138,13 @@ def serialize_apply_document(doc_id: str, record: dict | None, user: dict | None
     if doc_id == "personal-declaration":
         declaration = (user or {}).get("personal_declaration") or {}
         has_form = personal_declaration_has_form(declaration)
-        item["uploaded"] = has_form
+        has_uploaded_file = bool(record.get("stored_name"))
+        item["uploaded"] = has_form or has_uploaded_file
         item["declaration_url"] = get_personal_declaration_mentor_url(declaration)
         item["declaration_has_online"] = bool(get_personal_declaration_online_url(declaration))
         item["declaration_has_local"] = bool(declaration.get("stored_name"))
         item["mentor_status"] = record.get("mentor_status") or (
-            DOC_MENTOR_STATUS_WAITING if has_form else ""
+            DOC_MENTOR_STATUS_WAITING if (has_form or has_uploaded_file) else ""
         )
 
     if doc_id == "language":
@@ -295,6 +296,9 @@ def apply_doc_id_still_missing(user: dict, doc_id: str) -> bool:
     if doc_id not in VALID_APPLY_DOC_IDS:
         return False
     if doc_id == "personal-declaration":
+        record = (user.get("apply_documents") or {}).get(doc_id) or {}
+        if record.get("stored_name"):
+            return False
         return not personal_declaration_has_form(user.get("personal_declaration") or {})
     record = (user.get("apply_documents") or {}).get(doc_id) or {}
     return not apply_document_has_content(doc_id, record, user)
@@ -576,18 +580,18 @@ def serialize_apply_document_for_admin(doc_id: str, record: dict | None, user: d
         else ""
     )
     item["mentor_processed"] = apply_document_is_processed(record)
-    if item["uploaded"] and doc_id not in NO_FILE_UPLOAD_DOC_IDS and (record or {}).get("stored_name"):
-        item["has_file"] = True
-    else:
-        item["has_file"] = False
+    record_data = record or {}
+    item["has_file"] = bool(item["uploaded"] and record_data.get("stored_name"))
     if doc_id == "personal-declaration":
         declaration = user.get("personal_declaration") or {}
         item["declaration_url"] = get_personal_declaration_mentor_url(declaration)
         item["declaration_has_online"] = bool(get_personal_declaration_online_url(declaration))
         item["declaration_has_local"] = bool(declaration.get("stored_name"))
-        if declaration.get("stored_name"):
+        if declaration.get("stored_name") or record_data.get("stored_name"):
             item["has_file"] = True
-    record_data = record or {}
+        # Hệ tiếng Trung/Anh: không để subtitle Việt "Kê khai..." dưới tên đã dịch.
+        if scholarship_system in SCHOLARSHIP_SYSTEMS:
+            item["label"] = item["download_label"] or item["label"]
     item["mentor_handles"] = bool(record_data.get("mentor_handles")) or (
         doc_id == "language" and bool((record_data.get("language_scores") or {}).get("mentor_handles_update"))
     )

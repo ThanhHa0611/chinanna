@@ -110,9 +110,10 @@ VALID_APPLY_DOC_IDS = {
     "financial",
     "cv",
 }
+# Mentee dùng Google Docs cho kê khai; mentor vẫn được upload file thường.
 NO_FILE_UPLOAD_DOC_IDS = {"personal-declaration"}
 MENTEE_UPLOAD_BLOCKED_DOC_IDS = frozenset({"study-plan", "cv"})
-MENTOR_UPLOADABLE_DOC_IDS = frozenset(VALID_APPLY_DOC_IDS - NO_FILE_UPLOAD_DOC_IDS)
+MENTOR_UPLOADABLE_DOC_IDS = frozenset(VALID_APPLY_DOC_IDS)
 ALLOWED_UPLOAD_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf", ".doc", ".docx"}
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 DOC_MENTOR_STATUS_WAITING = "chờ phản hồi"
@@ -225,7 +226,7 @@ APPLY_DOC_DOWNLOAD_NAMES = {
     "research": ("Bài báo", "发表文章", "Publications (Papers)"),
     "award": ("Tài liệu khác", "其他", "Other Documents"),
     "parents-id": ("Giấy khai sinh", "出生证明", "Birth Certificate"),
-    "personal-declaration": ("Kê khai thông tin cá nhân", "个人简历", "Personal Information Form"),
+    "personal-declaration": ("Kê khai thông tin cá nhân", "个人信息表", "Personal Information Form"),
     "supporting-materials": ("其他支撑材料", "其他支撑材料", "Supporting Materials"),
 }
 SCHOLARSHIP_SYSTEM_LABELS = {

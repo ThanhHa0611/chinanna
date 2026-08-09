@@ -58,11 +58,29 @@ def admin_view_mentee_document_file(mentee_id: str, doc_id: str):
     if error:
         return error
 
+    record = (mentee.get("apply_documents") or {}).get(doc_id) or {}
     if doc_id == "personal-declaration":
+        # Ưu tiên file mentor/mentee upload trong apply_documents; fallback docx kê khai.
+        uploaded_name = (record.get("stored_name") or "").strip()
+        if uploaded_name:
+            from services import storage
+            from services.files import make_inline_file_response
+
+            data = storage.read_bytes(
+                storage.storage_key(mentee["_id"], "personal-declaration", uploaded_name),
+            )
+            if data is None:
+                return jsonify({"detail": "File kê khai không tồn tại."}), 404
+            return make_inline_file_response(
+                data,
+                record.get("original_name") or uploaded_name,
+                record.get("mime_type") or None,
+            )
+
         declaration = mentee.get("personal_declaration") or {}
         stored_name = (declaration.get("stored_name") or "").strip()
         if not stored_name:
-            return jsonify({"detail": "Chưa có file kê khai docx trên hệ thống."}), 404
+            return jsonify({"detail": "Chưa có file kê khai trên hệ thống."}), 404
 
         from services import storage
         from services.files import make_inline_file_response
@@ -80,7 +98,6 @@ def admin_view_mentee_document_file(mentee_id: str, doc_id: str):
     if doc_id in NO_FILE_UPLOAD_DOC_IDS:
         return jsonify({"detail": "Mục giấy tờ không hợp lệ"}), 400
 
-    record = (mentee.get("apply_documents") or {}).get(doc_id) or {}
     stored_name = record.get("stored_name")
     if not stored_name:
         return jsonify({"detail": "Chưa có file tải lên"}), 404
@@ -109,7 +126,9 @@ def admin_download_mentee_document(mentee_id: str, doc_id: str):
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    if doc_id not in VALID_APPLY_DOC_IDS or doc_id in NO_FILE_UPLOAD_DOC_IDS:
+    if doc_id not in VALID_APPLY_DOC_IDS:
+        return jsonify({"detail": "Mục giấy tờ không hợp lệ"}), 400
+    if doc_id in NO_FILE_UPLOAD_DOC_IDS and doc_id != "personal-declaration":
         return jsonify({"detail": "Mục giấy tờ không hợp lệ"}), 400
 
     mentee, error = get_mentee_for_admin(admin, mentee_id)
@@ -118,6 +137,17 @@ def admin_download_mentee_document(mentee_id: str, doc_id: str):
 
     record = (mentee.get("apply_documents") or {}).get(doc_id) or {}
     stored_name = record.get("stored_name")
+    if not stored_name and doc_id == "personal-declaration":
+        declaration = mentee.get("personal_declaration") or {}
+        stored_name = (declaration.get("stored_name") or "").strip()
+        if stored_name:
+            record = {
+                **record,
+                "stored_name": stored_name,
+                "original_name": declaration.get("original_name") or stored_name,
+                "mime_type": declaration.get("mime_type")
+                or "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            }
     if not stored_name:
         return jsonify({"detail": "Chưa có file để tải"}), 404
 
