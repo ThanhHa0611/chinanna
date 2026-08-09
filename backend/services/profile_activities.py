@@ -3241,7 +3241,13 @@ def _profile_activity_label(activity: dict) -> str:
     return (activity.get("activity_name") or activity.get("description") or "Hoạt động hồ sơ").strip()
 
 
-def _mentee_display_name(mentee_id: str) -> str:
+def _mentee_display_name(mentee_or_id) -> str:
+    """Chấp nhận mentee dict hoặc mentee_id string."""
+    if isinstance(mentee_or_id, dict):
+        return format_mentee_name_for_mentor(mentee_or_id)
+    mentee_id = str(mentee_or_id or "").strip()
+    if not mentee_id:
+        return ""
     if not ObjectId.is_valid(mentee_id):
         return mentee_id
     mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
@@ -3536,10 +3542,6 @@ def _aggregate_group_keeptrack_status(member_states: list[dict]) -> tuple[str, s
         else KEEPTRACK_PROGRESS_COMPLETED
     )
     return agg_status, KEEPTRACK_UI_LABELS.get(agg_status, ""), min(dates) if dates else ""
-
-
-def _mentee_display_name(mentee: dict) -> str:
-    return format_mentee_name_for_mentor(mentee)
 
 
 def _build_progress_tracking_members(group: dict) -> list[dict]:

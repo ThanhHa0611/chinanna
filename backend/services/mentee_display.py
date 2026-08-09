@@ -40,6 +40,8 @@ def mentee_shows_vmh_tag(user: dict) -> bool:
 
 
 def format_mentee_name_for_mentor(user: dict, fallback: str = "") -> str:
+    if not isinstance(user, dict):
+        return (fallback or str(user or "")).strip()
     name = (
         (user.get("full_name") or "").strip()
         or (user.get("username") or "").strip()
