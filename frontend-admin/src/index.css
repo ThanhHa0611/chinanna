@@ -629,6 +629,13 @@ a:hover {
   white-space: nowrap;
 }
 
+.home-mentee-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
 .home-mentee-password-table {
   width: 100%;
   border-collapse: collapse;

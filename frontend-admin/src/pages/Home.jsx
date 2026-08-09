@@ -74,6 +74,68 @@ function inboxHeadline(item) {
   return item?.summary_line || item?.action_line || item?.title || '—';
 }
 
+function escapeCsvCell(value) {
+  const text = String(value ?? '');
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function downloadMenteeOverviewSheet(mentees, options = {}) {
+  const {
+    showDirectionColumn = false,
+    showLanguageColumn = false,
+    isThanhHaL1 = false,
+  } = options;
+  const headers = ['Họ tên'];
+  if (showDirectionColumn) headers.push('Hướng apply');
+  if (isThanhHaL1) headers.push('Phương hướng NC');
+  headers.push('Hệ apply');
+  if (showLanguageColumn) headers.push('Hệ tiếng');
+  if (isThanhHaL1) headers.push('Kì tiếng 3/2027');
+  headers.push('SĐT Zalo', 'Tài liệu hoàn thành', 'Trường đã submit');
+
+  const rows = mentees.map((mentee) => {
+    const docs = mentee.total_documents_count
+      ? `${mentee.uploaded_count ?? 0} / ${mentee.total_documents_count}`
+      : String(mentee.uploaded_count ?? 0);
+    const schools = mentee.total_schools_count
+      ? `${mentee.submitted_schools_count ?? 0} / ${mentee.total_schools_count}`
+      : String(mentee.submitted_schools_count ?? 0);
+    const row = [formatMenteeNameForMentor(mentee)];
+    if (showDirectionColumn) {
+      row.push(mentorApplyDirectionWishesDisplayLine(mentee) || '');
+    }
+    if (isThanhHaL1) {
+      row.push(researchDirectionDisplayText(mentee) || '');
+    }
+    row.push(applyDegreeLevelShortDisplay(mentee) || '');
+    if (showLanguageColumn) {
+      row.push(scholarshipLanguageShortLabel(mentee) || '');
+    }
+    if (isThanhHaL1) {
+      row.push(term3LanguageShortDisplay(mentee));
+    }
+    row.push(mentee.zalo_phone || '', docs, schools);
+    return row;
+  });
+
+  const csv = `\uFEFF${[headers, ...rows]
+    .map((row) => row.map(escapeCsvCell).join(','))
+    .join('\r\n')}`;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const stamp = formatDateInputInVn(new Date());
+  link.href = url;
+  link.download = `tong-quan-mentee-${stamp}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function Home() {
   const { admin } = useAuth();
   const navigate = useNavigate();
@@ -854,9 +916,25 @@ export default function Home() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </label>
-                <span className="muted home-mentee-count">
-                  Hiển thị {filteredMentees.length}/{mentees.length} mentee
-                </span>
+                <div className="home-mentee-toolbar-actions">
+                  <span className="muted home-mentee-count">
+                    Hiển thị {filteredMentees.length}/{mentees.length} mentee
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    disabled={filteredMentees.length === 0}
+                    onClick={() =>
+                      downloadMenteeOverviewSheet(filteredMentees, {
+                        showDirectionColumn,
+                        showLanguageColumn,
+                        isThanhHaL1,
+                      })
+                    }
+                  >
+                    Tải xuống sheet
+                  </button>
+                </div>
               </div>
               {showDegreeLanguageFilters && (
                 <div className="mentee-filter-groups home-mentee-filters">
