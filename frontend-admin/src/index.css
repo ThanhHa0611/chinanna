@@ -2331,6 +2331,30 @@ th {
   padding-top: 0.1rem;
 }
 
+.apply-doc-declaration-link-box {
+  margin-top: 0.55rem;
+  padding: 0.65rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.apply-doc-declaration-link-input {
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.apply-doc-declaration-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 .apply-doc-note {
   font-size: 0.8rem;
   color: var(--text-soft);

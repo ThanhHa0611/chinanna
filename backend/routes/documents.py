@@ -88,72 +88,19 @@ def register_personal_declaration_link():
     if error_response:
         return error_response
 
-    from google_docs import build_doc_url, parse_google_doc_id
-
-    existing = user.get("personal_declaration") or {}
-    data = request.get_json(silent=True) or {}
-    doc_url = (data.get("url") or "").strip()
-    doc_id = parse_google_doc_id(doc_url)
-    if not doc_id:
-        return jsonify({"detail": "Link Google Docs không hợp lệ."}), 400
-
-    google_url = build_doc_url(doc_id)
-    existing_online_id = (
-        (existing.get("google_doc_id") or "").strip()
-        or (
-            (existing.get("doc_id") or "").strip()
-            if (existing.get("mode") or "") in ("google_docs", "google_docs_manual")
-            else ""
-        )
-    )
-    if existing_online_id == doc_id:
-        return jsonify(serialize_personal_declaration_response(existing))
-
     from bson import ObjectId
 
-    now = datetime.now(timezone.utc)
-    if existing.get("stored_name"):
-        record = {
-            **existing,
-            "google_doc_id": doc_id,
-            "google_doc_url": google_url,
-            "url": google_url,
-            "mode": "local_with_google",
-            "updated_at": now,
-        }
-        if not record.get("local_file_url"):
-            record["local_file_url"] = get_personal_declaration_local_file_url(existing)
-        if not record.get("created_at"):
-            record["created_at"] = now
-    elif not personal_declaration_has_form(existing):
-        record = {
-            "doc_id": doc_id,
-            "google_doc_id": doc_id,
-            "google_doc_url": google_url,
-            "url": google_url,
-            "title": f"Kê khai thông tin - {user.get('username', '')}",
-            "mode": "google_docs_manual",
-            "created_at": now,
-        }
-    else:
-        record = {
-            **existing,
-            "doc_id": doc_id,
-            "google_doc_id": doc_id,
-            "google_doc_url": google_url,
-            "url": google_url,
-            "mode": "google_docs_manual",
-            "updated_at": now,
-        }
-        if not record.get("created_at"):
-            record["created_at"] = now
+    data = request.get_json(silent=True) or {}
+    doc_url = (data.get("url") or "").strip()
+    try:
+        saved, fresh = save_personal_declaration_link(user, doc_url)
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 400
 
-    users.update_one({"_id": ObjectId(user["_id"])}, {"$set": {"personal_declaration": record}})
-    fresh = users.find_one({"_id": ObjectId(user["_id"])}) or user
-    fresh = mark_apply_document_unread(fresh, "personal-declaration")
-    notify_mentors_mentee_document_upload(fresh, "personal-declaration")
-    prune_apply_missing_reminder(ObjectId(user["_id"]), "personal-declaration")
-    saved = fresh.get("personal_declaration") or record
+    if fresh is not user:
+        fresh = mark_apply_document_unread(fresh, "personal-declaration")
+        notify_mentors_mentee_document_upload(fresh, "personal-declaration")
+        prune_apply_missing_reminder(ObjectId(user["_id"]), "personal-declaration")
     return jsonify(serialize_personal_declaration_response(saved))
 
 

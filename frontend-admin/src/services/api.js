@@ -618,6 +618,12 @@ export const api = {
     return data;
   },
 
+  registerMenteePersonalDeclarationLink: (menteeId, body) =>
+    request(`/api/admin/mentees/${menteeId}/documents/personal-declaration/link`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
   updateMenteeApplyProgress: (menteeId, body) =>
     request(`/api/admin/mentees/${menteeId}/apply-progress`, {
       method: 'PUT',

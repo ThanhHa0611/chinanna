@@ -39,8 +39,10 @@ const MENTOR_STATUS_LABELS = {
   'cần chỉnh sửa': 'Cần chỉnh sửa',
 };
 
+const MENTOR_FILE_UPLOAD_BLOCKED_DOC_IDS = new Set(['personal-declaration']);
+
 function mentorCanUploadDoc(docId) {
-  return Boolean(docId);
+  return Boolean(docId) && !MENTOR_FILE_UPLOAD_BLOCKED_DOC_IDS.has(docId);
 }
 const MENTOR_UPLOAD_ACCEPT = '.jpg,.jpeg,.png,.pdf,.doc,.docx';
 
@@ -430,6 +432,9 @@ export default function Mentees() {
   const [attentionRevision, setAttentionRevision] = useState(0);
   const [classificationSaving, setClassificationSaving] = useState('');
   const [menteeAvatarUrl, setMenteeAvatarUrl] = useState('');
+  const [declarationLinkDraft, setDeclarationLinkDraft] = useState('');
+  const [declarationLinkSaving, setDeclarationLinkSaving] = useState(false);
+  const [declarationLinkOpen, setDeclarationLinkOpen] = useState(false);
   const menteeApplyDirectionSubtitle = (mentee) => mentorApplyDirectionWishesDisplayLine(mentee);
 
   const menteeDisplayName = (mentee) =>
@@ -497,6 +502,12 @@ export default function Mentees() {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [selectedMentee?.id, selectedMentee?.has_avatar]);
+
+  useEffect(() => {
+    setDeclarationLinkDraft('');
+    setDeclarationLinkOpen(false);
+    setDeclarationLinkSaving(false);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -1581,6 +1592,53 @@ export default function Mentees() {
     }
   };
 
+  const handleSavePersonalDeclarationLink = async () => {
+    if (!selectedMentee || !declarationLinkDraft.trim()) return;
+    setDeclarationLinkSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.registerMenteePersonalDeclarationLink(selectedMentee.id, {
+        url: declarationLinkDraft.trim(),
+      });
+      setMessage('Đã lưu link Google Docs kê khai cho mentee.');
+      setDeclarationLinkDraft('');
+      setDeclarationLinkOpen(false);
+      setSelectedMentee((prev) => {
+        if (!prev) return prev;
+        const documents = ensureDisplayDocuments(
+          (prev.documents || []).map((doc) =>
+            doc.doc_id === result.doc_id ? { ...doc, ...result } : doc,
+          ),
+          prev,
+        );
+        return patchMenteeApplyDocCounts({ ...prev, documents }, documents);
+      });
+      setMentees((list) =>
+        list.map((item) => {
+          if (item.id !== selectedMentee.id) return item;
+          const documents = ensureDisplayDocuments(
+            (item.documents || []).map((doc) =>
+              doc.doc_id === result.doc_id ? { ...doc, ...result } : doc,
+            ),
+            item,
+          );
+          const patched = patchMenteeApplyDocCounts({ ...item, documents }, documents);
+          return {
+            ...item,
+            ...patched,
+            uploaded_count: patched.uploaded_count,
+            approved_count: patched.approved_count,
+          };
+        }),
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeclarationLinkSaving(false);
+    }
+  };
+
   const handleMentorDocumentUpload = async (docId, file) => {
     if (!selectedMentee || !file || !mentorCanUploadDoc(docId)) return;
 
@@ -2635,10 +2693,60 @@ export default function Mentees() {
                               </>
                             ) : (
                               <span className="apply-doc-missing-note">
-                                {mentorCanUploadDoc(doc.doc_id)
-                                  ? 'Mentee chưa làm · Mentor có thể tải lên'
-                                  : 'Mentee chưa làm'}
+                                {doc.doc_id === 'personal-declaration'
+                                  ? 'Mentee chưa làm · Mentor có thể dán link Google Docs'
+                                  : mentorCanUploadDoc(doc.doc_id)
+                                    ? 'Mentee chưa làm · Mentor có thể tải lên'
+                                    : 'Mentee chưa làm'}
                               </span>
+                            )}
+                            {doc.doc_id === 'personal-declaration' && declarationLinkOpen && (
+                              <div className="apply-doc-declaration-link-box">
+                                <p className="muted apply-doc-meta">
+                                  Dán link Google Docs kê khai (Ctrl+V). Mở quyền xem nếu cần để
+                                  mentor theo dõi.
+                                </p>
+                                {doc.manual_copy_url && (
+                                  <a
+                                    href={doc.manual_copy_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-outline btn-sm"
+                                  >
+                                    Tạo bản sao Google Docs
+                                  </a>
+                                )}
+                                <input
+                                  type="url"
+                                  className="apply-doc-declaration-link-input"
+                                  value={declarationLinkDraft}
+                                  onChange={(e) => setDeclarationLinkDraft(e.target.value)}
+                                  placeholder="https://docs.google.com/document/d/..."
+                                />
+                                <div className="apply-doc-declaration-link-actions">
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary btn-sm"
+                                    disabled={
+                                      declarationLinkSaving || !declarationLinkDraft.trim()
+                                    }
+                                    onClick={handleSavePersonalDeclarationLink}
+                                  >
+                                    {declarationLinkSaving ? 'Đang lưu...' : 'Lưu link online'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline btn-sm"
+                                    disabled={declarationLinkSaving}
+                                    onClick={() => {
+                                      setDeclarationLinkOpen(false);
+                                      setDeclarationLinkDraft('');
+                                    }}
+                                  >
+                                    Hủy
+                                  </button>
+                                </div>
+                              </div>
                             )}
                             {doc.mentor_request_active && (
                               <div className="apply-doc-request-tags">
@@ -2687,6 +2795,17 @@ export default function Mentees() {
                             )}
                           </div>
                           <div className="apply-doc-actions">
+                            {doc.doc_id === 'personal-declaration' && (
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                disabled={declarationLinkSaving}
+                                onClick={() => setDeclarationLinkOpen((open) => !open)}
+                                title="Dán link Google Docs kê khai giúp mentee"
+                              >
+                                {doc.declaration_has_online ? 'Đổi link Docs' : 'Dán link Docs'}
+                              </button>
+                            )}
                             {mentorCanUploadDoc(doc.doc_id) && (
                               <label
                                 className={`btn btn-primary btn-sm${

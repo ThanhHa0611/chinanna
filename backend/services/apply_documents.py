@@ -583,10 +583,13 @@ def serialize_apply_document_for_admin(doc_id: str, record: dict | None, user: d
     record_data = record or {}
     item["has_file"] = bool(item["uploaded"] and record_data.get("stored_name"))
     if doc_id == "personal-declaration":
+        from google_docs import get_manual_copy_url
+
         declaration = user.get("personal_declaration") or {}
         item["declaration_url"] = get_personal_declaration_mentor_url(declaration)
         item["declaration_has_online"] = bool(get_personal_declaration_online_url(declaration))
         item["declaration_has_local"] = bool(declaration.get("stored_name"))
+        item["manual_copy_url"] = "" if item["declaration_has_online"] else get_manual_copy_url()
         if declaration.get("stored_name") or record_data.get("stored_name"):
             item["has_file"] = True
         # Hệ tiếng Trung/Anh: không để subtitle Việt "Kê khai..." dưới tên đã dịch.
@@ -1034,6 +1037,86 @@ def save_personal_declaration_record(user_id, record: dict) -> dict | None:
 
 def get_personal_declaration_mentor_url(record: dict | None) -> str:
     return get_personal_declaration_online_url(record)
+
+
+def build_personal_declaration_link_record(user: dict, doc_url: str) -> dict:
+    """Tạo/ cập nhật bản ghi personal_declaration từ link Google Docs."""
+    from google_docs import build_doc_url, parse_google_doc_id
+
+    existing = user.get("personal_declaration") or {}
+    doc_id = parse_google_doc_id(doc_url)
+    if not doc_id:
+        raise ValueError("Link Google Docs không hợp lệ.")
+
+    google_url = build_doc_url(doc_id)
+    existing_online_id = (
+        (existing.get("google_doc_id") or "").strip()
+        or (
+            (existing.get("doc_id") or "").strip()
+            if (existing.get("mode") or "") in ("google_docs", "google_docs_manual")
+            else ""
+        )
+    )
+    if existing_online_id == doc_id:
+        return existing
+
+    now = datetime.now(timezone.utc)
+    if existing.get("stored_name"):
+        record = {
+            **existing,
+            "google_doc_id": doc_id,
+            "google_doc_url": google_url,
+            "url": google_url,
+            "mode": "local_with_google",
+            "updated_at": now,
+        }
+        if not record.get("local_file_url"):
+            record["local_file_url"] = get_personal_declaration_local_file_url(existing)
+        if not record.get("created_at"):
+            record["created_at"] = now
+        return record
+
+    if not personal_declaration_has_form(existing):
+        return {
+            "doc_id": doc_id,
+            "google_doc_id": doc_id,
+            "google_doc_url": google_url,
+            "url": google_url,
+            "title": f"Kê khai thông tin - {user.get('username', '')}",
+            "mode": "google_docs_manual",
+            "created_at": now,
+        }
+
+    record = {
+        **existing,
+        "doc_id": doc_id,
+        "google_doc_id": doc_id,
+        "google_doc_url": google_url,
+        "url": google_url,
+        "mode": "google_docs_manual",
+        "updated_at": now,
+    }
+    if not record.get("created_at"):
+        record["created_at"] = now
+    return record
+
+
+def save_personal_declaration_link(user: dict, doc_url: str) -> tuple[dict, dict]:
+    """Lưu link Google Docs kê khai. Trả về (record, fresh_user)."""
+    from bson import ObjectId
+
+    record = build_personal_declaration_link_record(user, doc_url)
+    existing = user.get("personal_declaration") or {}
+    if record is existing or (
+        (record.get("google_doc_id") or "") == (existing.get("google_doc_id") or "")
+        and get_personal_declaration_online_url(record)
+        == get_personal_declaration_online_url(existing)
+    ):
+        return existing, user
+
+    users.update_one({"_id": ObjectId(user["_id"])}, {"$set": {"personal_declaration": record}})
+    fresh = users.find_one({"_id": ObjectId(user["_id"])}) or {**user, "personal_declaration": record}
+    return fresh.get("personal_declaration") or record, fresh
 
 
 def serialize_personal_declaration_response(record: dict) -> dict:
