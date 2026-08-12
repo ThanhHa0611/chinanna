@@ -4074,6 +4074,23 @@ html.device-phone .daily-summary-status {
   font-size: 0.875rem;
 }
 
+.profile-activity-create-group-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.35rem 0 0.75rem;
+}
+
+.profile-activity-create-group-bar input {
+  min-width: 12rem;
+  flex: 1 1 12rem;
+}
+
+.profile-activity-group-actions {
+  flex-wrap: wrap;
+}
+
 .profile-activity-group-leader-picker {
   margin-top: 0.5rem;
   display: flex;

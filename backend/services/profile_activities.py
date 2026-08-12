@@ -28,6 +28,7 @@ from services.referrals import award_referrer_phone_for_activity
 PROFILE_ACTIVITY_TYPES = (
     "Cuộc thi",
     "NCKH",
+    "ĐMST",
     "HĐNK",
     "Hội thảo",
     "Chương trình hè",
@@ -3615,8 +3616,6 @@ def set_group_leader(activity: dict, group_id: str, mentee_id: str) -> dict:
         raise ProfileActivityGroupLeaderError("Nhóm đang chờ mentor cấp 1 duyệt.")
     if _is_auto_solo_group(group):
         raise ProfileActivityGroupLeaderError("Hình thức cá nhân không cần chọn nhóm trưởng.")
-    if not group.get("finalized_at"):
-        raise ProfileActivityGroupLeaderError("Cần chốt nhóm trước khi chọn nhóm trưởng.")
 
     mentee_id = str(mentee_id or "").strip()
     member_ids = [str(item) for item in (group.get("mentee_ids") or [])]

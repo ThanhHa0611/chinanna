@@ -15,7 +15,7 @@ import {
 import { formatMenteeActivityInviteOption } from '../data/applyDegree';
 import { matchesNameSearch } from '../utils/searchByName';
 
-const ACTIVITY_TYPES = ['Cuộc thi', 'NCKH', 'HĐNK', 'Hội thảo', 'Chương trình hè', 'Dự án', 'Khác'];
+const ACTIVITY_TYPES = ['Cuộc thi', 'NCKH', 'ĐMST', 'HĐNK', 'Hội thảo', 'Chương trình hè', 'Dự án', 'Khác'];
 const MAJORS = [
   'Kinh tế & Logistics',
   'Truyền thông',
@@ -881,24 +881,6 @@ export default function ProfileActivities() {
   }, []);
 
   useEffect(() => {
-    if (!selectedActivity?.groups?.length) return;
-    setLeaderPickerVisible((prev) => {
-      const next = { ...prev };
-      for (const group of selectedActivity.groups) {
-        if (
-          group.finalized_at &&
-          !group.is_auto_solo &&
-          !group.leader_mentee_id &&
-          !finalizeSuccessByGroup[group.group_id]
-        ) {
-          next[group.group_id] = true;
-        }
-      }
-      return next;
-    });
-  }, [selectedActivity?.groups, finalizeSuccessByGroup]);
-
-  useEffect(() => {
     if (!selectedActivity?.groups?.length || !registrations.length) return;
     setLeaderTargets((prev) => {
       let changed = false;
@@ -906,7 +888,7 @@ export default function ProfileActivities() {
       for (const group of selectedActivity.groups) {
         if (
           group.is_auto_solo ||
-          !group.finalized_at ||
+          group.approval_status === 'pending_l1_approval' ||
           group.leader_mentee_id ||
           finalizeSuccessByGroup[group.group_id]
         ) {
@@ -1323,7 +1305,12 @@ export default function ProfileActivities() {
       setError('Vui lòng nhập tên nhóm trước khi tạo.');
       return;
     }
-    if (!window.confirm(`Tạo nhóm "${name}" với ${selectedMentees.length} mentee đã chọn?`)) {
+    const memberCount = selectedMentees.length;
+    const confirmText =
+      memberCount > 0
+        ? `Tạo nhóm mới "${name}" với ${memberCount} mentee đã chọn?`
+        : `Tạo nhóm mới "${name}" (chưa có thành viên)?`;
+    if (!window.confirm(confirmText)) {
       return;
     }
     setSaving(true);
@@ -1342,7 +1329,7 @@ export default function ProfileActivities() {
         result?.message ||
           (isL2
             ? 'Đã gửi phân nhóm, chờ mentor cấp 1 duyệt trước khi mentee thấy.'
-            : 'Đã tạo nhóm — mentee sẽ nhận thông báo.'),
+            : 'Đã tạo nhóm mới.'),
       );
     } catch (err) {
       setError(err.message);
@@ -1615,7 +1602,8 @@ export default function ProfileActivities() {
 
   const handleSetGroupLeader = async (groupId) => {
     if (!selectedActivity) return;
-    const menteeId = leaderTargets[groupId];
+    const group = (selectedActivity.groups || []).find((item) => item.group_id === groupId);
+    const menteeId = leaderTargets[groupId] || group?.leader_mentee_id || '';
     if (!menteeId) {
       setError('Chọn mentee làm nhóm trưởng.');
       return;
@@ -2000,14 +1988,15 @@ export default function ProfileActivities() {
     const groupPending = group.approval_status === 'pending_l1_approval';
     const isFinalized = Boolean(group.finalized_at);
     const showFinalizeSuccess = Boolean(finalizeSuccessByGroup[group.group_id]);
+    const canChooseLeader =
+      !group.is_auto_solo && !groupPending && (group.mentee_ids || []).length > 0;
     const showLeaderPicker =
-      !group.is_auto_solo &&
-      isFinalized &&
-      !group.leader_mentee_id &&
-      !showFinalizeSuccess &&
-      Boolean(leaderPickerVisible[group.group_id]);
+      canChooseLeader && !showFinalizeSuccess && Boolean(leaderPickerVisible[group.group_id]);
     const memberCount = (group.mentee_ids || []).length;
     const leaderCandidates = getLeaderPickerCandidates(group);
+    const leaderName = group.leader_mentee_id
+      ? getMenteeDisplayName(group.leader_mentee_id)
+      : '';
 
     return (
       <div className="profile-activity-registration-group-head">
@@ -2017,11 +2006,14 @@ export default function ProfileActivities() {
             <span className="profile-activity-approval-badge is-pending"> Chờ L1 duyệt</span>
           )}
           {group.is_auto_solo && <span className="muted"> — Cá nhân, không cần chốt nhóm</span>}
+          {leaderName && (
+            <span className="muted"> — Nhóm trưởng: {leaderName}</span>
+          )}
           {showFinalizeSuccess && (
             <span className="form-success group-finalize-success"> · Đã tạo nhóm thành công</span>
           )}
         </div>
-        <div className="action-cell">
+        <div className="action-cell profile-activity-group-actions">
           {!isFinalized && !group.is_auto_solo && (
             <button
               type="button"
@@ -2030,6 +2022,21 @@ export default function ProfileActivities() {
               disabled={saving || groupPending}
             >
               Chốt nhóm
+            </button>
+          )}
+          {canChooseLeader && (
+            <button
+              type="button"
+              className={`btn btn-sm ${showLeaderPicker ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() =>
+                setLeaderPickerVisible((prev) => ({
+                  ...prev,
+                  [group.group_id]: !prev[group.group_id],
+                }))
+              }
+              disabled={saving || showFinalizeSuccess}
+            >
+              {group.leader_mentee_id ? 'Đổi nhóm trưởng' : 'Chọn nhóm trưởng'}
             </button>
           )}
           {!group.is_auto_solo && (
@@ -2065,7 +2072,7 @@ export default function ProfileActivities() {
           {showLeaderPicker && (
             <div className="profile-activity-group-leader-picker">
               <select
-                value={leaderTargets[group.group_id] || ''}
+                value={leaderTargets[group.group_id] || group.leader_mentee_id || ''}
                 onChange={(e) =>
                   setLeaderTargets((prev) => ({
                     ...prev,
@@ -2090,9 +2097,12 @@ export default function ProfileActivities() {
                 type="button"
                 className="btn btn-primary btn-sm"
                 onClick={() => handleSetGroupLeader(group.group_id)}
-                disabled={saving || !(leaderTargets[group.group_id] || '')}
+                disabled={
+                  saving ||
+                  !(leaderTargets[group.group_id] || group.leader_mentee_id || '')
+                }
               >
-                Chọn nhóm trưởng
+                Lưu nhóm trưởng
               </button>
               {leaderCandidates.length > 0 && (
                 <p className="muted profile-activity-leader-candidates-hint">
@@ -3114,6 +3124,28 @@ export default function ProfileActivities() {
                   ))}
                 </div>
               )}
+
+              <div className="profile-activity-create-group-bar">
+                <input
+                  placeholder="Tên nhóm mới"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={handleCreateGroup}
+                  disabled={saving}
+                >
+                  Tạo nhóm mới
+                </button>
+                {selectedMentees.length > 0 && (
+                  <span className="muted">
+                    Sẽ thêm {selectedMentees.length} mentee đang chọn vào nhóm
+                  </span>
+                )}
+              </div>
+
               {unassignedRegistrations.length > 0 && (
                 <div className="profile-activity-registration-group">
                   <h4 className="profile-activity-registration-section-title">
@@ -3150,21 +3182,6 @@ export default function ProfileActivities() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
-                  <div className="action-cell">
-                    <input
-                      placeholder="Tên nhóm"
-                      value={groupName}
-                      onChange={(e) => setGroupName(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={handleCreateGroup}
-                      disabled={saving}
-                    >
-                      Tạo nhóm
-                    </button>
                   </div>
                 </div>
               )}
