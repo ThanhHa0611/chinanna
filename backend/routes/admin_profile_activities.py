@@ -14,6 +14,7 @@ from services.profile_activities import (
     ProfileActivityKeeptrackError,
     ProfileActivityRegistrationError,
     ProfileActivityUpdateError,
+    ProfileActivityWithdrawError,
     add_mentee_to_group,
     approve_pending_group,
     approve_pending_mentor_reject,
@@ -49,6 +50,7 @@ from services.profile_activities import (
     reject_profile_activity,
     remove_progress_tracking_row,
     remove_mentee_from_group,
+    resubmit_profile_activity,
     sanitize_profile_activity_input,
     serialize_admin_profile_activity,
     serialize_admin_registration,
@@ -58,6 +60,7 @@ from services.profile_activities import (
     update_profile_activity,
     upsert_activity_group,
     view_individual_keeptrack_review,
+    withdraw_profile_activity_submission,
 )
 
 
@@ -376,6 +379,48 @@ def admin_reject_profile_activity(activity_id: str):
         return error
     updated = reject_profile_activity(activity, admin)
     return jsonify(serialize_admin_profile_activity(updated, admin=admin))
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/withdraw")
+@with_db
+def admin_withdraw_profile_activity(activity_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+    try:
+        updated = withdraw_profile_activity_submission(activity, admin)
+    except ProfileActivityWithdrawError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    payload = serialize_admin_profile_activity(updated, admin=admin)
+    payload["message"] = "Đã rút lại hoạt động. Bạn có thể chỉnh sửa rồi gửi duyệt lại."
+    return jsonify(payload)
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/resubmit")
+@with_db
+def admin_resubmit_profile_activity(activity_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+    try:
+        updated = resubmit_profile_activity(activity, admin)
+    except ProfileActivityWithdrawError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    payload = serialize_admin_profile_activity(updated, admin=admin)
+    payload["message"] = "Đã gửi lại hoạt động, chờ mentor cấp 1 duyệt."
+    return jsonify(payload)
 
 
 @app.get("/api/admin/profile-activities/<activity_id>/registrations")

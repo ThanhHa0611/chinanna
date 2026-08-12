@@ -399,6 +399,7 @@ function FeedLinePreview({ activity }) {
 function approvalBadgeClass(status) {
   if (status === 'pending_l1_approval') return 'is-pending';
   if (status === 'rejected') return 'is-rejected';
+  if (status === 'draft') return 'is-draft';
   return 'is-approved';
 }
 
@@ -408,6 +409,10 @@ function activityPickerLabel(item) {
   let label = `${name} (${registrations} báo danh)`;
   if (item.approval_status === 'pending_l1_approval') {
     label += ' · chờ duyệt';
+  } else if (item.approval_status === 'draft') {
+    label += ' · nháp';
+  } else if (item.approval_status === 'rejected') {
+    label += ' · đã từ chối';
   }
   return label;
 }
@@ -662,6 +667,14 @@ export default function ProfileActivities() {
     [activities],
   );
 
+  const draftActivities = useMemo(
+    () =>
+      activities.filter(
+        (item) => item.approval_status === 'draft' || item.approval_status === 'rejected',
+      ),
+    [activities],
+  );
+
   const allPendingSelected =
     pendingActivities.length > 0 &&
     pendingActivities.every((item) => selectedPendingIds.includes(item.id));
@@ -742,7 +755,17 @@ export default function ProfileActivities() {
       await api.updateProfileActivity(selectedActivity.id, editForm);
       await loadActivities();
       setEditOpen(false);
-      setMessage('Đã cập nhật nội dung hoạt động.');
+      if (
+        isL2 &&
+        (selectedActivity.approval_status === 'draft' ||
+          selectedActivity.approval_status === 'rejected')
+      ) {
+        setMessage('Đã lưu chỉnh sửa. Bấm "Gửi duyệt lại" khi sẵn sàng.');
+      } else if (isL2 && selectedActivity.approval_status === 'pending_l1_approval') {
+        setMessage('Đã cập nhật nội dung — vẫn đang chờ mentor cấp 1 duyệt.');
+      } else {
+        setMessage('Đã cập nhật nội dung hoạt động.');
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1132,6 +1155,45 @@ export default function ProfileActivities() {
       await api.rejectProfileActivity(activityId);
       await loadActivities();
       setMessage('Đã từ chối hoạt động.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleWithdraw = async (activityId) => {
+    if (
+      !window.confirm(
+        'Rút lại hoạt động này khỏi hàng chờ duyệt? Bạn có thể chỉnh sửa rồi gửi duyệt lại.',
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.withdrawProfileActivity(activityId);
+      await loadActivities();
+      setSelectedId(activityId);
+      setEditOpen(true);
+      setMessage(result?.message || 'Đã rút lại hoạt động. Bạn có thể chỉnh sửa rồi gửi duyệt lại.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResubmit = async (activityId) => {
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.resubmitProfileActivity(activityId);
+      await loadActivities();
+      setMessage(result?.message || 'Đã gửi lại hoạt động, chờ mentor cấp 1 duyệt.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -2338,6 +2400,85 @@ export default function ProfileActivities() {
         </div>
       )}
 
+      {isL2 && pendingActivities.length > 0 && (
+        <div className="panel-card">
+          <h3>Đã gửi chờ duyệt ({pendingActivities.length})</h3>
+          <p className="muted profile-activity-l2-note">
+            Bạn có thể rút lại để chỉnh sửa, rồi gửi duyệt lại cho mentor cấp 1.
+          </p>
+          <ul className="profile-activity-pending-list">
+            {pendingActivities.map((item) => (
+              <li key={item.id} className="profile-activity-pending-item">
+                <div className="profile-activity-pending-line">
+                  <span className="importance-stars-display" title="Mức độ quan trọng">
+                    {formatImportanceStars(item.importance)}
+                  </span>
+                  {renderApprovalBadge(item)}
+                  <FeedLinePreview activity={item} />
+                  {renderDeadlineBadge(item)}
+                </div>
+                <div className="action-cell profile-activity-pending-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => openPendingActivityEdit(item.id)}
+                    disabled={saving || editSaving}
+                  >
+                    Chỉnh sửa
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => handleWithdraw(item.id)}
+                    disabled={saving || editSaving}
+                  >
+                    Rút lại
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {isL2 && draftActivities.length > 0 && (
+        <div className="panel-card">
+          <h3>Nháp / đã rút ({draftActivities.length})</h3>
+          <ul className="profile-activity-pending-list">
+            {draftActivities.map((item) => (
+              <li key={item.id} className="profile-activity-pending-item">
+                <div className="profile-activity-pending-line">
+                  <span className="importance-stars-display" title="Mức độ quan trọng">
+                    {formatImportanceStars(item.importance)}
+                  </span>
+                  {renderApprovalBadge(item)}
+                  <FeedLinePreview activity={item} />
+                  {renderDeadlineBadge(item)}
+                </div>
+                <div className="action-cell profile-activity-pending-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => openPendingActivityEdit(item.id)}
+                    disabled={saving || editSaving}
+                  >
+                    Chỉnh sửa
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => handleResubmit(item.id)}
+                    disabled={saving || editSaving}
+                  >
+                    Gửi duyệt lại
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="panel-card daily-summary-panel profile-activity-progress-panel">
         <button
           type="button"
@@ -2911,6 +3052,32 @@ export default function ProfileActivities() {
                 </button>
               </div>
             )}
+            {isL2 && selectedActivity.approval_status === 'pending_l1_approval' && (
+              <div className="action-cell profile-activity-pending-actions">
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => handleWithdraw(selectedActivity.id)}
+                  disabled={saving || editSaving}
+                >
+                  Rút lại để chỉnh sửa
+                </button>
+              </div>
+            )}
+            {isL2 &&
+              (selectedActivity.approval_status === 'draft' ||
+                selectedActivity.approval_status === 'rejected') && (
+                <div className="action-cell profile-activity-pending-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => handleResubmit(selectedActivity.id)}
+                    disabled={saving || editSaving}
+                  >
+                    Gửi duyệt lại
+                  </button>
+                </div>
+              )}
             <div className="profile-activity-registrations">
               {selectedFinalizeReminders.length > 0 && (
                 <div className="profile-activity-finalize-reminders">

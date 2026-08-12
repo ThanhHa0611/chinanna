@@ -437,6 +437,16 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  withdrawProfileActivity: (activityId) =>
+    request(`/api/admin/profile-activities/${activityId}/withdraw`, {
+      method: 'POST',
+    }),
+
+  resubmitProfileActivity: (activityId) =>
+    request(`/api/admin/profile-activities/${activityId}/resubmit`, {
+      method: 'POST',
+    }),
+
   inviteProfileActivityMentees: (activityId, body) =>
     request(`/api/admin/profile-activities/${activityId}/invite`, {
       method: 'POST',

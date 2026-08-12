@@ -108,6 +108,7 @@ export const APPROVAL_STATUS_LABELS = {
   approved: 'Đã duyệt',
   pending_l1_approval: 'Chờ mentor cấp 1 duyệt',
   rejected: 'Đã từ chối',
+  draft: 'Nháp (đã rút lại)',
 };
 
 export const PARTICIPATION_MODE_OPTIONS = [
