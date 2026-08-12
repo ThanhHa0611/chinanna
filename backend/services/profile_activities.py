@@ -1523,6 +1523,16 @@ def _normalize_approval_status(raw: str | None) -> str:
 
 
 def activity_visible_to_mentee(doc: dict) -> bool:
+    if doc.get("hide_from_mentees"):
+        return False
+    status = doc.get("approval_status")
+    if not status:
+        return True
+    return status == PROFILE_ACTIVITY_APPROVAL_APPROVED
+
+
+def activity_approved_for_listing(doc: dict) -> bool:
+    """Mentor-facing visibility (ignores hide_from_mentees draft flag)."""
     status = doc.get("approval_status")
     if not status:
         return True
@@ -1863,14 +1873,16 @@ def serialize_profile_activity_for_feed(
         return {}
     registration_count = sum(1 for item in doc.get("mentee_states", []) if item.get("registered_at"))
     group_response_status = state.get("group_response_status")
-    display_group = _find_mentee_display_group(doc, mentee_id, state)
+    finalized_group = _find_mentee_finalized_group(doc, mentee_id)
     group_assignment_pending = _mentee_requires_group_confirmation(doc, mentee_id, state)
-    group_finalized = bool((display_group or {}).get("finalized_at"))
-    group_member_count = len((display_group or {}).get("mentee_ids") or []) if display_group else 0
+    group_finalized = bool(finalized_group)
+    # Chỉ hiện tên/thành viên nhóm sau khi mentor chốt nhóm.
+    visible_group = finalized_group
+    group_member_count = len((visible_group or {}).get("mentee_ids") or []) if visible_group else 0
     group_members: list[dict] = []
     response_status = (group_response_status or "").strip().lower()
-    if display_group and (group_finalized or response_status == "confirmed"):
-        group_members = serialize_group_members_for_mentee(display_group)
+    if visible_group and (group_finalized or response_status == "confirmed"):
+        group_members = serialize_group_members_for_mentee(visible_group)
     payload = {
         "id": str(doc["_id"]),
         "activity_name": doc.get("activity_name", ""),
@@ -1892,7 +1904,7 @@ def serialize_profile_activity_for_feed(
         "group_response_status": group_response_status,
         "group_response_note": state.get("group_response_note", ""),
         "group_assignment_pending": group_assignment_pending,
-        "group_name": (display_group or {}).get("group_name", "") if display_group else "",
+        "group_name": (visible_group or {}).get("group_name", "") if visible_group else "",
         "group_member_count": group_member_count,
         "group_finalized": group_finalized,
         "group_members": group_members,
@@ -1942,6 +1954,7 @@ def serialize_admin_profile_activity(doc: dict, *, admin: dict | None = None) ->
         "importance": _normalize_importance(doc.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE)),
         "internal_note": doc.get("internal_note", ""),
         "participant_limit": _normalize_participant_limit(doc.get("participant_limit")),
+        "hide_from_mentees": bool(doc.get("hide_from_mentees")),
         "approved_participant_count": count_approved_participants(doc),
         "referrer_zalo_phone": doc.get("referrer_zalo_phone", ""),
         "approval_status": _normalize_approval_status(doc.get("approval_status")),
@@ -2125,6 +2138,7 @@ def _sorted_activities_for_mentee(mentee: dict) -> list[dict]:
                     {"approval_status": PROFILE_ACTIVITY_APPROVAL_APPROVED},
                 ]
             },
+            {"hide_from_mentees": {"$ne": True}},
         ],
     }
     cursor = profile_activities.find(query).sort("created_at", -1)
@@ -3462,12 +3476,14 @@ def finalize_group_and_sync_hdnk(activity: dict, group_id: str, admin_name: str 
             )
 
     target_group["finalized_at"] = now
+    activity["hide_from_mentees"] = False
     profile_activities.update_one(
         {"_id": activity["_id"]},
         {
             "$set": {
                 "groups": activity.get("groups", []),
                 "mentee_states": activity.get("mentee_states", []),
+                "hide_from_mentees": False,
                 "updated_at": now,
             }
         },
@@ -3581,7 +3597,7 @@ def _group_qualifies_for_progress_tracking(group: dict) -> bool:
 def list_progress_tracking_for_admin(admin: dict) -> list[dict]:
     activities_out: list[dict] = []
     for activity in profile_activities.find(mentor_profile_activities_query(admin)).sort("updated_at", -1):
-        if not activity_visible_to_mentee(activity):
+        if not activity_approved_for_listing(activity):
             continue
 
         states_by_id = {
