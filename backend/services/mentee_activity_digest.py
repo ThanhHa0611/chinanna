@@ -19,6 +19,7 @@ from services.mentee_email_prefs import mentee_email_notify_activities_enabled
 from services.profile_activities import (
     PROFILE_ACTIVITY_APPROVAL_APPROVED,
     compose_activity_name,
+    is_activity_deadline_expired,
     serialize_profile_activity_for_feed,
 )
 
@@ -85,6 +86,8 @@ def list_activities_for_mentee_digest(mentee: dict) -> list[dict]:
     for doc in profile_activities.find(query).sort("updated_at", 1):
         doc_id = str(doc.get("_id", ""))
         if doc_id in seen_ids:
+            continue
+        if is_activity_deadline_expired(doc):
             continue
         payload = serialize_profile_activity_for_feed(doc, mentee, exclude_from_feed=True)
         if not payload:

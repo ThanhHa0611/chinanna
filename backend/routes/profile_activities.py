@@ -70,7 +70,7 @@ def mentee_get_profile_activity(activity_id: str):
     activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
-    if not activity_visible_to_mentee(activity):
+    if not activity_visible_to_mentee(activity, user):
         return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     mark_activity_read(activity, user)
     refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
@@ -91,7 +91,7 @@ def mentee_mark_profile_activity_read(activity_id: str):
     activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
-    if not activity_visible_to_mentee(activity):
+    if not activity_visible_to_mentee(activity, user):
         return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     mark_activity_read(activity, user)
     return jsonify({"message": "Đã đánh dấu đã đọc"})
@@ -110,7 +110,7 @@ def mentee_hide_profile_activity(activity_id: str):
     activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
-    if not activity_visible_to_mentee(activity):
+    if not activity_visible_to_mentee(activity, user):
         return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     data = request.get_json(silent=True) or {}
     hidden = bool(data.get("hidden", True))
@@ -131,7 +131,7 @@ def mentee_register_profile_activity(activity_id: str):
     activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
-    if not activity_visible_to_mentee(activity):
+    if not activity_visible_to_mentee(activity, user):
         return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     data = request.get_json(silent=True) or {}
     participation_choice = data.get("participation_choice")
@@ -160,7 +160,7 @@ def mentee_cancel_profile_activity_registration(activity_id: str):
     activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
-    if not activity_visible_to_mentee(activity):
+    if not activity_visible_to_mentee(activity, user):
         return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     try:
         cancel_activity_registration(activity, user)
@@ -184,7 +184,7 @@ def mentee_profile_activity_group_response(activity_id: str):
     activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
-    if not activity_visible_to_mentee(activity):
+    if not activity_visible_to_mentee(activity, user):
         return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     data = request.get_json(silent=True) or {}
     status = (data.get("status") or "").strip().lower()
@@ -212,7 +212,7 @@ def mentee_complete_profile_activity_keeptrack(activity_id: str):
     activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
-    if not activity_visible_to_mentee(activity):
+    if not activity_visible_to_mentee(activity, user):
         return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     data = request.get_json(silent=True) or {}
     try:
@@ -237,7 +237,7 @@ def mentee_abandon_profile_activity_keeptrack(activity_id: str):
     activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
-    if not activity_visible_to_mentee(activity):
+    if not activity_visible_to_mentee(activity, user):
         return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     data = request.get_json(silent=True) or {}
     try:
@@ -262,6 +262,6 @@ def mentee_update_profile_activity_keeptrack(activity_id: str):
     activity, error = _find_activity_or_404(activity_id, user)
     if error:
         return error
-    if not activity_visible_to_mentee(activity):
+    if not activity_visible_to_mentee(activity, user):
         return jsonify({"detail": "Hoạt động không tồn tại"}), 404
     return jsonify({"detail": "Vui lòng dùng Hoàn thành hoặc Từ bỏ để cập nhật tiến độ."}), 400

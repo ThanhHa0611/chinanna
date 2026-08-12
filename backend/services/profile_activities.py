@@ -38,10 +38,12 @@ PROFILE_ACTIVITY_TYPES = (
 PROFILE_ACTIVITY_APPROVAL_APPROVED = "approved"
 PROFILE_ACTIVITY_APPROVAL_PENDING = "pending_l1_approval"
 PROFILE_ACTIVITY_APPROVAL_REJECTED = "rejected"
+PROFILE_ACTIVITY_APPROVAL_DRAFT = "draft"
 PROFILE_ACTIVITY_APPROVAL_STATUSES = (
     PROFILE_ACTIVITY_APPROVAL_APPROVED,
     PROFILE_ACTIVITY_APPROVAL_PENDING,
     PROFILE_ACTIVITY_APPROVAL_REJECTED,
+    PROFILE_ACTIVITY_APPROVAL_DRAFT,
 )
 DEFAULT_PROFILE_ACTIVITY_IMPORTANCE = 3
 
@@ -422,6 +424,22 @@ def get_deadline_badge(deadline: str) -> dict | None:
     if days_left <= 7:
         return {"label": "Còn 7 ngày", "variant": "warning"}
     return None
+
+
+def is_activity_deadline_expired(doc_or_deadline) -> bool:
+    """True when deadline calendar day has fully passed (Asia/Ho_Chi_Minh).
+
+    Empty/unparseable deadline → not expired (still visible to mentees).
+    """
+    if isinstance(doc_or_deadline, dict):
+        deadline = doc_or_deadline.get("deadline", "")
+    else:
+        deadline = doc_or_deadline
+    deadline_date = _parse_deadline_date(deadline or "")
+    if not deadline_date:
+        return False
+    today = datetime.now(VN_TZ).date()
+    return today > deadline_date
 
 
 def _extract_majors(text: str) -> list[str]:
@@ -1522,13 +1540,39 @@ def _normalize_approval_status(raw: str | None) -> str:
     return PROFILE_ACTIVITY_APPROVAL_APPROVED
 
 
-def activity_visible_to_mentee(doc: dict) -> bool:
+def _find_mentee_state(doc: dict, mentee_id: str) -> dict | None:
+    for item in doc.get("mentee_states") or []:
+        if item.get("mentee_id") == mentee_id:
+            return item
+    return None
+
+
+def _mentee_can_access_expired_activity(doc: dict, mentee: dict) -> bool:
+    """Allow API access after deadline only for in-progress keeptrack / prior registration."""
+    mentee_id = str(mentee["_id"])
+    state = _find_mentee_state(doc, mentee_id)
+    if not state:
+        return False
+    if state.get("registered_at"):
+        return True
+    keeptrack = _normalize_keeptrack(state.get("keeptrack"))
+    if keeptrack["active"]:
+        return True
+    abandon_pending = state.get("keeptrack_abandon_pending") or {}
+    return abandon_pending.get("status") == "pending"
+
+
+def activity_visible_to_mentee(doc: dict, mentee: dict | None = None) -> bool:
     if doc.get("hide_from_mentees"):
         return False
     status = doc.get("approval_status")
-    if not status:
-        return True
-    return status == PROFILE_ACTIVITY_APPROVAL_APPROVED
+    if status and status != PROFILE_ACTIVITY_APPROVAL_APPROVED:
+        return False
+    if is_activity_deadline_expired(doc):
+        if mentee is not None and _mentee_can_access_expired_activity(doc, mentee):
+            return True
+        return False
+    return True
 
 
 def activity_approved_for_listing(doc: dict) -> bool:
@@ -2077,6 +2121,55 @@ def reject_profile_activity(activity: dict, admin: dict) -> dict:
     return profile_activities.find_one({"_id": activity["_id"]}) or activity
 
 
+class ProfileActivityWithdrawError(ValueError):
+    pass
+
+
+def withdraw_profile_activity_submission(activity: dict, admin: dict) -> dict:
+    """L2 pulls a pending submission back to draft so they can edit and resubmit."""
+    if not admin_requires_l1_approval(admin):
+        raise ProfileActivityWithdrawError("Chỉ mentor cấp 2 mới rút lại hoạt động đang chờ duyệt.")
+    if _normalize_approval_status(activity.get("approval_status")) != PROFILE_ACTIVITY_APPROVAL_PENDING:
+        raise ProfileActivityWithdrawError("Chỉ rút lại được hoạt động đang chờ mentor cấp 1 duyệt.")
+    now = datetime.now(timezone.utc)
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "approval_status": PROFILE_ACTIVITY_APPROVAL_DRAFT,
+                "withdrawn_at": now,
+                "withdrawn_by_admin_id": str(admin["_id"]),
+                "updated_at": now,
+            }
+        },
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def resubmit_profile_activity(activity: dict, admin: dict) -> dict:
+    """L2 sends a draft/rejected activity back to the L1 approval queue."""
+    if not admin_requires_l1_approval(admin):
+        raise ProfileActivityWithdrawError("Chỉ mentor cấp 2 mới gửi lại hoạt động để duyệt.")
+    status = _normalize_approval_status(activity.get("approval_status"))
+    if status not in {PROFILE_ACTIVITY_APPROVAL_DRAFT, PROFILE_ACTIVITY_APPROVAL_REJECTED}:
+        raise ProfileActivityWithdrawError("Chỉ gửi lại được hoạt động ở trạng thái nháp hoặc đã từ chối.")
+    now = datetime.now(timezone.utc)
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "approval_status": PROFILE_ACTIVITY_APPROVAL_PENDING,
+                "rejected_at": None,
+                "rejected_by_admin_id": "",
+                "withdrawn_at": None,
+                "withdrawn_by_admin_id": "",
+                "updated_at": now,
+            }
+        },
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
 def bulk_approve_profile_activities(activity_ids: list[str], admin: dict) -> dict:
     from bson import ObjectId
     from bson.errors import InvalidId
@@ -2162,6 +2255,9 @@ def _sorted_activities_for_mentee(mentee: dict) -> list[dict]:
 def list_profile_activities_for_mentee(mentee: dict) -> list[dict]:
     items: list[dict] = []
     for doc in _sorted_activities_for_mentee(mentee):
+        # Expired HDNK leave the discovery/registration feed; keeptrack stays in Panel A.
+        if is_activity_deadline_expired(doc):
+            continue
         payload = serialize_profile_activity_for_feed(doc, mentee, exclude_from_feed=True)
         if payload:
             items.append(payload)
@@ -2376,6 +2472,8 @@ def register_for_activity(
     state = _get_or_create_state(activity, mentee_id)
     if state.get("registered_at"):
         return activity
+    if is_activity_deadline_expired(activity):
+        raise ProfileActivityRegistrationError("Hoạt động đã hết hạn đăng ký")
 
     effective_choice = _resolve_registration_choice(activity, participation_choice)
     now = datetime.now(timezone.utc)
