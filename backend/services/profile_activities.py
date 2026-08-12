@@ -1583,6 +1583,14 @@ def parse_profile_activity_from_description(description: str) -> dict:
 
 def sanitize_profile_activity_input(data: dict, *, parsed_fallback: dict | None = None) -> dict:
     parsed_fallback = parsed_fallback or {}
+
+    def text_field(key: str, default: str = "") -> str:
+        # If the client sent the key (including ""), respect it — do not revive
+        # a parsed fallback value the mentor intentionally cleared.
+        if key in data:
+            return str(data.get(key) if data.get(key) is not None else "").strip()
+        return str(parsed_fallback.get(key) or default).strip()
+
     majors = data.get("suitable_majors")
     if not isinstance(majors, list):
         majors = parsed_fallback.get("suitable_majors") or []
@@ -1591,34 +1599,40 @@ def sanitize_profile_activity_input(data: dict, *, parsed_fallback: dict | None 
         normalized = _normalize_major_label(str(major or ""))
         if normalized and normalized not in cleaned_majors:
             cleaned_majors.append(normalized)
-    other = str(data.get("suitable_majors_other") or "").strip()
+    other = text_field("suitable_majors_other")
     if "Khác" not in cleaned_majors:
         other = ""
-    activity_type = (data.get("activity_type") or parsed_fallback.get("activity_type") or "Khác").strip()
+    activity_type = text_field("activity_type", parsed_fallback.get("activity_type") or "Khác")
     if activity_type not in PROFILE_ACTIVITY_TYPES:
         activity_type = "Khác"
     cleaned = {
-        "link": str(data.get("link") or "").strip(),
-        "description": str(data.get("description") or "").strip(),
+        "link": text_field("link"),
+        "description": text_field("description"),
         "activity_type": activity_type,
-        "deadline": _normalize_date_text(str(data.get("deadline") or parsed_fallback.get("deadline") or "")),
-        "organizer": str(data.get("organizer") or parsed_fallback.get("organizer") or "").strip(),
-        "target_audience": str(
-            data.get("target_audience") or parsed_fallback.get("target_audience") or ""
-        ).strip(),
-        "content": str(data.get("content") or parsed_fallback.get("content") or "").strip(),
-        "attachment_url": str(data.get("attachment_url") or "").strip(),
+        "deadline": _normalize_date_text(text_field("deadline")),
+        "organizer": text_field("organizer"),
+        "target_audience": text_field("target_audience"),
+        "content": text_field("content"),
+        "attachment_url": text_field("attachment_url"),
         "suitable_majors": cleaned_majors,
         "suitable_majors_other": other,
         "importance": _normalize_importance(
-            data.get("importance", parsed_fallback.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE))
+            data["importance"]
+            if "importance" in data
+            else parsed_fallback.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE)
         ),
         "participation_mode": _normalize_participation_mode(
-            data.get("participation_mode", parsed_fallback.get("participation_mode", DEFAULT_PARTICIPATION_MODE))
+            data["participation_mode"]
+            if "participation_mode" in data
+            else parsed_fallback.get("participation_mode", DEFAULT_PARTICIPATION_MODE)
         ),
-        "internal_note": str(data.get("internal_note") or "").strip(),
-        "participant_limit": _normalize_participant_limit(data.get("participant_limit")),
-        "referrer_zalo_phone": normalize_zalo_phone(str(data.get("referrer_zalo_phone") or "")),
+        "internal_note": text_field("internal_note"),
+        "participant_limit": _normalize_participant_limit(
+            data["participant_limit"]
+            if "participant_limit" in data
+            else parsed_fallback.get("participant_limit")
+        ),
+        "referrer_zalo_phone": normalize_zalo_phone(text_field("referrer_zalo_phone")),
     }
     cleaned["activity_name"] = compose_activity_name(cleaned)
     return cleaned
