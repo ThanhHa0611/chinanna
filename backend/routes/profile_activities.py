@@ -190,8 +190,15 @@ def mentee_profile_activity_group_response(activity_id: str):
     status = (data.get("status") or "").strip().lower()
     if status not in {"confirmed", "rejected"}:
         return jsonify({"detail": "Trạng thái phản hồi không hợp lệ"}), 400
+    wants_leader = data.get("wants_group_leader")
     try:
-        update_group_response(activity, user, status, data.get("note", ""))
+        update_group_response(
+            activity,
+            user,
+            status,
+            data.get("note", ""),
+            wants_group_leader=bool(wants_leader) if wants_leader is not None else None,
+        )
     except ProfileActivityGroupResponseError as exc:
         return jsonify({"detail": str(exc)}), 400
     refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity

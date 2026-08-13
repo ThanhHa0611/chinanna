@@ -525,6 +525,28 @@ def suggest_group_name(activity: dict) -> str:
     return f"{activity_type} nhóm {n}"
 
 
+_MENTEE_GROUP_INDEX_RE = re.compile(
+    r"(?:^|[\s\-–—|/])+(?:nhóm|group)\s*\d+\s*$",
+    flags=re.IGNORECASE | re.UNICODE,
+)
+_MENTEE_GROUP_INDEX_INLINE_RE = re.compile(
+    r"\s*(?:nhóm|group)\s*\d+(?=\s|$)",
+    flags=re.IGNORECASE | re.UNICODE,
+)
+
+
+def sanitize_group_name_for_mentee(group_name: str) -> str:
+    """Strip trailing/embedded 'nhóm N' / 'group N' for mentee-facing display only."""
+    text = (group_name or "").strip()
+    if not text:
+        return ""
+    cleaned = _MENTEE_GROUP_INDEX_RE.sub("", text).strip(" -–—|/")
+    if cleaned == text:
+        cleaned = _MENTEE_GROUP_INDEX_INLINE_RE.sub("", text).strip(" -–—|/")
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" -–—|/")
+    return cleaned or text
+
+
 def _find_mentee_group(activity: dict, mentee_id: str) -> dict | None:
     for group in activity.get("groups", []):
         mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
@@ -1444,7 +1466,12 @@ def _mentee_requires_group_confirmation(activity: dict, mentee_id: str, state: d
     return _find_mentee_finalized_group(activity, mentee_id) is not None
 
 
-def serialize_group_members_for_mentee(group: dict) -> list[dict]:
+def serialize_group_members_for_mentee(
+    activity: dict,
+    group: dict,
+    *,
+    include_zalo: bool = False,
+) -> list[dict]:
     member_ids = [str(item) for item in (group.get("mentee_ids") or []) if str(item)]
     if not member_ids:
         return []
@@ -1454,17 +1481,28 @@ def serialize_group_members_for_mentee(group: dict) -> list[dict]:
         str(user["_id"]): user
         for user in users.find({"_id": {"$in": object_ids}, "role": {"$ne": ROLE_PARENT}})
     }
+    confirmed_ids: set[str] = set()
+    if include_zalo:
+        for state in activity.get("mentee_states") or []:
+            mentee_id = str(state.get("mentee_id") or "")
+            if mentee_id not in member_ids:
+                continue
+            if (state.get("group_response_status") or "").strip().lower() == "confirmed":
+                confirmed_ids.add(mentee_id)
     members: list[dict] = []
     for member_id in member_ids:
         user = users_by_id.get(member_id)
         if not user:
             continue
+        if include_zalo and member_id not in confirmed_ids:
+            continue
         members.append(
             {
                 "mentee_id": member_id,
                 "full_name": user.get("full_name") or user.get("username") or user.get("email", ""),
-                "zalo_phone": user.get("zalo_phone") or "",
+                "zalo_phone": (user.get("zalo_phone") or "") if include_zalo else "",
                 "is_leader": member_id == leader_id,
+                "group_response_status": "confirmed" if member_id in confirmed_ids else "",
             }
         )
     return members
@@ -1509,6 +1547,7 @@ def _reset_mentee_registration_state(state: dict) -> None:
     state["group_response_note"] = ""
     state["group_response_at"] = None
     state.pop("mentor_reject_pending", None)
+    state.pop("individual_choice_report_pending", None)
     state.pop("keeptrack_abandon_pending", None)
     state.pop("keeptrack_abandon_last_rejection", None)
     state.pop("keeptrack_pending_review", None)
@@ -1884,6 +1923,14 @@ def serialize_admin_registration(activity: dict, state: dict, mentee: dict) -> d
     mentee_id = state.get("mentee_id", "")
     display = registration_response_display(activity, state, mentee_id)
     pending_reject = state.get("mentor_reject_pending") or {}
+    individual_report = state.get("individual_choice_report_pending") or {}
+    mode = _normalize_participation_mode(activity.get("participation_mode"))
+    can_report_individual = (
+        bool(state.get("registered_at"))
+        and state.get("participation_choice") == "individual"
+        and mode in {"group", "both", "unknown"}
+        and individual_report.get("status") != "pending"
+    )
     return {
         "mentee_id": mentee_id,
         "mentee_name": format_mentee_name_for_mentor(mentee),
@@ -1906,6 +1953,8 @@ def serialize_admin_registration(activity: dict, state: dict, mentee: dict) -> d
         "participation_choice_label": PARTICIPATION_MODE_LABELS.get(state.get("participation_choice") or "", ""),
         "wants_group_leader": bool(state.get("wants_group_leader")),
         "awaiting_group_assignment": _mentee_awaiting_group_assignment(activity, mentee_id, state),
+        "individual_choice_report_pending": individual_report.get("status") == "pending",
+        "can_report_individual_choice": can_report_individual,
         "keeptrack": _serialize_keeptrack_for_feed(activity, state),
         "keeptrack_pending_review": (
             (state.get("keeptrack_pending_review") or {}).get("status") == "pending"
@@ -1966,8 +2015,13 @@ def serialize_profile_activity_for_feed(
     group_member_count = len((visible_group or {}).get("mentee_ids") or []) if visible_group else 0
     group_members: list[dict] = []
     response_status = (group_response_status or "").strip().lower()
-    if visible_group and (group_finalized or response_status == "confirmed"):
-        group_members = serialize_group_members_for_mentee(visible_group)
+    raw_group_name = (visible_group or {}).get("group_name", "") if visible_group else ""
+    if visible_group and (group_assignment_pending or response_status == "confirmed"):
+        group_members = serialize_group_members_for_mentee(
+            doc,
+            visible_group,
+            include_zalo=response_status == "confirmed",
+        )
     payload = {
         "id": str(doc["_id"]),
         "activity_name": doc.get("activity_name", ""),
@@ -1989,10 +2043,11 @@ def serialize_profile_activity_for_feed(
         "group_response_status": group_response_status,
         "group_response_note": state.get("group_response_note", ""),
         "group_assignment_pending": group_assignment_pending,
-        "group_name": (visible_group or {}).get("group_name", "") if visible_group else "",
+        "group_name": sanitize_group_name_for_mentee(raw_group_name) if raw_group_name else "",
         "group_member_count": group_member_count,
         "group_finalized": group_finalized,
         "group_members": group_members,
+        "wants_group_leader": bool(state.get("wants_group_leader")),
         "highlight_star": activity_matches_mentee_major(doc, mentee),
         "importance": _normalize_importance(doc.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE)),
         "registration_count": registration_count,
@@ -2879,6 +2934,8 @@ def promote_individual_to_group_participation(
                 groups[idx] = draft_group
                 break
         activity["groups"] = groups
+        state["participation_choice"] = "group"
+        state.pop("individual_choice_report_pending", None)
         return draft_group, True
 
     if converting_auto_solo:
@@ -2888,6 +2945,7 @@ def promote_individual_to_group_participation(
     if ObjectId.is_valid(mentee_id):
         mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
     _promote_mentee_into_group(activity, mentee_id, group, mentee=mentee)
+    state.pop("individual_choice_report_pending", None)
     _cleanup_empty_auto_solo_groups(activity)
     return group, False
 
@@ -3514,12 +3572,17 @@ def list_pending_l1_group_actions(activity: dict) -> list[dict]:
     for group in activity.get("groups", []):
         if _normalize_approval_status(group.get("approval_status")) != PROFILE_ACTIVITY_APPROVAL_PENDING:
             continue
+        mentee_ids = [str(item) for item in (group.get("mentee_ids") or []) if str(item)]
+        mentee_names = [_mentee_display_name(item) for item in mentee_ids]
         pending.append(
             {
                 "action_type": "assign_group",
                 "group_id": group.get("group_id", ""),
                 "group_name": group.get("group_name", ""),
-                "mentee_ids": group.get("mentee_ids", []),
+                "mentee_ids": mentee_ids,
+                "mentee_names": mentee_names,
+                "member_count": len(mentee_ids),
+                "member_summary": ", ".join(name for name in mentee_names if name) or "—",
                 "submitted_at": group.get("submitted_at").isoformat()
                 if group.get("submitted_at")
                 else "",
@@ -3527,26 +3590,116 @@ def list_pending_l1_group_actions(activity: dict) -> list[dict]:
         )
     for state in activity.get("mentee_states", []):
         pending_reject = state.get("mentor_reject_pending") or {}
-        if pending_reject.get("approval_status") != PROFILE_ACTIVITY_APPROVAL_PENDING:
-            continue
-        mentee_id = state.get("mentee_id", "")
-        mentee = users.find_one({"_id": ObjectId(mentee_id)}) if ObjectId.is_valid(mentee_id) else None
-        pending.append(
-            {
-                "action_type": "reject_mentee",
-                "mentee_id": mentee_id,
-                "mentee_name": (
-                    format_mentee_name_for_mentor(mentee, fallback=mentee_id)
-                    if mentee
-                    else mentee_id
-                ),
-                "note": pending_reject.get("note", ""),
-                "submitted_at": pending_reject.get("submitted_at").isoformat()
-                if pending_reject.get("submitted_at")
-                else "",
-            }
-        )
+        if pending_reject.get("approval_status") == PROFILE_ACTIVITY_APPROVAL_PENDING:
+            mentee_id = state.get("mentee_id", "")
+            mentee = users.find_one({"_id": ObjectId(mentee_id)}) if ObjectId.is_valid(mentee_id) else None
+            pending.append(
+                {
+                    "action_type": "reject_mentee",
+                    "mentee_id": mentee_id,
+                    "mentee_name": (
+                        format_mentee_name_for_mentor(mentee, fallback=mentee_id)
+                        if mentee
+                        else mentee_id
+                    ),
+                    "mentee_ids": [mentee_id] if mentee_id else [],
+                    "mentee_names": [
+                        format_mentee_name_for_mentor(mentee, fallback=mentee_id)
+                        if mentee
+                        else mentee_id
+                    ],
+                    "member_count": 1 if mentee_id else 0,
+                    "member_summary": (
+                        format_mentee_name_for_mentor(mentee, fallback=mentee_id)
+                        if mentee
+                        else mentee_id
+                    ),
+                    "note": pending_reject.get("note", ""),
+                    "submitted_at": pending_reject.get("submitted_at").isoformat()
+                    if pending_reject.get("submitted_at")
+                    else "",
+                }
+            )
+        individual_report = state.get("individual_choice_report_pending") or {}
+        if individual_report.get("status") == "pending":
+            mentee_id = state.get("mentee_id", "")
+            mentee_name = _mentee_display_name(mentee_id)
+            pending.append(
+                {
+                    "action_type": "individual_choice_report",
+                    "mentee_id": mentee_id,
+                    "mentee_name": mentee_name,
+                    "mentee_ids": [mentee_id] if mentee_id else [],
+                    "mentee_names": [mentee_name] if mentee_name else [],
+                    "member_count": 1 if mentee_id else 0,
+                    "member_summary": mentee_name or "—",
+                    "note": individual_report.get("note", ""),
+                    "submitted_at": individual_report.get("submitted_at").isoformat()
+                    if individual_report.get("submitted_at")
+                    else "",
+                }
+            )
     return pending
+
+
+class ProfileActivityIndividualReportError(ValueError):
+    pass
+
+
+def report_individual_choice_to_l1(
+    activity: dict, mentee_id: str, admin: dict, note: str = ""
+) -> dict:
+    """L2 reports that a mentee chose individual on a non-individual-only activity."""
+    if not admin_requires_l1_approval(admin):
+        raise ProfileActivityIndividualReportError("Chỉ mentor cấp 2 mới báo cáo lựa chọn cá nhân với L1.")
+    mode = _normalize_participation_mode(activity.get("participation_mode"))
+    if mode not in {"group", "both", "unknown"}:
+        raise ProfileActivityIndividualReportError(
+            "Chỉ báo cáo khi hoạt động cho phép tham gia nhóm."
+        )
+    state = _get_mentee_state(activity, mentee_id)
+    if not state or not state.get("registered_at"):
+        raise ProfileActivityIndividualReportError("Mentee chưa báo danh hoạt động này.")
+    if state.get("participation_choice") != "individual":
+        raise ProfileActivityIndividualReportError("Mentee không chọn hình thức cá nhân.")
+    existing = state.get("individual_choice_report_pending") or {}
+    if existing.get("status") == "pending":
+        raise ProfileActivityIndividualReportError("Đã báo cáo với L1 — đang chờ xử lý.")
+    now = datetime.now(timezone.utc)
+    state["individual_choice_report_pending"] = {
+        "status": "pending",
+        "note": (note or "").strip(),
+        "submitted_by_admin_id": str(admin["_id"]),
+        "submitted_at": now,
+    }
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "mentee_states": activity.get("mentee_states", []),
+                "updated_at": now,
+            }
+        },
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def resolve_individual_choice_report(activity: dict, mentee_id: str) -> dict:
+    """L1 accepts/dismisses an individual-choice report from L2."""
+    state = _get_mentee_state(activity, mentee_id)
+    if not state:
+        return activity
+    state.pop("individual_choice_report_pending", None)
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "mentee_states": activity.get("mentee_states", []),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
 
 
 def _profile_activity_label(activity: dict) -> str:
@@ -3640,6 +3793,24 @@ def list_profile_activity_synthetic_inbox_items(admin: dict) -> list[dict]:
                             nav_path=nav_path,
                         )
                     )
+                elif pending.get("action_type") == "individual_choice_report":
+                    mentee_name = (pending.get("mentee_name") or "").strip() or "Mentee"
+                    created_at = _parse_profile_activity_timestamp(pending.get("submitted_at"))
+                    items.append(
+                        build_synthetic_inbox_item(
+                            item_id=f"synthetic:pa-individual-report:{activity_id}:{pending.get('mentee_id', '')}",
+                            mentor_name=mentor_name,
+                            action="profile_activity_individual_choice_report",
+                            title=activity_label,
+                            description=(
+                                f"L2 báo cáo mentee chọn cá nhân · {activity_label}"
+                            ),
+                            mentee_name=mentee_name,
+                            mentee_id=pending.get("mentee_id", ""),
+                            created_at=created_at,
+                            nav_path=nav_path,
+                        )
+                    )
 
         for group in activity.get("groups", []) or []:
             if not group_needs_finalize_reminder(group):
@@ -3691,7 +3862,8 @@ def list_profile_activity_synthetic_inbox_items(admin: dict) -> list[dict]:
 
 
 def _build_finalize_group_notification(group: dict) -> tuple[str, str]:
-    group_name = (group.get("group_name") or "").strip() or "nhóm"
+    raw_name = (group.get("group_name") or "").strip() or "nhóm"
+    group_name = sanitize_group_name_for_mentee(raw_name) or "nhóm"
     member_count = len(group.get("mentee_ids") or [])
     title = f"Mentor đã phân bạn vào nhóm {group_name}"
     description = (
@@ -3721,7 +3893,14 @@ class ProfileActivityGroupResponseError(ValueError):
     pass
 
 
-def update_group_response(activity: dict, mentee: dict, status: str, note: str = "") -> dict:
+def update_group_response(
+    activity: dict,
+    mentee: dict,
+    status: str,
+    note: str = "",
+    *,
+    wants_group_leader: bool | None = None,
+) -> dict:
     response = (status or "").strip().lower()
     if response not in {"confirmed", "rejected"}:
         response = "pending"
@@ -3735,6 +3914,10 @@ def update_group_response(activity: dict, mentee: dict, status: str, note: str =
     state["group_response_status"] = response
     state["group_response_note"] = (note or "").strip()
     state["group_response_at"] = datetime.now(timezone.utc)
+    if response == "confirmed" and wants_group_leader is not None:
+        state["wants_group_leader"] = bool(wants_group_leader)
+    elif response == "rejected":
+        state["wants_group_leader"] = False
     profile_activities.update_one(
         {"_id": activity["_id"]},
         {"$set": {"mentee_states": activity.get("mentee_states", []), "updated_at": datetime.now(timezone.utc)}},

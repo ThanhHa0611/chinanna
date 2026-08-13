@@ -89,6 +89,7 @@ export default function ProfileActivitiesSection({
   const [successToast, setSuccessToast] = useState('');
   const [registerChoice, setRegisterChoice] = useState({});
   const [registerLeaderRequest, setRegisterLeaderRequest] = useState({});
+  const [confirmLeaderRequest, setConfirmLeaderRequest] = useState({});
   const [keeptrackSaving, setKeeptrackSaving] = useState({});
   const [expandedGroupViews, setExpandedGroupViews] = useState({});
   const [keeptrackExpanded, setKeeptrackExpanded] = useState(true);
@@ -258,9 +259,13 @@ export default function ProfileActivitiesSection({
     }
   };
 
-  const respondGroup = async (itemId, status) => {
+  const respondGroup = async (itemId, status, { wantsGroupLeader = false } = {}) => {
     try {
-      const result = await api.respondProfileActivityGroup(itemId, { status });
+      const body = { status };
+      if (status === 'confirmed') {
+        body.wants_group_leader = Boolean(wantsGroupLeader);
+      }
+      const result = await api.respondProfileActivityGroup(itemId, body);
       if (result?.activity) {
         const patchItem = (item) => (item.id === itemId ? { ...item, ...result.activity } : item);
         setCurrentDay((day) =>
@@ -270,6 +275,11 @@ export default function ProfileActivitiesSection({
           days.map((day) => ({ ...day, items: (day.items || []).map(patchItem) })),
         );
       }
+      setConfirmLeaderRequest((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
       await refresh();
     } catch (err) {
       setError(err.message);
@@ -384,13 +394,21 @@ export default function ProfileActivitiesSection({
     return (
       <div className="profile-activity-group-members">
         {!isConfirmed && <p className="profile-activity-group-members-title">Thành viên nhóm:</p>}
-        {isConfirmed && <p className="profile-activity-group-members-title">Nhóm bao gồm:</p>}
+        {isConfirmed && (
+          <p className="profile-activity-group-members-title">
+            Thành viên đã xác nhận (Zalo):
+          </p>
+        )}
         <ol className="profile-activity-group-members-list">
           {item.group_members.map((member) => (
             <li key={member.mentee_id}>
               {member.full_name}
               {member.is_leader ? ' (nhóm trưởng)' : ''}
-              {member.zalo_phone ? ` — ${member.zalo_phone}` : ' — Chưa có Zalo'}
+              {isConfirmed
+                ? member.zalo_phone
+                  ? ` — ${member.zalo_phone}`
+                  : ' — Chưa có Zalo'
+                : ''}
             </li>
           ))}
         </ol>
@@ -440,10 +458,27 @@ export default function ProfileActivitiesSection({
         <div className="profile-activity-line-actions">
           {item.group_assignment_pending && (
             <div className="profile-activity-group-actions">
+              <label className="checkbox-label profile-activity-leader-request">
+                <input
+                  type="checkbox"
+                  checked={Boolean(confirmLeaderRequest[item.id])}
+                  onChange={(event) =>
+                    setConfirmLeaderRequest((prev) => ({
+                      ...prev,
+                      [item.id]: event.target.checked,
+                    }))
+                  }
+                />
+                Xung phong làm trưởng nhóm
+              </label>
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
-                onClick={() => respondGroup(item.id, 'confirmed')}
+                onClick={() =>
+                  respondGroup(item.id, 'confirmed', {
+                    wantsGroupLeader: Boolean(confirmLeaderRequest[item.id]),
+                  })
+                }
               >
                 Đồng ý
               </button>

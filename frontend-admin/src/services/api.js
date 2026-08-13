@@ -567,6 +567,21 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  reportProfileActivityIndividualChoice: (activityId, menteeId, body = {}) =>
+    request(
+      `/api/admin/profile-activities/${activityId}/registrations/${menteeId}/report-individual`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    ),
+
+  resolveProfileActivityIndividualChoiceReport: (activityId, menteeId) =>
+    request(
+      `/api/admin/profile-activities/${activityId}/registrations/${menteeId}/report-individual/resolve`,
+      { method: 'POST' },
+    ),
+
   approveProfileActivityRegistrationReject: (activityId, menteeId) =>
     request(
       `/api/admin/profile-activities/${activityId}/registrations/${menteeId}/reject/approve`,

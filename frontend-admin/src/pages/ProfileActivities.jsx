@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { isLevel1MentorAccount } from '../utils/mentorDisplay';
@@ -613,6 +613,11 @@ export default function ProfileActivities() {
   const [finalizeSuccessByGroup, setFinalizeSuccessByGroup] = useState({});
   const [leaderPickerVisible, setLeaderPickerVisible] = useState({});
   const [leaderTargets, setLeaderTargets] = useState({});
+  const [editingPendingKey, setEditingPendingKey] = useState('');
+  const [pendingEditGroupName, setPendingEditGroupName] = useState('');
+  const [pendingEditAddMenteeId, setPendingEditAddMenteeId] = useState('');
+  const [pendingEditCreateName, setPendingEditCreateName] = useState('');
+  const [pendingEditCreateMentees, setPendingEditCreateMentees] = useState([]);
   const finalizeTimeoutsRef = useRef({});
 
   const canReview = Boolean(admin?.is_super_admin || isLevel1MentorAccount(admin));
@@ -732,10 +737,21 @@ export default function ProfileActivities() {
     [pendingGroupActions],
   );
 
-  const pendingGroupActionKey = (item) =>
-    item.action_type === 'assign_group'
-      ? `group:${item.activity_id}:${item.group_id}`
-      : `reject:${item.activity_id}:${item.mentee_id}`;
+  const pendingGroupActionKey = (item) => {
+    if (item.action_type === 'assign_group') {
+      return `group:${item.activity_id}:${item.group_id}`;
+    }
+    if (item.action_type === 'individual_choice_report') {
+      return `individual:${item.activity_id}:${item.mentee_id}`;
+    }
+    return `reject:${item.activity_id}:${item.mentee_id}`;
+  };
+
+  const pendingActionTypeLabel = (item) => {
+    if (item.action_type === 'assign_group') return 'Phân nhóm';
+    if (item.action_type === 'individual_choice_report') return 'Báo cáo cá nhân';
+    return 'Từ chối báo danh';
+  };
 
   useEffect(() => {
     const keys = new Set(pendingGroupActions.map(pendingGroupActionKey));
@@ -1433,6 +1449,202 @@ export default function ProfileActivities() {
     }
   };
 
+  const handleAcceptPendingAction = async (item) => {
+    if (item.action_type === 'assign_group') {
+      setEditingPendingKey('');
+      await handleApproveGroupAction(item.activity_id, item.group_id);
+      return;
+    }
+    if (item.action_type === 'individual_choice_report') {
+      setSaving(true);
+      setError('');
+      try {
+        await api.resolveProfileActivityIndividualChoiceReport(item.activity_id, item.mentee_id);
+        setEditingPendingKey('');
+        await loadActivities();
+        if (item.activity_id === selectedId) {
+          await loadRegistrations(item.activity_id);
+        }
+        setMessage('Đã chấp nhận báo cáo lựa chọn cá nhân.');
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    setEditingPendingKey('');
+    await handleApproveRegistrationReject(item.activity_id, item.mentee_id);
+  };
+
+  const handleRejectPendingAction = async (item) => {
+    if (item.action_type === 'assign_group') {
+      setEditingPendingKey('');
+      await handleRejectGroupAction(item.activity_id, item.group_id);
+      return;
+    }
+    if (item.action_type === 'individual_choice_report') {
+      setSaving(true);
+      setError('');
+      try {
+        await api.resolveProfileActivityIndividualChoiceReport(item.activity_id, item.mentee_id);
+        setEditingPendingKey('');
+        await loadActivities();
+        if (item.activity_id === selectedId) {
+          await loadRegistrations(item.activity_id);
+        }
+        setMessage('Đã đóng báo cáo lựa chọn cá nhân.');
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    setEditingPendingKey('');
+    await handleDenyRegistrationReject(item.activity_id, item.mentee_id);
+  };
+
+  const openPendingEditMode = async (item) => {
+    const key = pendingGroupActionKey(item);
+    setEditingPendingKey(key);
+    setPendingEditAddMenteeId('');
+    setPendingEditCreateName('');
+    setPendingEditCreateMentees([]);
+    setPendingEditGroupName(item.group_name || '');
+    setSelectedId(item.activity_id);
+    setManageFormCollapsed(false);
+    try {
+      await loadRegistrations(item.activity_id);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleSavePendingGroupRename = async (item) => {
+    const name = (pendingEditGroupName || '').trim();
+    if (!name) {
+      setError('Vui lòng nhập tên nhóm.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.upsertProfileActivityGroup(item.activity_id, {
+        group_id: item.group_id,
+        group_name: name,
+        mentee_ids: item.mentee_ids || [],
+      });
+      await loadActivities();
+      await loadRegistrations(item.activity_id);
+      setMessage('Đã cập nhật tên nhóm.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePendingRemoveMember = async (item, menteeId) => {
+    if (!window.confirm('Xóa mentee khỏi nhóm đang chờ duyệt?')) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api.removeMenteeFromProfileActivityGroup(item.activity_id, item.group_id, {
+        mentee_id: menteeId,
+      });
+      await loadActivities();
+      await loadRegistrations(item.activity_id);
+      setMessage('Đã xóa mentee khỏi nhóm.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePendingAddMember = async (item) => {
+    const menteeId = pendingEditAddMenteeId;
+    if (!menteeId) {
+      setError('Chọn mentee để thêm vào nhóm.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.addMenteeToProfileActivityGroup(item.activity_id, item.group_id, {
+        mentee_id: menteeId,
+      });
+      setPendingEditAddMenteeId('');
+      await loadActivities();
+      await loadRegistrations(item.activity_id);
+      setMessage('Đã thêm mentee vào nhóm.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePendingCreateGroup = async (item) => {
+    let name = (pendingEditCreateName || '').trim();
+    if (!name) {
+      try {
+        const data = await api.suggestProfileActivityGroupName(item.activity_id);
+        name = (data?.suggested_name || '').trim();
+        if (name) setPendingEditCreateName(name);
+      } catch (err) {
+        setError(err.message);
+        return;
+      }
+    }
+    if (!name) {
+      setError('Vui lòng nhập tên nhóm mới.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const result = await api.upsertProfileActivityGroup(item.activity_id, {
+        group_name: name,
+        mentee_ids: pendingEditCreateMentees,
+      });
+      setPendingEditCreateName('');
+      setPendingEditCreateMentees([]);
+      await loadActivities();
+      await loadRegistrations(item.activity_id);
+      setMessage(result?.message || 'Đã tạo nhóm mới.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReportIndividualChoice = async (menteeId) => {
+    if (!selectedActivity) return;
+    if (!window.confirm('Báo cáo với mentor cấp 1 rằng mentee này chọn hình thức cá nhân?')) {
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.reportProfileActivityIndividualChoice(
+        selectedActivity.id,
+        menteeId,
+      );
+      await loadActivities();
+      await loadRegistrations(selectedActivity.id);
+      setMessage(result?.message || 'Đã báo cáo với mentor cấp 1.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSubmitGroup = async (activityId, groupId) => {
     setSaving(true);
     setError('');
@@ -2086,6 +2298,19 @@ export default function ProfileActivities() {
           >
             Chuyển sang nhóm
           </button>
+          {isL2 && item.can_report_individual_choice && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => handleReportIndividualChoice(item.mentee_id)}
+              disabled={saving}
+            >
+              Báo cáo với L1
+            </button>
+          )}
+          {item.individual_choice_report_pending && (
+            <span className="muted profile-activity-pending-reject">Đã báo cáo L1</span>
+          )}
           {renderRejectRegistrationButton(item)}
           {moveOptions.length > 0 && (
             <>
@@ -2518,7 +2743,7 @@ export default function ProfileActivities() {
       {canReview && pendingGroupActions.length > 0 && (
         <div className="panel-card profile-activity-pending-queue">
           <div className="profile-activity-pending-queue-head">
-            <h3>Chờ duyệt phân nhóm / từ chối ({pendingGroupActions.length})</h3>
+            <h3>Chờ duyệt phân nhóm / báo cáo ({pendingGroupActions.length})</h3>
             {pendingAssignGroupActions.length > 0 && (
               <div className="profile-activity-pending-bulk-actions">
                 <label className="checkbox-label profile-activity-pending-select-all">
@@ -2540,7 +2765,7 @@ export default function ProfileActivities() {
                     !selectedPendingGroupKeys.some((key) => key.startsWith('group:'))
                   }
                 >
-                  {pendingBulkSaving ? 'Đang xử lý...' : 'Duyệt hàng loạt'}
+                  {pendingBulkSaving ? 'Đang xử lý...' : 'Chấp nhận hàng loạt'}
                 </button>
                 <button
                   type="button"
@@ -2557,63 +2782,281 @@ export default function ProfileActivities() {
               </div>
             )}
           </div>
-          <ul className="profile-activity-pending-list">
-            {pendingGroupActions.map((item) => (
-              <li
-                key={pendingGroupActionKey(item)}
-                className="profile-activity-pending-item"
-              >
-                <div className="profile-activity-pending-line">
-                  {item.action_type === 'assign_group' && (
-                    <input
-                      type="checkbox"
-                      checked={selectedPendingGroupKeys.includes(pendingGroupActionKey(item))}
-                      onChange={() => togglePendingGroupSelection(item)}
-                      disabled={saving || pendingBulkSaving}
-                      aria-label="Chọn phân nhóm"
-                    />
-                  )}
-                  <strong>{item.activity_name}</strong>
-                  {item.action_type === 'assign_group' ? (
-                    <span className="muted">
-                      Phân nhóm &quot;{item.group_name}&quot; ({(item.mentee_ids || []).length} mentee)
-                    </span>
-                  ) : (
-                    <span className="muted">
-                      Từ chối báo danh: {item.mentee_name}
-                      {item.note ? ` — ${item.note}` : ''}
-                    </span>
-                  )}
-                </div>
-                <div className="action-cell">
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={() =>
-                      item.action_type === 'assign_group'
-                        ? handleApproveGroupAction(item.activity_id, item.group_id)
-                        : handleApproveRegistrationReject(item.activity_id, item.mentee_id)
-                    }
-                    disabled={saving || pendingBulkSaving}
-                  >
-                    Duyệt
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={() =>
-                      item.action_type === 'assign_group'
-                        ? handleRejectGroupAction(item.activity_id, item.group_id)
-                        : handleDenyRegistrationReject(item.activity_id, item.mentee_id)
-                    }
-                    disabled={saving || pendingBulkSaving}
-                  >
-                    Từ chối
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="table-wrap profile-activity-pending-table-wrap">
+            <table className="data-table profile-activity-pending-summary-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '2.5rem' }} />
+                  <th>Hoạt động</th>
+                  <th>Loại</th>
+                  <th>Nhóm / mentee</th>
+                  <th>Thành viên</th>
+                  <th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingGroupActions.map((item) => {
+                  const key = pendingGroupActionKey(item);
+                  const isEditing = editingPendingKey === key;
+                  const activityRegs =
+                    item.activity_id === selectedId ? registrations : [];
+                  const unassignedForEdit = activityRegs.filter(
+                    (reg) =>
+                      reg.participation_choice === 'group' &&
+                      reg.awaiting_group_assignment &&
+                      !(item.mentee_ids || []).includes(reg.mentee_id),
+                  );
+                  return (
+                    <Fragment key={key}>
+                      <tr className={isEditing ? 'is-editing-pending' : undefined}>
+                        <td>
+                          {item.action_type === 'assign_group' && (
+                            <input
+                              type="checkbox"
+                              checked={selectedPendingGroupKeys.includes(key)}
+                              onChange={() => togglePendingGroupSelection(item)}
+                              disabled={saving || pendingBulkSaving}
+                              aria-label="Chọn phân nhóm"
+                            />
+                          )}
+                        </td>
+                        <td>{item.activity_name}</td>
+                        <td>{pendingActionTypeLabel(item)}</td>
+                        <td>
+                          {item.action_type === 'assign_group'
+                            ? item.group_name || 'Nhóm'
+                            : item.mentee_name || '—'}
+                          {item.note ? (
+                            <div className="muted profile-activity-pending-note">{item.note}</div>
+                          ) : null}
+                        </td>
+                        <td>
+                          <div>
+                            {item.member_count ?? (item.mentee_ids || []).length} người
+                          </div>
+                          <div className="muted profile-activity-pending-member-summary">
+                            {item.member_summary || '—'}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="action-cell profile-activity-pending-actions">
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              onClick={() => handleAcceptPendingAction(item)}
+                              disabled={saving || pendingBulkSaving}
+                            >
+                              Chấp nhận
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              onClick={() =>
+                                isEditing
+                                  ? setEditingPendingKey('')
+                                  : openPendingEditMode(item)
+                              }
+                              disabled={saving || pendingBulkSaving}
+                            >
+                              {isEditing ? 'Thu gọn' : 'Chỉnh sửa'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              onClick={() => handleRejectPendingAction(item)}
+                              disabled={saving || pendingBulkSaving}
+                            >
+                              Từ chối
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isEditing && (
+                        <tr className="profile-activity-pending-edit-row">
+                          <td colSpan={6}>
+                            <div className="profile-activity-pending-edit-panel">
+                              {item.action_type === 'assign_group' && (
+                                <>
+                                  <div className="profile-activity-pending-edit-block">
+                                    <strong>Đổi tên nhóm</strong>
+                                    <div className="action-cell">
+                                      <input
+                                        type="text"
+                                        value={pendingEditGroupName}
+                                        onChange={(e) =>
+                                          setPendingEditGroupName(e.target.value)
+                                        }
+                                        placeholder="Tên nhóm"
+                                      />
+                                      <button
+                                        type="button"
+                                        className="btn btn-outline btn-sm"
+                                        onClick={() => handleSavePendingGroupRename(item)}
+                                        disabled={saving}
+                                      >
+                                        Lưu tên
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="profile-activity-pending-edit-block">
+                                    <strong>Thành viên hiện tại</strong>
+                                    <ul className="profile-activity-pending-edit-members">
+                                      {(item.mentee_ids || []).map((menteeId, idx) => (
+                                        <li key={menteeId}>
+                                          <span>
+                                            {(item.mentee_names || [])[idx] ||
+                                              getMenteeDisplayName(menteeId) ||
+                                              menteeId}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            className="btn btn-outline btn-sm"
+                                            onClick={() =>
+                                              handlePendingRemoveMember(item, menteeId)
+                                            }
+                                            disabled={saving}
+                                          >
+                                            Xóa
+                                          </button>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    <div className="action-cell">
+                                      <select
+                                        value={pendingEditAddMenteeId}
+                                        onChange={(e) =>
+                                          setPendingEditAddMenteeId(e.target.value)
+                                        }
+                                      >
+                                        <option value="">Thêm mentee chờ phân nhóm...</option>
+                                        {unassignedForEdit.map((reg) => (
+                                          <option key={reg.mentee_id} value={reg.mentee_id}>
+                                            {reg.mentee_name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <button
+                                        type="button"
+                                        className="btn btn-outline btn-sm"
+                                        onClick={() => handlePendingAddMember(item)}
+                                        disabled={saving || !pendingEditAddMenteeId}
+                                      >
+                                        Thêm
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="profile-activity-pending-edit-block">
+                                    <strong>Tạo nhóm mới (cùng hoạt động)</strong>
+                                    <div className="action-cell">
+                                      <input
+                                        type="text"
+                                        value={pendingEditCreateName}
+                                        onChange={(e) =>
+                                          setPendingEditCreateName(e.target.value)
+                                        }
+                                        placeholder="Tên nhóm mới"
+                                      />
+                                      <button
+                                        type="button"
+                                        className="btn btn-outline btn-sm"
+                                        onClick={() => handlePendingCreateGroup(item)}
+                                        disabled={saving}
+                                      >
+                                        Tạo nhóm
+                                      </button>
+                                    </div>
+                                    <p className="muted">
+                                      Sau khi tạo, mở hoạt động bên dưới để ghép thêm thành viên
+                                      rồi gửi duyệt nếu cần.
+                                    </p>
+                                  </div>
+                                </>
+                              )}
+                              {item.action_type === 'individual_choice_report' && (
+                                <div className="profile-activity-pending-edit-block">
+                                  <strong>Báo cáo: mentee chọn cá nhân</strong>
+                                  <p className="muted">
+                                    Bạn có thể chuyển mentee sang nhóm, hoặc chấp nhận báo cáo
+                                    nếu giữ hình thức cá nhân.
+                                  </p>
+                                  <div className="action-cell">
+                                    <button
+                                      type="button"
+                                      className="btn btn-primary btn-sm"
+                                      onClick={async () => {
+                                        setSelectedId(item.activity_id);
+                                        setSaving(true);
+                                        setError('');
+                                        try {
+                                          await api.promoteProfileActivityIndividualToGroup(
+                                            item.activity_id,
+                                            item.mentee_id,
+                                          );
+                                          await api.resolveProfileActivityIndividualChoiceReport(
+                                            item.activity_id,
+                                            item.mentee_id,
+                                          );
+                                          setEditingPendingKey('');
+                                          await loadActivities();
+                                          await loadRegistrations(item.activity_id);
+                                          setMessage(
+                                            'Đã chuyển mentee sang nhóm và đóng báo cáo.',
+                                          );
+                                        } catch (err) {
+                                          setError(err.message);
+                                        } finally {
+                                          setSaving(false);
+                                        }
+                                      }}
+                                      disabled={saving}
+                                    >
+                                      Chuyển sang nhóm
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline btn-sm"
+                                      onClick={() => {
+                                        setSelectedId(item.activity_id);
+                                        setManageFormCollapsed(false);
+                                      }}
+                                      disabled={saving}
+                                    >
+                                      Mở hoạt động để chỉnh
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                              {item.action_type === 'reject_mentee' && (
+                                <div className="profile-activity-pending-edit-block">
+                                  <strong>Từ chối báo danh đang chờ duyệt</strong>
+                                  <p className="muted">
+                                    Chấp nhận sẽ từ chối báo danh mentee; Từ chối sẽ hủy yêu cầu
+                                    từ chối của L2.
+                                  </p>
+                                  <div className="action-cell">
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline btn-sm"
+                                      onClick={() => {
+                                        setSelectedId(item.activity_id);
+                                        setManageFormCollapsed(false);
+                                      }}
+                                    >
+                                      Mở hoạt động để chỉnh
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

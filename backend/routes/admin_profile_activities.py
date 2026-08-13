@@ -15,6 +15,7 @@ from services.profile_activities import (
     ProfileActivityRegistrationError,
     ProfileActivityUpdateError,
     ProfileActivityGroupSubmitError,
+    ProfileActivityIndividualReportError,
     ProfileActivityWithdrawError,
     add_mentee_to_group,
     approve_pending_group,
@@ -48,6 +49,8 @@ from services.profile_activities import (
     parse_profile_activity_from_description,
     reject_individual_keeptrack_review,
     reject_keeptrack_abandon,
+    report_individual_choice_to_l1,
+    resolve_individual_choice_report,
     reject_pending_group,
     reject_pending_mentor_reject,
     reject_profile_activity,
@@ -1001,6 +1004,62 @@ def admin_reject_activity_registration(activity_id: str, mentee_id: str):
     if requires_l1:
         return jsonify({"message": "Đã gửi từ chối, chờ mentor cấp 1 duyệt trước khi mentee thấy."})
     return jsonify({"message": "Đã từ chối báo danh mentee."})
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/report-individual")
+@with_db
+def admin_report_individual_choice(activity_id: str, mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 2 mới báo cáo lựa chọn cá nhân với L1."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+    if not ObjectId.is_valid(mentee_id):
+        return jsonify({"detail": "Mentee không tồn tại"}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        updated = report_individual_choice_to_l1(
+            activity, mentee_id, admin, data.get("note", "")
+        )
+    except ProfileActivityIndividualReportError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify(
+        {
+            "message": "Đã báo cáo với mentor cấp 1.",
+            "activity": serialize_admin_profile_activity(updated, admin=admin),
+        }
+    )
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/report-individual/resolve")
+@with_db
+def admin_resolve_individual_choice_report(activity_id: str, mentee_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới xử lý báo cáo lựa chọn cá nhân."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+    if not ObjectId.is_valid(mentee_id):
+        return jsonify({"detail": "Mentee không tồn tại"}), 404
+    updated = resolve_individual_choice_report(activity, mentee_id)
+    return jsonify(
+        {
+            "message": "Đã chấp nhận / đóng báo cáo lựa chọn cá nhân.",
+            "activity": serialize_admin_profile_activity(updated, admin=admin),
+        }
+    )
 
 
 @app.post("/api/admin/profile-activities/<activity_id>/registrations/<mentee_id>/reject/approve")
