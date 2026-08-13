@@ -412,6 +412,28 @@ def _parse_deadline_date(deadline: str):
         return None
 
 
+def _deadline_proximity_sort_key(doc_or_deadline) -> tuple:
+    """Soonest upcoming deadline first; past next (most recent first); missing last."""
+    if isinstance(doc_or_deadline, dict):
+        deadline = doc_or_deadline.get("deadline", "")
+    else:
+        deadline = doc_or_deadline
+    deadline_date = _parse_deadline_date(deadline or "")
+    if not deadline_date:
+        return (2, 0)
+    today = datetime.now(VN_TZ).date()
+    if deadline_date >= today:
+        return (0, deadline_date.toordinal())
+    # Past deadlines: closest to today (most recently expired) first.
+    return (1, -deadline_date.toordinal())
+
+
+def sort_by_deadline_proximity(items: list) -> list:
+    """In-place sort by nearest deadline; returns the same list."""
+    items.sort(key=_deadline_proximity_sort_key)
+    return items
+
+
 def get_deadline_badge(deadline: str) -> dict | None:
     deadline_date = _parse_deadline_date(deadline)
     if not deadline_date:
@@ -4167,7 +4189,7 @@ def _group_qualifies_for_progress_tracking(group: dict) -> bool:
 
 def list_progress_tracking_for_admin(admin: dict) -> list[dict]:
     activities_out: list[dict] = []
-    for activity in profile_activities.find(mentor_profile_activities_query(admin)).sort("updated_at", -1):
+    for activity in profile_activities.find(mentor_profile_activities_query(admin)):
         if not activity_approved_for_listing(activity):
             continue
 
@@ -4254,11 +4276,12 @@ def list_progress_tracking_for_admin(admin: dict) -> list[dict]:
                 {
                     "activity_id": str(activity["_id"]),
                     "activity_name": compose_activity_name(activity),
+                    "deadline": activity.get("deadline", "") or "",
                     "rows": rows,
                 }
             )
 
-    return activities_out
+    return sort_by_deadline_proximity(activities_out)
 
 
 def remove_progress_tracking_row(
