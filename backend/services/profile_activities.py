@@ -443,6 +443,19 @@ def is_activity_deadline_expired(doc_or_deadline) -> bool:
     return today > deadline_date
 
 
+def needs_deadline_hide_confirm(doc: dict) -> bool:
+    """Past-deadline approved activity still awaiting L1 archival confirm."""
+    if not is_activity_deadline_expired(doc):
+        return False
+    if doc.get("deadline_hide_confirmed_at"):
+        return False
+    status = _normalize_approval_status(doc.get("approval_status"))
+    # Only mentee-visible (approved) contests enter the L1 confirm queue.
+    if status and status != PROFILE_ACTIVITY_APPROVAL_APPROVED:
+        return False
+    return True
+
+
 def _extract_majors(text: str) -> list[str]:
     lowered = (text or "").lower()
     majors: list[str] = []
@@ -2106,6 +2119,13 @@ def serialize_admin_profile_activity(doc: dict, *, admin: dict | None = None) ->
         "rejected_by_admin_id": doc.get("rejected_by_admin_id", ""),
         "deadline_badge": get_deadline_badge(doc.get("deadline", "")),
         "deadline_expired": is_activity_deadline_expired(doc),
+        "deadline_hide_confirmed_at": (
+            doc.get("deadline_hide_confirmed_at").isoformat()
+            if doc.get("deadline_hide_confirmed_at")
+            else ""
+        ),
+        "deadline_hide_confirmed_by_admin_id": doc.get("deadline_hide_confirmed_by_admin_id", "") or "",
+        "needs_deadline_hide_confirm": needs_deadline_hide_confirm(doc),
         "pending_l1_actions": list_pending_l1_group_actions(doc),
         "pending_action_count": pending_action_count,
         "participation_mode": _normalize_participation_mode(doc.get("participation_mode")),
@@ -2158,9 +2178,14 @@ def update_profile_activity(activity: dict, admin: dict, data: dict) -> dict:
         raise ProfileActivityUpdateError("Không thể tạo tên hoạt động — vui lòng điền loại hoạt động")
 
     old_referrer_phone = normalize_zalo_phone(str(activity.get("referrer_zalo_phone") or ""))
+    set_fields = {**payload, "updated_at": now}
+    # Extending deadline past today re-opens visibility; clear prior hide confirm.
+    if not is_activity_deadline_expired(payload.get("deadline") or ""):
+        set_fields["deadline_hide_confirmed_at"] = None
+        set_fields["deadline_hide_confirmed_by_admin_id"] = ""
     profile_activities.update_one(
         {"_id": activity["_id"]},
-        {"$set": {**payload, "updated_at": now}},
+        {"$set": set_fields},
     )
     updated = profile_activities.find_one({"_id": activity["_id"]}) or activity
 
@@ -2169,6 +2194,70 @@ def update_profile_activity(activity: dict, admin: dict, data: dict) -> dict:
         award_referrer_phone_for_activity(phone=new_referrer_phone, activity_id=updated["_id"])
 
     return updated
+
+
+class ProfileActivityDeadlineHideConfirmError(ValueError):
+    pass
+
+
+def confirm_deadline_hide(activity: dict, admin: dict) -> dict:
+    """L1 acknowledges auto-hide of a past-deadline contest (archives from confirm queue)."""
+    if activity.get("deadline_hide_confirmed_at"):
+        return profile_activities.find_one({"_id": activity["_id"]}) or activity
+    if not is_activity_deadline_expired(activity):
+        raise ProfileActivityDeadlineHideConfirmError(
+            "Hoạt động chưa hết hạn — không cần xác nhận ẩn."
+        )
+    status = _normalize_approval_status(activity.get("approval_status"))
+    if status and status != PROFILE_ACTIVITY_APPROVAL_APPROVED:
+        raise ProfileActivityDeadlineHideConfirmError(
+            "Chỉ xác nhận ẩn cho hoạt động đã duyệt."
+        )
+    now = datetime.now(timezone.utc)
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {
+            "$set": {
+                "deadline_hide_confirmed_at": now,
+                "deadline_hide_confirmed_by_admin_id": str(admin["_id"]),
+                "updated_at": now,
+            }
+        },
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def bulk_confirm_deadline_hide(activity_ids: list[str], admin: dict) -> dict:
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    now = datetime.now(timezone.utc)
+    oids = []
+    for activity_id in activity_ids:
+        try:
+            oids.append(ObjectId(str(activity_id)))
+        except (InvalidId, TypeError, ValueError):
+            continue
+    if not oids:
+        return {"updated_count": 0}
+
+    updated_count = 0
+    for oid in oids:
+        doc = profile_activities.find_one({"_id": oid})
+        if not doc or not needs_deadline_hide_confirm(doc):
+            continue
+        result = profile_activities.update_one(
+            {"_id": oid},
+            {
+                "$set": {
+                    "deadline_hide_confirmed_at": now,
+                    "deadline_hide_confirmed_by_admin_id": str(admin["_id"]),
+                    "updated_at": now,
+                }
+            },
+        )
+        updated_count += int(result.modified_count)
+    return {"updated_count": updated_count}
 
 
 def approve_profile_activity(activity: dict, admin: dict) -> dict:
@@ -3544,6 +3633,8 @@ def count_pending_actions_for_activity(activity: dict, admin: dict) -> int:
         if _normalize_approval_status(activity.get("approval_status")) == PROFILE_ACTIVITY_APPROVAL_PENDING:
             count += 1
         count += len(list_pending_l1_group_actions(activity))
+        if needs_deadline_hide_confirm(activity):
+            count += 1
 
     for state in activity.get("mentee_states", []):
         if not state.get("registered_at"):

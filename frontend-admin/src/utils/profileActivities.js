@@ -61,6 +61,19 @@ export function isDeadlineExpired(activityOrDeadline) {
   return daysLeft !== null && daysLeft < 0;
 }
 
+/** Past-deadline approved activity still awaiting L1 archival confirm. */
+export function needsDeadlineHideConfirm(activity) {
+  if (!activity || typeof activity !== 'object') return false;
+  if (typeof activity.needs_deadline_hide_confirm === 'boolean') {
+    return activity.needs_deadline_hide_confirm;
+  }
+  if (!isDeadlineExpired(activity)) return false;
+  if (activity.deadline_hide_confirmed_at) return false;
+  const status = activity.approval_status;
+  if (status && status !== 'approved') return false;
+  return true;
+}
+
 function stripLeadingVe(content) {
   const text = (content || '').trim();
   if (/^về\s+/iu.test(text)) {

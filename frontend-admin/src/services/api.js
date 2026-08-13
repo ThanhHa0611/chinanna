@@ -524,6 +524,17 @@ export const api = {
       body: JSON.stringify({ activity_ids: activityIds }),
     }),
 
+  confirmProfileActivityDeadlineHide: (activityId) =>
+    request(`/api/admin/profile-activities/${activityId}/confirm-deadline-hide`, {
+      method: 'POST',
+    }),
+
+  bulkConfirmProfileActivityDeadlineHide: (activityIds) =>
+    request('/api/admin/profile-activities/bulk-confirm-deadline-hide', {
+      method: 'POST',
+      body: JSON.stringify({ activity_ids: activityIds }),
+    }),
+
   approveProfileActivityGroup: (activityId, groupId) =>
     request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/approve`, {
       method: 'POST',

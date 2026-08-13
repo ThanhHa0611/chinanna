@@ -11,6 +11,7 @@ import {
   formatImportanceStars,
   getDeadlineBadge,
   isDeadlineExpired,
+  needsDeadlineHideConfirm,
   participationModeDisplayLabel,
 } from '../utils/profileActivities';
 import { formatMenteeActivityInviteOption } from '../data/applyDegree';
@@ -590,6 +591,7 @@ export default function ProfileActivities() {
   const [bulkImportLoading, setBulkImportLoading] = useState(false);
   const [bulkApproving, setBulkApproving] = useState(false);
   const [selectedPendingIds, setSelectedPendingIds] = useState([]);
+  const [selectedDeadlineHideIds, setSelectedDeadlineHideIds] = useState([]);
   const [selectedPendingGroupKeys, setSelectedPendingGroupKeys] = useState([]);
   const [pendingBulkSaving, setPendingBulkSaving] = useState(false);
   const [manageFormCollapsed, setManageFormCollapsed] = useState(true);
@@ -712,6 +714,11 @@ export default function ProfileActivities() {
     [activities],
   );
 
+  const expiredPendingConfirm = useMemo(
+    () => activities.filter((item) => needsDeadlineHideConfirm(item)),
+    [activities],
+  );
+
   const draftActivities = useMemo(
     () =>
       activities.filter(
@@ -724,10 +731,19 @@ export default function ProfileActivities() {
     pendingActivities.length > 0 &&
     pendingActivities.every((item) => selectedPendingIds.includes(item.id));
 
+  const allDeadlineHideSelected =
+    expiredPendingConfirm.length > 0 &&
+    expiredPendingConfirm.every((item) => selectedDeadlineHideIds.includes(item.id));
+
   useEffect(() => {
     const pendingIds = new Set(pendingActivities.map((item) => item.id));
     setSelectedPendingIds((prev) => prev.filter((id) => pendingIds.has(id)));
   }, [pendingActivities]);
+
+  useEffect(() => {
+    const ids = new Set(expiredPendingConfirm.map((item) => item.id));
+    setSelectedDeadlineHideIds((prev) => prev.filter((id) => ids.has(id)));
+  }, [expiredPendingConfirm]);
 
   const pendingGroupActions = useMemo(() => {
     const items = [];
@@ -1283,6 +1299,64 @@ export default function ProfileActivities() {
       return;
     }
     setSelectedPendingIds(pendingActivities.map((item) => item.id));
+  };
+
+  const toggleDeadlineHideSelection = (activityId) => {
+    setSelectedDeadlineHideIds((prev) =>
+      prev.includes(activityId)
+        ? prev.filter((id) => id !== activityId)
+        : [...prev, activityId],
+    );
+  };
+
+  const toggleSelectAllDeadlineHide = () => {
+    if (allDeadlineHideSelected) {
+      setSelectedDeadlineHideIds([]);
+      return;
+    }
+    setSelectedDeadlineHideIds(expiredPendingConfirm.map((item) => item.id));
+  };
+
+  const handleConfirmDeadlineHide = async (activityId) => {
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.confirmProfileActivityDeadlineHide(activityId);
+      await loadActivities();
+      setMessage(result?.message || 'Đã xác nhận ẩn cuộc thi hết hạn.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBulkConfirmDeadlineHide = async () => {
+    if (!selectedDeadlineHideIds.length) {
+      setError('Chọn ít nhất một cuộc thi hết hạn để xác nhận.');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Xác nhận ẩn ${selectedDeadlineHideIds.length} cuộc thi đã hết hạn? Chúng sẽ ra khỏi danh sách chờ xác nhận.`,
+      )
+    ) {
+      return;
+    }
+    setPendingBulkSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.bulkConfirmProfileActivityDeadlineHide(selectedDeadlineHideIds);
+      setSelectedDeadlineHideIds([]);
+      await loadActivities();
+      setMessage(result?.message || `Đã xác nhận ẩn ${selectedDeadlineHideIds.length} cuộc thi.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPendingBulkSaving(false);
+    }
   };
 
   const handleBulkApprovePending = async () => {
@@ -3066,6 +3140,71 @@ export default function ProfileActivities() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {canReview && expiredPendingConfirm.length > 0 && (
+        <div className="panel-card profile-activity-pending-queue">
+          <div className="profile-activity-pending-head">
+            <h3>Cuộc thi đã hết hạn — chờ xác nhận ({expiredPendingConfirm.length})</h3>
+            <div className="profile-activity-pending-bulk-actions">
+              <label className="checkbox-label profile-activity-pending-select-all">
+                <input
+                  type="checkbox"
+                  checked={allDeadlineHideSelected}
+                  onChange={toggleSelectAllDeadlineHide}
+                  disabled={saving || pendingBulkSaving}
+                />
+                Chọn tất cả
+              </label>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleBulkConfirmDeadlineHide}
+                disabled={saving || pendingBulkSaving || selectedDeadlineHideIds.length === 0}
+              >
+                {pendingBulkSaving
+                  ? 'Đang xử lý...'
+                  : `Xác nhận hàng loạt (${selectedDeadlineHideIds.length})`}
+              </button>
+            </div>
+          </div>
+          <p className="muted profile-activity-l2-note">
+            Đã ẩn với mentee và khỏi báo danh mentor. Bấm Confirm để xác nhận và gỡ khỏi danh sách
+            này. Tiến độ keeptrack (nếu có) vẫn theo dõi như cũ.
+          </p>
+          <ul className="profile-activity-pending-list">
+            {expiredPendingConfirm.map((item) => (
+              <li key={item.id} className="profile-activity-pending-item">
+                <label className="checkbox-label profile-activity-pending-check">
+                  <input
+                    type="checkbox"
+                    checked={selectedDeadlineHideIds.includes(item.id)}
+                    onChange={() => toggleDeadlineHideSelection(item.id)}
+                    disabled={saving || pendingBulkSaving}
+                    aria-label={`Chọn cuộc thi hết hạn ${item.activity_name || item.id}`}
+                  />
+                </label>
+                <div className="profile-activity-pending-line">
+                  <span className="importance-stars-display" title="Mức độ quan trọng">
+                    {formatImportanceStars(item.importance)}
+                  </span>
+                  <FeedLinePreview activity={item} />
+                  {renderDeadlineBadge(item)}
+                </div>
+                <div className="action-cell profile-activity-pending-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => handleConfirmDeadlineHide(item.id)}
+                    disabled={saving || pendingBulkSaving}
+                  >
+                    Confirm
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

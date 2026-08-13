@@ -17,6 +17,7 @@ from services.profile_activities import (
     ProfileActivityGroupSubmitError,
     ProfileActivityIndividualReportError,
     ProfileActivityWithdrawError,
+    ProfileActivityDeadlineHideConfirmError,
     add_mentee_to_group,
     approve_pending_group,
     approve_pending_mentor_reject,
@@ -24,9 +25,11 @@ from services.profile_activities import (
     approve_profile_activity,
     bulk_approve_pending_groups,
     bulk_approve_profile_activities,
+    bulk_confirm_deadline_hide,
     bulk_reject_pending_groups,
     bulk_reject_profile_activities,
     bulk_view_individual_keeptrack_reviews,
+    confirm_deadline_hide,
     create_profile_activity,
     delete_activity,
     delete_activity_group,
@@ -43,6 +46,7 @@ from services.profile_activities import (
     list_pending_keeptrack_abandon_requests,
     list_progress_tracking_for_admin,
     move_mentee_to_group,
+    needs_deadline_hide_confirm,
     promote_individual_to_group_participation,
     notify_group_assignment,
     parse_profile_activities_bulk_excel,
@@ -226,6 +230,7 @@ def admin_list_profile_activities():
     items = [serialize_admin_profile_activity(doc, admin=admin) for doc in cursor]
     # Past-deadline contests drop out of mentor "báo danh" badges; data stays for progress/keeptrack.
     open_items = [item for item in items if not item.get("deadline_expired")]
+    deadline_hide_pending_items = [item for item in items if item.get("needs_deadline_hide_confirm")]
     total_pending_count = sum(item.get("pending_action_count", 0) for item in open_items)
     total_registration_count = sum(
         item.get("registration_count", 0)
@@ -241,6 +246,7 @@ def admin_list_profile_activities():
             "total_pending_count": total_pending_count,
             "total_registration_count": total_registration_count,
             "total_awaiting_group_assignment_count": total_awaiting_group_assignment_count,
+            "deadline_hide_pending_count": len(deadline_hide_pending_items),
         }
     )
 
@@ -319,6 +325,66 @@ def admin_bulk_reject_profile_activities():
         "updated_count": count,
         "message": f"Đã từ chối {count} hoạt động.",
     })
+
+
+def _filter_accessible_deadline_hide_activity_ids(activity_ids: list[str], admin: dict) -> list[str]:
+    accessible = []
+    for activity_id in activity_ids:
+        activity, error = _get_activity_or_404(activity_id, admin)
+        if error or not activity:
+            continue
+        if needs_deadline_hide_confirm(activity):
+            accessible.append(activity_id)
+    return accessible
+
+
+@app.post("/api/admin/profile-activities/bulk-confirm-deadline-hide")
+@with_db
+def admin_bulk_confirm_deadline_hide():
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới được xác nhận ẩn cuộc thi hết hạn."}), 403
+
+    data = request.get_json(silent=True) or {}
+    activity_ids = _filter_accessible_deadline_hide_activity_ids(_parse_bulk_activity_ids(data), admin)
+    if not activity_ids:
+        return jsonify({"detail": "Chọn ít nhất một cuộc thi hết hạn chờ xác nhận."}), 400
+
+    result = bulk_confirm_deadline_hide(activity_ids, admin)
+    count = result.get("updated_count", 0)
+    return jsonify(
+        {
+            "updated_count": count,
+            "message": f"Đã xác nhận ẩn {count} cuộc thi hết hạn.",
+        }
+    )
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/confirm-deadline-hide")
+@with_db
+def admin_confirm_deadline_hide(activity_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới được xác nhận ẩn cuộc thi hết hạn."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+    try:
+        updated = confirm_deadline_hide(activity, admin)
+    except ProfileActivityDeadlineHideConfirmError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    payload = serialize_admin_profile_activity(updated, admin=admin)
+    payload["message"] = "Đã xác nhận ẩn cuộc thi hết hạn."
+    return jsonify(payload)
 
 
 @app.patch("/api/admin/profile-activities/<activity_id>")
