@@ -64,6 +64,7 @@ from services.profile_activities import (
     sanitize_profile_activity_input,
     serialize_admin_profile_activity,
     serialize_admin_registration,
+    sort_by_deadline_proximity,
     submit_all_draft_groups,
     submit_group_for_l1_approval,
     submit_mentor_reject_registration,
@@ -226,8 +227,10 @@ def admin_list_profile_activities():
     if not admin_is_approved(admin):
         return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
 
-    cursor = profile_activities.find(_admin_activity_query(admin)).sort("created_at", -1)
-    items = [serialize_admin_profile_activity(doc, admin=admin) for doc in cursor]
+    cursor = profile_activities.find(_admin_activity_query(admin))
+    items = sort_by_deadline_proximity(
+        [serialize_admin_profile_activity(doc, admin=admin) for doc in cursor]
+    )
     # Past-deadline contests drop out of mentor "báo danh" badges; data stays for progress/keeptrack.
     open_items = [item for item in items if not item.get("deadline_expired")]
     deadline_hide_pending_items = [item for item in items if item.get("needs_deadline_hide_confirm")]
