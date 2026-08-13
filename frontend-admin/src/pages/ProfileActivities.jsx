@@ -406,7 +406,11 @@ function approvalBadgeClass(status) {
 function activityPickerLabel(item) {
   const name = compose_activity_name(item);
   const registrations = item.registration_count || 0;
+  const awaitingGroup = item.awaiting_group_assignment_count || 0;
   let label = `${name} (${registrations} báo danh)`;
+  if (awaitingGroup > 0) {
+    label += ` · ${awaitingGroup} muốn ghép nhóm`;
+  }
   if (item.approval_status === 'pending_l1_approval') {
     label += ' · chờ duyệt';
   } else if (item.approval_status === 'draft') {
@@ -489,10 +493,20 @@ function ActivityPickerDropdown({ activities, value, onChange }) {
   }, [open]);
 
   const renderPendingBadge = (item) => {
-    const count = item.pending_action_count || 0;
+    const awaitingGroup = item.awaiting_group_assignment_count || 0;
+    const pendingActions = item.pending_action_count || 0;
+    // Prefer the shared L1/L2 "wanting group" count; fall back to other pending actions.
+    const count = awaitingGroup > 0 ? awaitingGroup : pendingActions;
     if (count <= 0) return null;
     return (
-      <span className="notify-circle-badge" title="Có hành động chờ duyệt">
+      <span
+        className="notify-circle-badge"
+        title={
+          awaitingGroup > 0
+            ? `${awaitingGroup} mentee đang muốn ghép nhóm`
+            : 'Có hành động chờ xử lý'
+        }
+      >
         {count}
       </span>
     );
@@ -560,6 +574,7 @@ export default function ProfileActivities() {
   const [form, setForm] = useState(emptyForm());
   const [activities, setActivities] = useState([]);
   const [totalRegistrationCount, setTotalRegistrationCount] = useState(0);
+  const [totalAwaitingGroupCount, setTotalAwaitingGroupCount] = useState(0);
   const [selectedId, setSelectedId] = useState('');
   const [registrations, setRegistrations] = useState([]);
   const [groupName, setGroupName] = useState('');
@@ -638,6 +653,20 @@ export default function ProfileActivities() {
     }
     return registrations.filter((item) => !assigned.has(item.mentee_id));
   }, [registrations, selectedActivity?.groups]);
+
+  // Same "đang muốn ghép nhóm" pool L1 uses — shown identically to L2.
+  const awaitingGroupRegistrations = useMemo(
+    () =>
+      registrations.filter(
+        (item) =>
+          item.awaiting_group_assignment ||
+          (item.participation_choice === 'group' &&
+            !(selectedActivity?.groups || []).some((group) =>
+              (group.mentee_ids || []).includes(item.mentee_id),
+            )),
+      ),
+    [registrations, selectedActivity?.groups],
+  );
 
   const registeredMenteeIds = useMemo(
     () => new Set(registrations.map((item) => item.mentee_id)),
@@ -855,6 +884,13 @@ export default function ProfileActivities() {
     const items = Array.isArray(data) ? data : data?.items || [];
     setActivities(items);
     setTotalRegistrationCount(Number(data?.total_registration_count) || 0);
+    setTotalAwaitingGroupCount(
+      Number(data?.total_awaiting_group_assignment_count) ||
+        items.reduce(
+          (sum, item) => sum + (Number(item.awaiting_group_assignment_count) || 0),
+          0,
+        ),
+    );
     if (!selectedId && items.length) {
       setSelectedId(items[0].id);
     }
@@ -3101,7 +3137,15 @@ export default function ProfileActivities() {
         >
           <span className="daily-summary-title">
             Quản lý hoạt động
-            {totalRegistrationCount > 0 && (
+            {totalAwaitingGroupCount > 0 && (
+              <span
+                className="profile-activity-manage-count-badge"
+                title="Tổng mentee đang muốn ghép nhóm (L1 và L2 cùng thấy)"
+              >
+                {totalAwaitingGroupCount}
+              </span>
+            )}
+            {totalRegistrationCount > 0 && totalAwaitingGroupCount <= 0 && (
               <span className="profile-activity-manage-count-badge">{totalRegistrationCount}</span>
             )}
           </span>
@@ -3132,6 +3176,15 @@ export default function ProfileActivities() {
               <span className="muted">
                 · {selectedActivity.registration_count || 0} báo danh
               </span>
+              {(selectedActivity.awaiting_group_assignment_count > 0 ||
+                awaitingGroupRegistrations.length > 0) && (
+                <span className="muted">
+                  ·{' '}
+                  {selectedActivity.awaiting_group_assignment_count ||
+                    awaitingGroupRegistrations.length}{' '}
+                  đang muốn ghép nhóm
+                </span>
+              )}
               {Boolean(selectedActivity.participant_limit) && (
                 <span
                   className={`muted profile-activity-capacity-badge${
@@ -3417,10 +3470,10 @@ export default function ProfileActivities() {
                 )}
               </div>
 
-              {unassignedRegistrations.length > 0 && (
+              {awaitingGroupRegistrations.length > 0 && (
                 <div className="profile-activity-registration-group">
                   <h4 className="profile-activity-registration-section-title">
-                    Chờ phân nhóm ({unassignedRegistrations.length})
+                    Đang muốn ghép nhóm ({awaitingGroupRegistrations.length})
                   </h4>
                   <div className="table-wrap">
                     <table>
@@ -3435,7 +3488,7 @@ export default function ProfileActivities() {
                         </tr>
                       </thead>
                       <tbody>
-                        {unassignedRegistrations.map((item) => (
+                        {awaitingGroupRegistrations.map((item) => (
                           <tr key={item.mentee_id}>
                             <td>
                               <input
@@ -3451,6 +3504,61 @@ export default function ProfileActivities() {
                             <td>{renderUnassignedActions(item)}</td>
                           </tr>
                         ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              {unassignedRegistrations.filter(
+                (item) => !awaitingGroupRegistrations.some((row) => row.mentee_id === item.mentee_id),
+              ).length > 0 && (
+                <div className="profile-activity-registration-group">
+                  <h4 className="profile-activity-registration-section-title">
+                    Chờ xử lý khác (
+                    {
+                      unassignedRegistrations.filter(
+                        (item) =>
+                          !awaitingGroupRegistrations.some((row) => row.mentee_id === item.mentee_id),
+                      ).length
+                    }
+                    )
+                  </h4>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th />
+                          <th>Tên</th>
+                          <th>Zalo</th>
+                          <th>Ngành apply</th>
+                          <th>Hình thức</th>
+                          <th>Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {unassignedRegistrations
+                          .filter(
+                            (item) =>
+                              !awaitingGroupRegistrations.some(
+                                (row) => row.mentee_id === item.mentee_id,
+                              ),
+                          )
+                          .map((item) => (
+                            <tr key={item.mentee_id}>
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedMentees.includes(item.mentee_id)}
+                                  onChange={() => toggleMentee(item.mentee_id)}
+                                />
+                              </td>
+                              <td>{renderMenteeNameCell(item)}</td>
+                              <td>{item.zalo_phone || '—'}</td>
+                              <td>{item.apply_major || '—'}</td>
+                              <td>{renderParticipationCell(item)}</td>
+                              <td>{renderUnassignedActions(item)}</td>
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
                   </div>

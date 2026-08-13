@@ -1478,6 +1478,16 @@ def _mentee_awaiting_group_assignment(activity: dict, mentee_id: str, state: dic
     return _find_mentee_group(activity, mentee_id) is None
 
 
+def count_awaiting_group_assignments(activity: dict) -> int:
+    """Mentees who chose group and still need mentor assignment (shared L1/L2 count)."""
+    count = 0
+    for state in activity.get("mentee_states") or []:
+        mentee_id = str(state.get("mentee_id") or "")
+        if mentee_id and _mentee_awaiting_group_assignment(activity, mentee_id, state):
+            count += 1
+    return count
+
+
 def _mentee_can_cancel_registration(activity: dict, mentee_id: str, state: dict) -> bool:
     if not state.get("registered_at"):
         return False
@@ -1828,7 +1838,19 @@ def _get_mentee_state(activity: dict, mentee_id: str) -> dict | None:
 def _mentee_in_pending_group(activity: dict, mentee_id: str) -> bool:
     for group in activity.get("groups", []):
         mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
-        if mentee_id in mentee_ids and not group_is_approved(group):
+        if mentee_id not in mentee_ids:
+            continue
+        if _normalize_approval_status(group.get("approval_status")) == PROFILE_ACTIVITY_APPROVAL_PENDING:
+            return True
+    return False
+
+
+def _mentee_in_draft_group(activity: dict, mentee_id: str) -> bool:
+    for group in activity.get("groups", []):
+        mentee_ids = [str(item) for item in (group.get("mentee_ids") or [])]
+        if mentee_id not in mentee_ids:
+            continue
+        if _normalize_approval_status(group.get("approval_status")) == PROFILE_ACTIVITY_APPROVAL_DRAFT:
             return True
     return False
 
@@ -1840,6 +1862,9 @@ def registration_response_display(activity: dict, state: dict, mentee_id: str) -
 
     if _mentee_in_pending_group(activity, mentee_id):
         return {"status": "pending_l1_approval", "label": "Chờ L1 duyệt"}
+
+    if _mentee_in_draft_group(activity, mentee_id):
+        return {"status": "draft", "label": "Nháp (chưa gửi L1)"}
 
     response = (state.get("group_response_status") or "").strip().lower()
     if response == "confirmed":
@@ -1874,6 +1899,7 @@ def serialize_admin_registration(activity: dict, state: dict, mentee: dict) -> d
         "response_display_status": display["status"],
         "response_display_label": display["label"],
         "pending_l1_group": _mentee_in_pending_group(activity, mentee_id),
+        "draft_group": _mentee_in_draft_group(activity, mentee_id),
         "pending_l1_reject": pending_reject.get("approval_status") == PROFILE_ACTIVITY_APPROVAL_PENDING,
         "mentor_reject_note": pending_reject.get("note", ""),
         "participation_choice": state.get("participation_choice") or "",
@@ -2008,6 +2034,7 @@ def serialize_admin_profile_activity(doc: dict, *, admin: dict | None = None) ->
         "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else "",
         "updated_at": doc.get("updated_at").isoformat() if doc.get("updated_at") else "",
         "registration_count": len(registrations),
+        "awaiting_group_assignment_count": count_awaiting_group_assignments(doc),
         "groups": _serialize_admin_groups(doc),
         "unfinalized_group_reminders": list_unfinalized_group_reminders(doc),
         "importance": _normalize_importance(doc.get("importance", DEFAULT_PROFILE_ACTIVITY_IMPORTANCE)),

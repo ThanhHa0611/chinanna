@@ -227,11 +227,15 @@ def admin_list_profile_activities():
         for item in items
         if item.get("approval_status") != "pending_l1_approval"
     )
+    total_awaiting_group_assignment_count = sum(
+        item.get("awaiting_group_assignment_count", 0) for item in items
+    )
     return jsonify(
         {
             "items": items,
             "total_pending_count": total_pending_count,
             "total_registration_count": total_registration_count,
+            "total_awaiting_group_assignment_count": total_awaiting_group_assignment_count,
         }
     )
 

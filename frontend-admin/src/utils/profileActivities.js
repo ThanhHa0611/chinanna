@@ -138,6 +138,7 @@ export function participationModeDisplayLabel(activity) {
 
 export const REGISTRATION_RESPONSE_LABELS = {
   pending_l1_approval: 'Chờ L1 duyệt',
+  draft: 'Nháp (chưa gửi L1)',
   confirmed: 'Đã duyệt',
   rejected: 'Từ chối',
   pending: 'Chờ mentee xác nhận',
@@ -152,6 +153,7 @@ export function registrationResponseLabel(item) {
 
 export function registrationResponseBadgeClass(status) {
   if (status === 'pending_l1_approval') return 'is-pending';
+  if (status === 'draft') return 'is-pending';
   if (status === 'rejected') return 'is-rejected';
   if (status === 'confirmed') return 'is-approved';
   if (status === 'pending') return 'is-pending';
