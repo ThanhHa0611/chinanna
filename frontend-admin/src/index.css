@@ -3818,6 +3818,18 @@ html.device-phone .daily-summary-status {
   border-radius: 6px;
 }
 
+.profile-activity-pending-member-ops {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.profile-activity-pending-member-ops select {
+  min-width: 9rem;
+  max-width: 14rem;
+}
+
 .profile-activity-pending-list {
   list-style: none;
   margin: 0;

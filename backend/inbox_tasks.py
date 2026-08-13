@@ -43,6 +43,7 @@ SECTION_DEFINITIONS: list[dict] = [
             "profile_activity_pending_approval",
             "profile_activity_pending_group",
             "profile_activity_pending_reject",
+            "profile_activity_individual_choice_report",
             "profile_activity_finalize_group",
             "profile_activity_assign_group",
         },
@@ -66,6 +67,7 @@ ACTION_SUMMARY_VERBS: dict[str, str] = {
     "profile_activity_pending_approval": "chờ duyệt hoạt động hồ sơ",
     "profile_activity_pending_group": "chờ duyệt phân nhóm",
     "profile_activity_pending_reject": "chờ duyệt từ chối báo danh",
+    "profile_activity_individual_choice_report": "L2 báo cáo mentee chọn cá nhân",
     "profile_activity_finalize_group": "cần chốt nhóm",
     "profile_activity_assign_group": "cần phân nhóm mentee",
     "preferred_schools": "cập nhật trường ưa thích",
@@ -150,6 +152,7 @@ def format_mentee_action_line(doc: dict) -> str:
             "profile_activity_pending_approval",
             "profile_activity_pending_group",
             "profile_activity_pending_reject",
+            "profile_activity_individual_choice_report",
             "profile_activity_finalize_group",
             "profile_activity_assign_group",
         }

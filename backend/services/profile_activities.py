@@ -2057,6 +2057,13 @@ def serialize_profile_activity_for_feed(
             visible_group,
             include_zalo=response_status == "confirmed",
         )
+    # Mentee-facing: draft/pending L2 groups must not clear "chờ phân nhóm".
+    # Admin counts still use `_mentee_awaiting_group_assignment` (any group incl. draft).
+    mentee_awaiting_group = (
+        bool(state.get("registered_at"))
+        and state.get("participation_choice") == "group"
+        and finalized_group is None
+    )
     payload = {
         "id": str(doc["_id"]),
         "activity_name": doc.get("activity_name", ""),
@@ -2091,7 +2098,7 @@ def serialize_profile_activity_for_feed(
         "participation_mode_label": participation_mode_label(doc.get("participation_mode")),
         "participation_choice": state.get("participation_choice") or "",
         "participation_choice_label": PARTICIPATION_MODE_LABELS.get(state.get("participation_choice") or "", ""),
-        "awaiting_group_assignment": _mentee_awaiting_group_assignment(doc, mentee_id, state),
+        "awaiting_group_assignment": mentee_awaiting_group,
         "needs_participation_choice": _normalize_participation_mode(doc.get("participation_mode"))
         in {"both", "unknown"},
         "invited": bool(state.get("invited_at")) and not bool(state.get("registered_at")),

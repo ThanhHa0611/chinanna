@@ -621,6 +621,7 @@ export default function ProfileActivities() {
   const [pendingEditAddMenteeId, setPendingEditAddMenteeId] = useState('');
   const [pendingEditCreateName, setPendingEditCreateName] = useState('');
   const [pendingEditCreateMentees, setPendingEditCreateMentees] = useState([]);
+  const [pendingEditMoveTargets, setPendingEditMoveTargets] = useState({});
   const finalizeTimeoutsRef = useRef({});
 
   const canReview = Boolean(admin?.is_super_admin || isLevel1MentorAccount(admin));
@@ -745,15 +746,16 @@ export default function ProfileActivities() {
     setSelectedDeadlineHideIds((prev) => prev.filter((id) => ids.has(id)));
   }, [expiredPendingConfirm]);
 
+  // Include expired activities so L1 can still duyệt nhóm L2 đã gửi.
   const pendingGroupActions = useMemo(() => {
     const items = [];
-    for (const activity of manageableActivities) {
+    for (const activity of activities) {
       for (const action of activity.pending_l1_actions || []) {
         items.push({ ...action, activity_id: activity.id, activity_name: compose_activity_name(activity) });
       }
     }
     return items;
-  }, [manageableActivities]);
+  }, [activities]);
 
   const pendingAssignGroupActions = useMemo(
     () => pendingGroupActions.filter((item) => item.action_type === 'assign_group'),
@@ -1594,6 +1596,7 @@ export default function ProfileActivities() {
     setPendingEditAddMenteeId('');
     setPendingEditCreateName('');
     setPendingEditCreateMentees([]);
+    setPendingEditMoveTargets({});
     setPendingEditGroupName(item.group_name || '');
     setSelectedId(item.activity_id);
     setManageFormCollapsed(false);
@@ -1601,6 +1604,67 @@ export default function ProfileActivities() {
       await loadRegistrations(item.activity_id);
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  const pendingEditOtherGroups = (item) => {
+    const activity = activities.find((row) => row.id === item.activity_id);
+    return (activity?.groups || []).filter(
+      (group) => !group.is_auto_solo && group.group_id !== item.group_id,
+    );
+  };
+
+  const handlePendingMoveMember = async (item, menteeId) => {
+    const targetGroupId = pendingEditMoveTargets[menteeId];
+    if (!targetGroupId) {
+      setError('Chọn nhóm đích để chuyển mentee.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.moveProfileActivityMenteeGroup(item.activity_id, menteeId, {
+        target_group_id: targetGroupId,
+      });
+      setPendingEditMoveTargets((prev) => {
+        const next = { ...prev };
+        delete next[menteeId];
+        return next;
+      });
+      await loadActivities();
+      await loadRegistrations(item.activity_id);
+      setMessage(result?.message || 'Đã chuyển mentee sang nhóm khác.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePendingCancelGroup = async (item) => {
+    if (
+      !window.confirm(
+        `Hủy nhóm "${item.group_name || 'này'}"? Thành viên sẽ trở về trạng thái chờ phân nhóm.`,
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.deleteProfileActivityGroup(item.activity_id, item.group_id);
+      setEditingPendingKey('');
+      await loadActivities();
+      if (item.activity_id === selectedId) {
+        await loadRegistrations(item.activity_id);
+      }
+      setMessage(result?.message || 'Đã hủy nhóm.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -2984,25 +3048,72 @@ export default function ProfileActivities() {
                                   <div className="profile-activity-pending-edit-block">
                                     <strong>Thành viên hiện tại</strong>
                                     <ul className="profile-activity-pending-edit-members">
-                                      {(item.mentee_ids || []).map((menteeId, idx) => (
-                                        <li key={menteeId}>
-                                          <span>
-                                            {(item.mentee_names || [])[idx] ||
-                                              getMenteeDisplayName(menteeId) ||
-                                              menteeId}
-                                          </span>
-                                          <button
-                                            type="button"
-                                            className="btn btn-outline btn-sm"
-                                            onClick={() =>
-                                              handlePendingRemoveMember(item, menteeId)
-                                            }
-                                            disabled={saving}
-                                          >
-                                            Xóa
-                                          </button>
-                                        </li>
-                                      ))}
+                                      {(item.mentee_ids || []).map((menteeId, idx) => {
+                                        const moveOptions = pendingEditOtherGroups(item);
+                                        return (
+                                          <li key={menteeId}>
+                                            <span>
+                                              {(item.mentee_names || [])[idx] ||
+                                                getMenteeDisplayName(menteeId) ||
+                                                menteeId}
+                                            </span>
+                                            <div className="action-cell profile-activity-pending-member-ops">
+                                              {moveOptions.length > 0 && (
+                                                <>
+                                                  <select
+                                                    value={pendingEditMoveTargets[menteeId] || ''}
+                                                    onChange={(e) =>
+                                                      setPendingEditMoveTargets((prev) => ({
+                                                        ...prev,
+                                                        [menteeId]: e.target.value,
+                                                      }))
+                                                    }
+                                                    aria-label="Chọn nhóm đích"
+                                                  >
+                                                    <option value="">Chuyển nhóm...</option>
+                                                    {moveOptions.map((group) => (
+                                                      <option
+                                                        key={group.group_id}
+                                                        value={group.group_id}
+                                                      >
+                                                        {group.group_name}
+                                                        {group.approval_status === 'draft'
+                                                          ? ' (nháp)'
+                                                          : group.approval_status ===
+                                                              'pending_l1_approval'
+                                                            ? ' (chờ L1)'
+                                                            : ''}
+                                                      </option>
+                                                    ))}
+                                                  </select>
+                                                  <button
+                                                    type="button"
+                                                    className="btn btn-outline btn-sm"
+                                                    onClick={() =>
+                                                      handlePendingMoveMember(item, menteeId)
+                                                    }
+                                                    disabled={
+                                                      saving || !pendingEditMoveTargets[menteeId]
+                                                    }
+                                                  >
+                                                    Chuyển
+                                                  </button>
+                                                </>
+                                              )}
+                                              <button
+                                                type="button"
+                                                className="btn btn-outline btn-sm"
+                                                onClick={() =>
+                                                  handlePendingRemoveMember(item, menteeId)
+                                                }
+                                                disabled={saving}
+                                              >
+                                                Xóa
+                                              </button>
+                                            </div>
+                                          </li>
+                                        );
+                                      })}
                                     </ul>
                                     <div className="action-cell">
                                       <select
@@ -3049,9 +3160,23 @@ export default function ProfileActivities() {
                                       </button>
                                     </div>
                                     <p className="muted">
-                                      Sau khi tạo, mở hoạt động bên dưới để ghép thêm thành viên
-                                      rồi gửi duyệt nếu cần.
+                                      Sau khi tạo, dùng «Chuyển nhóm» ở trên để đưa thành viên sang
+                                      nhóm mới, rồi chấp nhận khi xong.
                                     </p>
+                                  </div>
+                                  <div className="profile-activity-pending-edit-block">
+                                    <strong>Hủy nhóm</strong>
+                                    <p className="muted">
+                                      Xóa nhóm đang chờ duyệt; thành viên trở về chờ phân nhóm.
+                                    </p>
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline btn-sm"
+                                      onClick={() => handlePendingCancelGroup(item)}
+                                      disabled={saving}
+                                    >
+                                      Hủy nhóm này
+                                    </button>
                                   </div>
                                 </>
                               )}
