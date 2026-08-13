@@ -534,6 +534,33 @@ export const api = {
       method: 'POST',
     }),
 
+  submitProfileActivityGroup: (activityId, groupId) =>
+    request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/submit`, {
+      method: 'POST',
+    }),
+
+  withdrawProfileActivityGroup: (activityId, groupId) =>
+    request(`/api/admin/profile-activities/${activityId}/groups/${groupId}/withdraw`, {
+      method: 'POST',
+    }),
+
+  submitAllDraftProfileActivityGroups: (activityId) =>
+    request(`/api/admin/profile-activities/${activityId}/groups/submit-all-drafts`, {
+      method: 'POST',
+    }),
+
+  bulkApproveProfileActivityGroups: (items) =>
+    request('/api/admin/profile-activities/groups/bulk-approve', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    }),
+
+  bulkRejectProfileActivityGroups: (items) =>
+    request('/api/admin/profile-activities/groups/bulk-reject', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    }),
+
   rejectProfileActivityRegistration: (activityId, menteeId, body = {}) =>
     request(`/api/admin/profile-activities/${activityId}/registrations/${menteeId}/reject`, {
       method: 'POST',

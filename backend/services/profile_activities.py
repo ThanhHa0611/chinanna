@@ -2772,7 +2772,6 @@ def move_mentee_to_group(
         raise ValueError("Không thể chuyển mentee vào nhóm cá nhân tự động.")
     source_group = _find_mentee_group(activity, mentee_id)
     requires_l1 = admin_requires_l1_approval(admin)
-    now = datetime.now(timezone.utc)
 
     if not requires_l1:
         if source_group and source_group.get("group_id") != target_group_id:
@@ -2792,24 +2791,32 @@ def move_mentee_to_group(
     target_ids = [str(item) for item in (target_group.get("mentee_ids") or [])]
     if mentee_id not in target_ids:
         target_ids.append(mentee_id)
-    pending_group = _group_payload(
+    # L2 drafts the move; mentees only see it after L1 approves a later submit.
+    draft_group = _group_payload(
         {**target_group, "mentee_ids": target_ids},
-        approval_status=PROFILE_ACTIVITY_APPROVAL_PENDING,
+        approval_status=PROFILE_ACTIVITY_APPROVAL_DRAFT,
     )
-    pending_group["submitted_by_admin_id"] = str(admin["_id"])
-    pending_group["submitted_at"] = now
-    pending_group["notification_sent_at"] = None
-    pending_group["approved_at"] = None
-    pending_group["approved_by_admin_id"] = ""
-    pending_group["move_from_group_id"] = (source_group or {}).get("group_id", "")
+    draft_group["submitted_by_admin_id"] = str(admin["_id"])
+    draft_group["submitted_at"] = None
+    draft_group["notification_sent_at"] = None
+    draft_group["approved_at"] = None
+    draft_group["approved_by_admin_id"] = ""
+    draft_group["move_from_group_id"] = (source_group or {}).get("group_id", "")
+    if source_group and source_group.get("group_id") != target_group_id:
+        source_group["mentee_ids"] = [
+            str(item)
+            for item in (source_group.get("mentee_ids") or [])
+            if str(item) != mentee_id
+        ]
 
     groups = activity.get("groups") or []
     for idx, group in enumerate(groups):
         if group.get("group_id") == target_group_id:
-            groups[idx] = pending_group
+            groups[idx] = draft_group
             break
     activity["groups"] = groups
-    return pending_group, True
+    _cleanup_empty_auto_solo_groups(activity)
+    return draft_group, True
 
 
 def promote_individual_to_group_participation(
@@ -2827,26 +2834,25 @@ def promote_individual_to_group_participation(
         raise ValueError("Mentee chưa được phân vào nhóm.")
 
     requires_l1 = admin_requires_l1_approval(admin)
-    now = datetime.now(timezone.utc)
     converting_auto_solo = _is_auto_solo_group(group)
 
     if requires_l1 and converting_auto_solo:
-        pending_group = _group_payload(
+        draft_group = _group_payload(
             {**group, "is_auto_solo": False},
-            approval_status=PROFILE_ACTIVITY_APPROVAL_PENDING,
+            approval_status=PROFILE_ACTIVITY_APPROVAL_DRAFT,
         )
-        pending_group["submitted_by_admin_id"] = str(admin["_id"])
-        pending_group["submitted_at"] = now
-        pending_group["notification_sent_at"] = None
-        pending_group["approved_at"] = None
-        pending_group["approved_by_admin_id"] = ""
+        draft_group["submitted_by_admin_id"] = str(admin["_id"])
+        draft_group["submitted_at"] = None
+        draft_group["notification_sent_at"] = None
+        draft_group["approved_at"] = None
+        draft_group["approved_by_admin_id"] = ""
         groups = activity.get("groups") or []
         for idx, row in enumerate(groups):
             if row.get("group_id") == group.get("group_id"):
-                groups[idx] = pending_group
+                groups[idx] = draft_group
                 break
         activity["groups"] = groups
-        return pending_group, True
+        return draft_group, True
 
     if converting_auto_solo:
         group["is_auto_solo"] = False
@@ -2864,13 +2870,30 @@ def upsert_activity_group(activity: dict, payload: dict, admin: dict) -> tuple[d
     target_id = (payload.get("group_id") or "").strip()
     requires_l1 = admin_requires_l1_approval(admin)
     now = datetime.now(timezone.utc)
-    approval_status = (
-        PROFILE_ACTIVITY_APPROVAL_PENDING if requires_l1 else PROFILE_ACTIVITY_APPROVAL_APPROVED
+    existing = next((row for row in groups if row.get("group_id") == target_id), None) if target_id else None
+    existing_status = (
+        _normalize_approval_status(existing.get("approval_status")) if existing else None
     )
+
+    if requires_l1:
+        # L2 edits stay draft until explicit "Gửi duyệt nhóm" — never publish to mentees.
+        approval_status = PROFILE_ACTIVITY_APPROVAL_DRAFT
+    elif existing_status == PROFILE_ACTIVITY_APPROVAL_PENDING:
+        # L1 can edit a pending L2 submission without auto-approving it.
+        approval_status = PROFILE_ACTIVITY_APPROVAL_PENDING
+    else:
+        approval_status = PROFILE_ACTIVITY_APPROVAL_APPROVED
+
     normalized = _group_payload(payload, approval_status=approval_status)
     if requires_l1:
         normalized["submitted_by_admin_id"] = str(admin["_id"])
-        normalized["submitted_at"] = now
+        normalized["submitted_at"] = None
+        normalized["notification_sent_at"] = None
+        normalized["approved_at"] = None
+        normalized["approved_by_admin_id"] = ""
+    elif approval_status == PROFILE_ACTIVITY_APPROVAL_PENDING:
+        normalized["submitted_by_admin_id"] = existing.get("submitted_by_admin_id", "") if existing else ""
+        normalized["submitted_at"] = existing.get("submitted_at") if existing else None
         normalized["notification_sent_at"] = None
         normalized["approved_at"] = None
         normalized["approved_by_admin_id"] = ""
@@ -2881,18 +2904,153 @@ def upsert_activity_group(activity: dict, payload: dict, admin: dict) -> tuple[d
         for idx, group in enumerate(groups):
             if group.get("group_id") == target_id:
                 merged = {**group, **normalized, "group_id": target_id}
-                if requires_l1:
+                if requires_l1 or approval_status == PROFILE_ACTIVITY_APPROVAL_PENDING:
                     merged["notification_sent_at"] = None
                 elif group_is_approved(group):
                     merged["approval_status"] = PROFILE_ACTIVITY_APPROVAL_APPROVED
                     merged.setdefault("approved_at", group.get("approved_at") or now)
-                    merged.setdefault("approved_by_admin_id", group.get("approved_by_admin_id") or str(admin["_id"]))
+                    merged.setdefault(
+                        "approved_by_admin_id",
+                        group.get("approved_by_admin_id") or str(admin["_id"]),
+                    )
                 groups[idx] = merged
                 activity["groups"] = groups
                 return merged, requires_l1
     groups.append(normalized)
     activity["groups"] = groups
     return normalized, requires_l1
+
+
+class ProfileActivityGroupSubmitError(ValueError):
+    pass
+
+
+def submit_group_for_l1_approval(activity: dict, group_id: str, admin: dict) -> dict:
+    """L2 sends a draft group into the L1 pending queue."""
+    if not admin_requires_l1_approval(admin):
+        raise ProfileActivityGroupSubmitError("Chỉ mentor cấp 2 mới gửi phân nhóm để L1 duyệt.")
+    group = _find_group(activity, group_id)
+    if not group:
+        raise ProfileActivityGroupSubmitError("Nhóm không tồn tại.")
+    if _is_auto_solo_group(group):
+        raise ProfileActivityGroupSubmitError("Không gửi duyệt nhóm cá nhân tự động.")
+    status = _normalize_approval_status(group.get("approval_status"))
+    if status == PROFILE_ACTIVITY_APPROVAL_PENDING:
+        return activity
+    if status == PROFILE_ACTIVITY_APPROVAL_APPROVED:
+        raise ProfileActivityGroupSubmitError("Nhóm đã được duyệt.")
+    now = datetime.now(timezone.utc)
+    group["approval_status"] = PROFILE_ACTIVITY_APPROVAL_PENDING
+    group["submitted_by_admin_id"] = str(admin["_id"])
+    group["submitted_at"] = now
+    group["notification_sent_at"] = None
+    group["approved_at"] = None
+    group["approved_by_admin_id"] = ""
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"groups": activity.get("groups", []), "updated_at": now}},
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def withdraw_pending_group_submission(activity: dict, group_id: str, admin: dict) -> dict:
+    """L2 pulls a pending group submission back to draft."""
+    if not admin_requires_l1_approval(admin):
+        raise ProfileActivityGroupSubmitError("Chỉ mentor cấp 2 mới thu hồi phân nhóm đang chờ duyệt.")
+    group = _find_group(activity, group_id)
+    if not group:
+        raise ProfileActivityGroupSubmitError("Nhóm không tồn tại.")
+    if _normalize_approval_status(group.get("approval_status")) != PROFILE_ACTIVITY_APPROVAL_PENDING:
+        raise ProfileActivityGroupSubmitError("Chỉ thu hồi được nhóm đang chờ mentor cấp 1 duyệt.")
+    now = datetime.now(timezone.utc)
+    group["approval_status"] = PROFILE_ACTIVITY_APPROVAL_DRAFT
+    group["submitted_at"] = None
+    group["withdrawn_at"] = now
+    group["withdrawn_by_admin_id"] = str(admin["_id"])
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"groups": activity.get("groups", []), "updated_at": now}},
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def submit_all_draft_groups(activity: dict, admin: dict) -> dict:
+    """L2 submits every draft (non-auto-solo) group on an activity for L1 approval."""
+    if not admin_requires_l1_approval(admin):
+        raise ProfileActivityGroupSubmitError("Chỉ mentor cấp 2 mới gửi phân nhóm để L1 duyệt.")
+    now = datetime.now(timezone.utc)
+    updated_count = 0
+    for group in activity.get("groups") or []:
+        if _is_auto_solo_group(group):
+            continue
+        if _normalize_approval_status(group.get("approval_status")) != PROFILE_ACTIVITY_APPROVAL_DRAFT:
+            continue
+        group["approval_status"] = PROFILE_ACTIVITY_APPROVAL_PENDING
+        group["submitted_by_admin_id"] = str(admin["_id"])
+        group["submitted_at"] = now
+        group["notification_sent_at"] = None
+        group["approved_at"] = None
+        group["approved_by_admin_id"] = ""
+        updated_count += 1
+    if updated_count:
+        profile_activities.update_one(
+            {"_id": activity["_id"]},
+            {"$set": {"groups": activity.get("groups", []), "updated_at": now}},
+        )
+    refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    return {"activity": refreshed, "updated_count": updated_count}
+
+
+def bulk_approve_pending_groups(items: list[dict], admin: dict) -> dict:
+    """L1 bulk-approves pending group assignments. ``items``: [{activity_id, group_id}, ...]."""
+    approved = 0
+    seen: set[tuple[str, str]] = set()
+    for raw in items or []:
+        activity_id = str((raw or {}).get("activity_id") or "").strip()
+        group_id = str((raw or {}).get("group_id") or "").strip()
+        if not activity_id or not group_id or not ObjectId.is_valid(activity_id):
+            continue
+        key = (activity_id, group_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        activity = profile_activities.find_one({"_id": ObjectId(activity_id)})
+        if not activity:
+            continue
+        group = _find_group(activity, group_id)
+        if not group:
+            continue
+        if _normalize_approval_status(group.get("approval_status")) != PROFILE_ACTIVITY_APPROVAL_PENDING:
+            continue
+        approve_pending_group(activity, group_id, admin)
+        approved += 1
+    return {"updated_count": approved}
+
+
+def bulk_reject_pending_groups(items: list[dict], admin: dict) -> dict:
+    """L1 bulk-rejects pending group assignments. ``items``: [{activity_id, group_id}, ...]."""
+    rejected = 0
+    seen: set[tuple[str, str]] = set()
+    for raw in items or []:
+        activity_id = str((raw or {}).get("activity_id") or "").strip()
+        group_id = str((raw or {}).get("group_id") or "").strip()
+        if not activity_id or not group_id or not ObjectId.is_valid(activity_id):
+            continue
+        key = (activity_id, group_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        activity = profile_activities.find_one({"_id": ObjectId(activity_id)})
+        if not activity:
+            continue
+        group = _find_group(activity, group_id)
+        if not group:
+            continue
+        if _normalize_approval_status(group.get("approval_status")) != PROFILE_ACTIVITY_APPROVAL_PENDING:
+            continue
+        reject_pending_group(activity, group_id)
+        rejected += 1
+    return {"updated_count": rejected}
 
 
 def _find_group(activity: dict, group_id: str) -> dict | None:

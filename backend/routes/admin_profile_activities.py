@@ -14,13 +14,16 @@ from services.profile_activities import (
     ProfileActivityKeeptrackError,
     ProfileActivityRegistrationError,
     ProfileActivityUpdateError,
+    ProfileActivityGroupSubmitError,
     ProfileActivityWithdrawError,
     add_mentee_to_group,
     approve_pending_group,
     approve_pending_mentor_reject,
     approve_keeptrack_abandon,
     approve_profile_activity,
+    bulk_approve_pending_groups,
     bulk_approve_profile_activities,
+    bulk_reject_pending_groups,
     bulk_reject_profile_activities,
     bulk_view_individual_keeptrack_reviews,
     create_profile_activity,
@@ -54,12 +57,15 @@ from services.profile_activities import (
     sanitize_profile_activity_input,
     serialize_admin_profile_activity,
     serialize_admin_registration,
+    submit_all_draft_groups,
+    submit_group_for_l1_approval,
     submit_mentor_reject_registration,
     suggest_group_name,
     update_activity_keeptrack,
     update_profile_activity,
     upsert_activity_group,
     view_individual_keeptrack_review,
+    withdraw_pending_group_submission,
     withdraw_profile_activity_submission,
 )
 
@@ -531,7 +537,9 @@ def admin_upsert_activity_group(activity_id: str):
         groups_response = refreshed.get("groups", [])
     response = {"group": group, "groups": groups_response}
     if requires_l1:
-        response["message"] = "Đã gửi phân nhóm, chờ mentor cấp 1 duyệt trước khi mentee thấy."
+        response["message"] = (
+            "Đã lưu nhóm nháp. Bấm \"Gửi duyệt nhóm\" khi ghép xong — mentee chỉ thấy sau khi L1 duyệt và chốt nhóm."
+        )
     elif saved_group and group_is_approved(saved_group):
         response["message"] = "Đã tạo nhóm — mentee sẽ nhận thông báo sau khi chốt nhóm."
     return jsonify(response)
@@ -574,7 +582,7 @@ def admin_add_mentee_to_group(activity_id: str, group_id: str):
         groups_response = refreshed.get("groups", [])
     response = {"group": group, "groups": groups_response}
     if requires_l1:
-        response["message"] = "Đã gửi thêm mentee vào nhóm, chờ mentor cấp 1 duyệt."
+        response["message"] = "Đã lưu thay đổi nhóm (nháp). Gửi duyệt nhóm khi sẵn sàng."
     return jsonify(response)
 
 
@@ -604,7 +612,7 @@ def admin_remove_mentee_from_group(activity_id: str, group_id: str):
     )
     response = {"group": group, "groups": activity.get("groups", [])}
     if requires_l1:
-        response["message"] = "Đã gửi xóa mentee khỏi nhóm, chờ mentor cấp 1 duyệt."
+        response["message"] = "Đã lưu thay đổi nhóm (nháp). Gửi duyệt nhóm khi sẵn sàng."
     return jsonify(response)
 
 
@@ -640,7 +648,7 @@ def admin_move_mentee_group(activity_id: str, mentee_id: str):
     )
     response = {"group": group, "groups": activity.get("groups", [])}
     if requires_l1:
-        response["message"] = "Đã gửi chuyển nhóm, chờ mentor cấp 1 duyệt."
+        response["message"] = "Đã lưu chuyển nhóm (nháp). Gửi duyệt nhóm khi sẵn sàng."
     return jsonify(response)
 
 
@@ -672,7 +680,7 @@ def admin_promote_individual_to_group(activity_id: str, mentee_id: str):
     )
     response = {"group": group, "groups": activity.get("groups", [])}
     if requires_l1:
-        response["message"] = "Đã gửi chuyển sang nhóm, chờ mentor cấp 1 duyệt."
+        response["message"] = "Đã lưu chuyển sang nhóm (nháp). Gửi duyệt nhóm khi sẵn sàng."
     else:
         response["message"] = "Đã chuyển mentee sang hình thức nhóm — có thể chốt nhóm khi sẵn sàng."
     return jsonify(response)
@@ -726,6 +734,135 @@ def admin_reject_activity_group(activity_id: str, group_id: str):
         {
             "message": "Đã từ chối phân nhóm.",
             "activity": serialize_admin_profile_activity(updated, admin=admin),
+        }
+    )
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/groups/<group_id>/submit")
+@with_db
+def admin_submit_activity_group(activity_id: str, group_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+    try:
+        updated = submit_group_for_l1_approval(activity, group_id, admin)
+    except ProfileActivityGroupSubmitError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify(
+        {
+            "message": "Đã gửi phân nhóm, chờ mentor cấp 1 duyệt trước khi mentee thấy.",
+            "activity": serialize_admin_profile_activity(updated, admin=admin),
+        }
+    )
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/groups/<group_id>/withdraw")
+@with_db
+def admin_withdraw_activity_group(activity_id: str, group_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+    try:
+        updated = withdraw_pending_group_submission(activity, group_id, admin)
+    except ProfileActivityGroupSubmitError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify(
+        {
+            "message": "Đã thu hồi phân nhóm. Bạn có thể chỉnh sửa rồi gửi duyệt lại.",
+            "activity": serialize_admin_profile_activity(updated, admin=admin),
+        }
+    )
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/groups/submit-all-drafts")
+@with_db
+def admin_submit_all_draft_activity_groups(activity_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+    try:
+        result = submit_all_draft_groups(activity, admin)
+    except ProfileActivityGroupSubmitError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    count = result.get("updated_count", 0)
+    updated = result.get("activity") or activity
+    return jsonify(
+        {
+            "updated_count": count,
+            "message": (
+                f"Đã gửi {count} nhóm chờ mentor cấp 1 duyệt."
+                if count
+                else "Không có nhóm nháp nào để gửi duyệt."
+            ),
+            "activity": serialize_admin_profile_activity(updated, admin=admin),
+        }
+    )
+
+
+@app.post("/api/admin/profile-activities/groups/bulk-approve")
+@with_db
+def admin_bulk_approve_activity_groups():
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới được duyệt phân nhóm."}), 403
+
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    if not isinstance(items, list) or not items:
+        return jsonify({"detail": "Thiếu danh sách nhóm cần duyệt."}), 400
+    result = bulk_approve_pending_groups(items, admin)
+    count = result.get("updated_count", 0)
+    return jsonify(
+        {
+            "updated_count": count,
+            "message": f"Đã duyệt {count} phân nhóm.",
+        }
+    )
+
+
+@app.post("/api/admin/profile-activities/groups/bulk-reject")
+@with_db
+def admin_bulk_reject_activity_groups():
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+    if not _can_review_profile_activity(admin):
+        return jsonify({"detail": "Chỉ mentor cấp 1 mới được từ chối phân nhóm."}), 403
+
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    if not isinstance(items, list) or not items:
+        return jsonify({"detail": "Thiếu danh sách nhóm cần từ chối."}), 400
+    result = bulk_reject_pending_groups(items, admin)
+    count = result.get("updated_count", 0)
+    return jsonify(
+        {
+            "updated_count": count,
+            "message": f"Đã từ chối {count} phân nhóm.",
         }
     )
 

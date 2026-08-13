@@ -574,6 +574,7 @@ export default function ProfileActivities() {
   const [bulkImportLoading, setBulkImportLoading] = useState(false);
   const [bulkApproving, setBulkApproving] = useState(false);
   const [selectedPendingIds, setSelectedPendingIds] = useState([]);
+  const [selectedPendingGroupKeys, setSelectedPendingGroupKeys] = useState([]);
   const [pendingBulkSaving, setPendingBulkSaving] = useState(false);
   const [manageFormCollapsed, setManageFormCollapsed] = useState(true);
   const [pendingEditActivityId, setPendingEditActivityId] = useState('');
@@ -617,12 +618,15 @@ export default function ProfileActivities() {
     return map;
   }, [registrations]);
 
-  const approvedGroups = useMemo(
-    () =>
-      (selectedActivity?.groups || []).filter(
-        (group) => group.approval_status !== 'pending_l1_approval',
-      ),
+  // L1/L2 can assemble into draft/pending groups; mentees still only see approved+chốt.
+  const manageableTeamGroups = useMemo(
+    () => (selectedActivity?.groups || []).filter((group) => !group.is_auto_solo),
     [selectedActivity?.groups],
+  );
+
+  const draftGroups = useMemo(
+    () => manageableTeamGroups.filter((group) => group.approval_status === 'draft'),
+    [manageableTeamGroups],
   );
 
   const unassignedRegistrations = useMemo(() => {
@@ -693,6 +697,27 @@ export default function ProfileActivities() {
     }
     return items;
   }, [activities]);
+
+  const pendingAssignGroupActions = useMemo(
+    () => pendingGroupActions.filter((item) => item.action_type === 'assign_group'),
+    [pendingGroupActions],
+  );
+
+  const pendingGroupActionKey = (item) =>
+    item.action_type === 'assign_group'
+      ? `group:${item.activity_id}:${item.group_id}`
+      : `reject:${item.activity_id}:${item.mentee_id}`;
+
+  useEffect(() => {
+    const keys = new Set(pendingGroupActions.map(pendingGroupActionKey));
+    setSelectedPendingGroupKeys((prev) => prev.filter((key) => keys.has(key)));
+  }, [pendingGroupActions]);
+
+  const allPendingGroupsSelected =
+    pendingAssignGroupActions.length > 0 &&
+    pendingAssignGroupActions.every((item) =>
+      selectedPendingGroupKeys.includes(pendingGroupActionKey(item)),
+    );
 
   const progressTrackingRowCount = useMemo(
     () => progressTracking.reduce((total, item) => total + (item.rows?.length || 0), 0),
@@ -1328,7 +1353,7 @@ export default function ProfileActivities() {
       setMessage(
         result?.message ||
           (isL2
-            ? 'Đã gửi phân nhóm, chờ mentor cấp 1 duyệt trước khi mentee thấy.'
+            ? 'Đã lưu nhóm nháp. Bấm "Gửi duyệt nhóm" khi ghép xong.'
             : 'Đã tạo nhóm mới.'),
       );
     } catch (err) {
@@ -1369,6 +1394,164 @@ export default function ProfileActivities() {
       setError(err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSubmitGroup = async (activityId, groupId) => {
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.submitProfileActivityGroup(activityId, groupId);
+      await loadActivities();
+      if (activityId === selectedId) {
+        await loadRegistrations(activityId);
+      }
+      setMessage(
+        result?.message ||
+          'Đã gửi phân nhóm, chờ mentor cấp 1 duyệt trước khi mentee thấy.',
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleWithdrawGroup = async (activityId, groupId) => {
+    if (
+      !window.confirm(
+        'Thu hồi phân nhóm khỏi hàng chờ duyệt? Bạn có thể chỉnh sửa rồi gửi duyệt lại.',
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.withdrawProfileActivityGroup(activityId, groupId);
+      await loadActivities();
+      if (activityId === selectedId) {
+        await loadRegistrations(activityId);
+      }
+      setMessage(
+        result?.message ||
+          'Đã thu hồi phân nhóm. Bạn có thể chỉnh sửa rồi gửi duyệt lại.',
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSubmitAllDraftGroups = async () => {
+    if (!selectedActivity) return;
+    if (!draftGroups.length) {
+      setError('Không có nhóm nháp nào để gửi duyệt.');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Gửi duyệt ${draftGroups.length} nhóm nháp? Mentor cấp 1 sẽ nhận hàng chờ; mentee chưa thấy.`,
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.submitAllDraftProfileActivityGroups(selectedActivity.id);
+      await loadActivities();
+      await loadRegistrations(selectedActivity.id);
+      setMessage(result?.message || `Đã gửi ${draftGroups.length} nhóm chờ L1 duyệt.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const togglePendingGroupSelection = (item) => {
+    const key = pendingGroupActionKey(item);
+    setSelectedPendingGroupKeys((prev) =>
+      prev.includes(key) ? prev.filter((id) => id !== key) : [...prev, key],
+    );
+  };
+
+  const toggleSelectAllPendingGroups = () => {
+    if (allPendingGroupsSelected) {
+      setSelectedPendingGroupKeys((prev) =>
+        prev.filter((key) => !key.startsWith('group:')),
+      );
+      return;
+    }
+    setSelectedPendingGroupKeys((prev) => {
+      const next = new Set(prev);
+      for (const item of pendingAssignGroupActions) {
+        next.add(pendingGroupActionKey(item));
+      }
+      return [...next];
+    });
+  };
+
+  const handleBulkApprovePendingGroups = async () => {
+    const items = pendingAssignGroupActions
+      .filter((item) => selectedPendingGroupKeys.includes(pendingGroupActionKey(item)))
+      .map((item) => ({ activity_id: item.activity_id, group_id: item.group_id }));
+    if (!items.length) {
+      setError('Chọn ít nhất một phân nhóm để duyệt.');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Duyệt hàng loạt ${items.length} phân nhóm đang chờ? Có thể chốt nhóm sau để mentee nhận thông báo.`,
+      )
+    ) {
+      return;
+    }
+    setPendingBulkSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.bulkApproveProfileActivityGroups(items);
+      setSelectedPendingGroupKeys((prev) => prev.filter((key) => !key.startsWith('group:')));
+      await loadActivities();
+      if (selectedId) await loadRegistrations(selectedId);
+      setMessage(result?.message || `Đã duyệt ${items.length} phân nhóm.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPendingBulkSaving(false);
+    }
+  };
+
+  const handleBulkRejectPendingGroups = async () => {
+    const items = pendingAssignGroupActions
+      .filter((item) => selectedPendingGroupKeys.includes(pendingGroupActionKey(item)))
+      .map((item) => ({ activity_id: item.activity_id, group_id: item.group_id }));
+    if (!items.length) {
+      setError('Chọn ít nhất một phân nhóm để từ chối.');
+      return;
+    }
+    if (!window.confirm(`Từ chối hàng loạt ${items.length} phân nhóm đang chờ?`)) {
+      return;
+    }
+    setPendingBulkSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await api.bulkRejectProfileActivityGroups(items);
+      setSelectedPendingGroupKeys((prev) => prev.filter((key) => !key.startsWith('group:')));
+      await loadActivities();
+      if (selectedId) await loadRegistrations(selectedId);
+      setMessage(result?.message || `Đã từ chối ${items.length} phân nhóm.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPendingBulkSaving(false);
     }
   };
 
@@ -1851,7 +2034,7 @@ export default function ProfileActivities() {
     const currentGroupId = group.group_id;
     const isAutoSolo = Boolean(group.is_auto_solo);
     const isIndividual = item.participation_choice === 'individual';
-    const teamGroups = approvedGroups.filter((entry) => !entry.is_auto_solo);
+    const teamGroups = manageableTeamGroups;
     const moveOptions = isAutoSolo
       ? teamGroups
       : teamGroups.filter((entry) => entry.group_id !== currentGroupId);
@@ -1947,7 +2130,7 @@ export default function ProfileActivities() {
   const renderUnassignedActions = (item) => (
     <div className="profile-activity-group-ops">
       {renderRejectRegistrationButton(item)}
-      {approvedGroups.length > 0 && (
+      {manageableTeamGroups.length > 0 && (
         <div className="action-cell profile-activity-add-to-group">
           <select
             value={addToGroupTargets[item.mentee_id] || ''}
@@ -1959,9 +2142,14 @@ export default function ProfileActivities() {
             }
           >
             <option value="">Thêm vào nhóm...</option>
-            {approvedGroups.filter((group) => !group.is_auto_solo).map((group) => (
+            {manageableTeamGroups.map((group) => (
               <option key={group.group_id} value={group.group_id}>
                 {group.group_name}
+                {group.approval_status === 'draft'
+                  ? ' (nháp)'
+                  : group.approval_status === 'pending_l1_approval'
+                    ? ' (chờ L1)'
+                    : ''}
               </option>
             ))}
           </select>
@@ -1986,10 +2174,11 @@ export default function ProfileActivities() {
 
   const renderGroupSectionHead = (group) => {
     const groupPending = group.approval_status === 'pending_l1_approval';
+    const groupDraft = group.approval_status === 'draft';
     const isFinalized = Boolean(group.finalized_at);
     const showFinalizeSuccess = Boolean(finalizeSuccessByGroup[group.group_id]);
     const canChooseLeader =
-      !group.is_auto_solo && !groupPending && (group.mentee_ids || []).length > 0;
+      !group.is_auto_solo && !groupPending && !groupDraft && (group.mentee_ids || []).length > 0;
     const showLeaderPicker =
       canChooseLeader && !showFinalizeSuccess && Boolean(leaderPickerVisible[group.group_id]);
     const memberCount = (group.mentee_ids || []).length;
@@ -2002,6 +2191,9 @@ export default function ProfileActivities() {
       <div className="profile-activity-registration-group-head">
         <div className="profile-activity-registration-group-title">
           <strong>{group.group_name}</strong> ({memberCount} thành viên)
+          {groupDraft && (
+            <span className="profile-activity-approval-badge is-pending"> Nháp</span>
+          )}
           {groupPending && (
             <span className="profile-activity-approval-badge is-pending"> Chờ L1 duyệt</span>
           )}
@@ -2019,7 +2211,7 @@ export default function ProfileActivities() {
               type="button"
               className="btn btn-primary btn-sm"
               onClick={() => handleFinalizeGroup(group.group_id)}
-              disabled={saving || groupPending}
+              disabled={saving || groupPending || groupDraft}
             >
               Chốt nhóm
             </button>
@@ -2047,6 +2239,26 @@ export default function ProfileActivities() {
               disabled={saving}
             >
               Xóa nhóm
+            </button>
+          )}
+          {isL2 && groupDraft && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => handleSubmitGroup(selectedActivity.id, group.group_id)}
+              disabled={saving}
+            >
+              Gửi duyệt nhóm
+            </button>
+          )}
+          {isL2 && groupPending && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => handleWithdrawGroup(selectedActivity.id, group.group_id)}
+              disabled={saving}
+            >
+              Thu hồi
             </button>
           )}
           {canReview && groupPending && (
@@ -2269,18 +2481,62 @@ export default function ProfileActivities() {
 
       {canReview && pendingGroupActions.length > 0 && (
         <div className="panel-card profile-activity-pending-queue">
-          <h3>Chờ duyệt phân nhóm / từ chối ({pendingGroupActions.length})</h3>
+          <div className="profile-activity-pending-queue-head">
+            <h3>Chờ duyệt phân nhóm / từ chối ({pendingGroupActions.length})</h3>
+            {pendingAssignGroupActions.length > 0 && (
+              <div className="profile-activity-pending-bulk-actions">
+                <label className="checkbox-label profile-activity-pending-select-all">
+                  <input
+                    type="checkbox"
+                    checked={allPendingGroupsSelected}
+                    onChange={toggleSelectAllPendingGroups}
+                    disabled={saving || pendingBulkSaving}
+                  />
+                  Chọn tất cả nhóm
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={handleBulkApprovePendingGroups}
+                  disabled={
+                    saving ||
+                    pendingBulkSaving ||
+                    !selectedPendingGroupKeys.some((key) => key.startsWith('group:'))
+                  }
+                >
+                  {pendingBulkSaving ? 'Đang xử lý...' : 'Duyệt hàng loạt'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={handleBulkRejectPendingGroups}
+                  disabled={
+                    saving ||
+                    pendingBulkSaving ||
+                    !selectedPendingGroupKeys.some((key) => key.startsWith('group:'))
+                  }
+                >
+                  Từ chối hàng loạt
+                </button>
+              </div>
+            )}
+          </div>
           <ul className="profile-activity-pending-list">
             {pendingGroupActions.map((item) => (
               <li
-                key={
-                  item.action_type === 'assign_group'
-                    ? `group-${item.activity_id}-${item.group_id}`
-                    : `reject-${item.activity_id}-${item.mentee_id}`
-                }
+                key={pendingGroupActionKey(item)}
                 className="profile-activity-pending-item"
               >
                 <div className="profile-activity-pending-line">
+                  {item.action_type === 'assign_group' && (
+                    <input
+                      type="checkbox"
+                      checked={selectedPendingGroupKeys.includes(pendingGroupActionKey(item))}
+                      onChange={() => togglePendingGroupSelection(item)}
+                      disabled={saving || pendingBulkSaving}
+                      aria-label="Chọn phân nhóm"
+                    />
+                  )}
                   <strong>{item.activity_name}</strong>
                   {item.action_type === 'assign_group' ? (
                     <span className="muted">
@@ -2302,7 +2558,7 @@ export default function ProfileActivities() {
                         ? handleApproveGroupAction(item.activity_id, item.group_id)
                         : handleApproveRegistrationReject(item.activity_id, item.mentee_id)
                     }
-                    disabled={saving}
+                    disabled={saving || pendingBulkSaving}
                   >
                     Duyệt
                   </button>
@@ -2314,7 +2570,7 @@ export default function ProfileActivities() {
                         ? handleRejectGroupAction(item.activity_id, item.group_id)
                         : handleDenyRegistrationReject(item.activity_id, item.mentee_id)
                     }
-                    disabled={saving}
+                    disabled={saving || pendingBulkSaving}
                   >
                     Từ chối
                   </button>
@@ -3139,9 +3395,24 @@ export default function ProfileActivities() {
                 >
                   Tạo nhóm mới
                 </button>
+                {isL2 && draftGroups.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleSubmitAllDraftGroups}
+                    disabled={saving}
+                  >
+                    Gửi duyệt nhóm hàng loạt ({draftGroups.length})
+                  </button>
+                )}
                 {selectedMentees.length > 0 && (
                   <span className="muted">
                     Sẽ thêm {selectedMentees.length} mentee đang chọn vào nhóm
+                  </span>
+                )}
+                {isL2 && (
+                  <span className="muted">
+                    L2 ghép nhóm ở trạng thái nháp — mentee chỉ thấy sau khi L1 duyệt và chốt nhóm.
                   </span>
                 )}
               </div>
@@ -3190,7 +3461,16 @@ export default function ProfileActivities() {
                 const groupMembers = (group.mentee_ids || [])
                   .map((menteeId) => registrationByMenteeId.get(menteeId))
                   .filter(Boolean);
-                if (!groupMembers.length && group.approval_status === 'pending_l1_approval') {
+                // Keep empty draft/pending groups visible so mentors can finish assembling.
+                if (
+                  !groupMembers.length &&
+                  group.approval_status !== 'pending_l1_approval' &&
+                  group.approval_status !== 'draft' &&
+                  !group.is_auto_solo
+                ) {
+                  return null;
+                }
+                if (!groupMembers.length && group.is_auto_solo) {
                   return null;
                 }
                 return (
@@ -3229,6 +3509,11 @@ export default function ProfileActivities() {
                         </table>
                       </div>
                     )}
+                    {!groupMembers.length &&
+                      (group.approval_status === 'draft' ||
+                        group.approval_status === 'pending_l1_approval') && (
+                        <p className="muted">Nhóm chưa có thành viên — thêm mentee từ danh sách chờ phân nhóm.</p>
+                      )}
                   </div>
                 );
               })}
