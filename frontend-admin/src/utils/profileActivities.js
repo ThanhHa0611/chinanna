@@ -44,6 +44,23 @@ export function getDeadlineBadge(deadlineStr, badgeFromApi = null) {
   return null;
 }
 
+/** True after VN calendar deadline day has fully passed (matches backend is_activity_deadline_expired). */
+export function isDeadlineExpired(activityOrDeadline) {
+  if (activityOrDeadline && typeof activityOrDeadline === 'object') {
+    if (typeof activityOrDeadline.deadline_expired === 'boolean') {
+      return activityOrDeadline.deadline_expired;
+    }
+    const badge = getDeadlineBadge(
+      activityOrDeadline.deadline,
+      activityOrDeadline.deadline_badge,
+    );
+    if (badge?.variant === 'expired') return true;
+    return daysUntilDeadline(activityOrDeadline.deadline) < 0;
+  }
+  const daysLeft = daysUntilDeadline(activityOrDeadline);
+  return daysLeft !== null && daysLeft < 0;
+}
+
 function stripLeadingVe(content) {
   const text = (content || '').trim();
   if (/^về\s+/iu.test(text)) {

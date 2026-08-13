@@ -10,6 +10,7 @@ import {
   feedLineText,
   formatImportanceStars,
   getDeadlineBadge,
+  isDeadlineExpired,
   participationModeDisplayLabel,
 } from '../utils/profileActivities';
 import { formatMenteeActivityInviteOption } from '../data/applyDegree';
@@ -623,9 +624,15 @@ export default function ProfileActivities() {
   const canReview = Boolean(admin?.is_super_admin || isLevel1MentorAccount(admin));
   const isL2 = Boolean(admin && !canReview);
 
+  // Past-deadline contests leave mentor "Quản lý hoạt động / báo danh"; progress/keeptrack stay elsewhere.
+  const manageableActivities = useMemo(
+    () => activities.filter((item) => !isDeadlineExpired(item)),
+    [activities],
+  );
+
   const selectedActivity = useMemo(
-    () => activities.find((item) => item.id === selectedId) || null,
-    [activities, selectedId],
+    () => manageableActivities.find((item) => item.id === selectedId) || null,
+    [manageableActivities, selectedId],
   );
 
   const selectedParticipationLabel = participationModeDisplayLabel(selectedActivity);
@@ -724,13 +731,13 @@ export default function ProfileActivities() {
 
   const pendingGroupActions = useMemo(() => {
     const items = [];
-    for (const activity of activities) {
+    for (const activity of manageableActivities) {
       for (const action of activity.pending_l1_actions || []) {
         items.push({ ...action, activity_id: activity.id, activity_name: compose_activity_name(activity) });
       }
     }
     return items;
-  }, [activities]);
+  }, [manageableActivities]);
 
   const pendingAssignGroupActions = useMemo(
     () => pendingGroupActions.filter((item) => item.action_type === 'assign_group'),
@@ -898,18 +905,20 @@ export default function ProfileActivities() {
   const loadActivities = async () => {
     const data = await api.getProfileActivities();
     const items = Array.isArray(data) ? data : data?.items || [];
+    const openItems = items.filter((item) => !isDeadlineExpired(item));
     setActivities(items);
     setTotalRegistrationCount(Number(data?.total_registration_count) || 0);
     setTotalAwaitingGroupCount(
       Number(data?.total_awaiting_group_assignment_count) ||
-        items.reduce(
+        openItems.reduce(
           (sum, item) => sum + (Number(item.awaiting_group_assignment_count) || 0),
           0,
         ),
     );
-    if (!selectedId && items.length) {
-      setSelectedId(items[0].id);
-    }
+    setSelectedId((prev) => {
+      if (prev && openItems.some((item) => item.id === prev)) return prev;
+      return openItems[0]?.id || '';
+    });
   };
 
   const loadRegistrations = async (activityId) => {
@@ -3601,7 +3610,7 @@ export default function ProfileActivities() {
         <label>
           Chọn hoạt động
           <ActivityPickerDropdown
-            activities={activities}
+            activities={manageableActivities}
             value={selectedId}
             onChange={setSelectedId}
           />

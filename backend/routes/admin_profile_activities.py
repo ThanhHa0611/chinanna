@@ -224,14 +224,16 @@ def admin_list_profile_activities():
 
     cursor = profile_activities.find(_admin_activity_query(admin)).sort("created_at", -1)
     items = [serialize_admin_profile_activity(doc, admin=admin) for doc in cursor]
-    total_pending_count = sum(item.get("pending_action_count", 0) for item in items)
+    # Past-deadline contests drop out of mentor "báo danh" badges; data stays for progress/keeptrack.
+    open_items = [item for item in items if not item.get("deadline_expired")]
+    total_pending_count = sum(item.get("pending_action_count", 0) for item in open_items)
     total_registration_count = sum(
         item.get("registration_count", 0)
-        for item in items
+        for item in open_items
         if item.get("approval_status") != "pending_l1_approval"
     )
     total_awaiting_group_assignment_count = sum(
-        item.get("awaiting_group_assignment_count", 0) for item in items
+        item.get("awaiting_group_assignment_count", 0) for item in open_items
     )
     return jsonify(
         {

@@ -2105,6 +2105,7 @@ def serialize_admin_profile_activity(doc: dict, *, admin: dict | None = None) ->
         "rejected_at": doc.get("rejected_at").isoformat() if doc.get("rejected_at") else "",
         "rejected_by_admin_id": doc.get("rejected_by_admin_id", ""),
         "deadline_badge": get_deadline_badge(doc.get("deadline", "")),
+        "deadline_expired": is_activity_deadline_expired(doc),
         "pending_l1_actions": list_pending_l1_group_actions(doc),
         "pending_action_count": pending_action_count,
         "participation_mode": _normalize_participation_mode(doc.get("participation_mode")),
