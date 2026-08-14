@@ -94,6 +94,36 @@ export function stripHttpUrls(text) {
     .trim();
 }
 
+function isWeakActivityLine(line) {
+  const text = (line || '').trim();
+  if (!text || text === 'Khác' || text === 'Hoạt động hồ sơ') return true;
+  // "Khác" or "Khác, dl DATE" — no real contest title
+  return /^Khác(?:,\s*dl\s+\S+)?$/iu.test(text);
+}
+
+function descriptionTitle(activity) {
+  const desc = (activity?.description || '').trim();
+  if (!desc) return '';
+  const first =
+    desc
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^[-*•\t\s]+/, '').trim())
+      .find(Boolean) || '';
+  return stripHttpUrls(
+    first.replace(/^(thông tin|hoạt động|event|title|tên)[:\-]\s*/iu, ''),
+  ).slice(0, 500);
+}
+
+function withDeadlineSuffix(title, activity) {
+  const text = (title || '').trim();
+  if (!text) return text;
+  const deadline = (activity?.deadline || '').trim();
+  if (deadline && !text.includes(deadline) && !/,\s*dl\s+/iu.test(text)) {
+    return `${text}, dl ${deadline}`;
+  }
+  return text;
+}
+
 export function format_activity_feed_line(activity) {
   const line = feedLineText(activity);
   const link = feedLineLink(activity);
@@ -105,13 +135,20 @@ export function format_activity_feed_line(activity) {
 
 export function feedLineText(activity) {
   let line = buildActivityNameLine(activity);
-  const isDefault = line === 'Khác' || line === 'Hoạt động hồ sơ';
-  if (isDefault) {
-    const stored = (activity?.activity_name || '').trim();
-    if (stored) {
-      const stripped = stripHttpUrls(stored);
-      if (stripped) line = stripped;
+  const stored = stripHttpUrls((activity?.activity_name || '').trim());
+  const fromDesc = descriptionTitle(activity);
+
+  if (isWeakActivityLine(line)) {
+    if (stored && !isWeakActivityLine(stored)) {
+      line = stored;
+    } else if (fromDesc && !isWeakActivityLine(fromDesc)) {
+      line = withDeadlineSuffix(fromDesc, activity);
+    } else if (stored) {
+      line = stored;
     }
+  } else if (stored && !isWeakActivityLine(stored) && stored.length > line.length + 8) {
+    // Prefer a clearly richer free-form stored title over a thin composed line.
+    line = stored;
   } else {
     line = stripHttpUrls(line) || line;
   }

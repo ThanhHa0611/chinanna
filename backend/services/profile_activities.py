@@ -494,6 +494,23 @@ def _strip_leading_ve(content: str) -> str:
     return text
 
 
+_HTTP_URL_RE = re.compile(r"https?://[^\s]+", re.IGNORECASE)
+_WEAK_KHAC_LINE_RE = re.compile(r"^Khác(?:,\s*dl\s+\S+)?$", re.IGNORECASE | re.UNICODE)
+
+
+def _strip_http_urls(text: str) -> str:
+    cleaned = _HTTP_URL_RE.sub(" ", text or "")
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
+def _is_weak_activity_display_line(line: str) -> bool:
+    """True when the composed/stored line has no real contest title (e.g. 'Khác, dl …')."""
+    text = (line or "").strip()
+    if not text or text in {"Khác", "Hoạt động hồ sơ"}:
+        return True
+    return bool(_WEAK_KHAC_LINE_RE.fullmatch(text))
+
+
 def _build_activity_name_line(data: dict) -> str:
     activity_type = (data.get("activity_type") or "").strip() or "Khác"
     organizer = (data.get("organizer") or "").strip()
@@ -513,10 +530,44 @@ def _build_activity_name_line(data: dict) -> str:
     return line.strip() or "Hoạt động hồ sơ"
 
 
+def resolve_activity_display_name(activity: dict) -> str:
+    """Prefer a meaningful contest title for lists/headers (no raw URL)."""
+    composed = _build_activity_name_line(activity)
+    stored = _strip_http_urls((activity.get("activity_name") or "").strip())
+    title = _strip_http_urls(_extract_name(activity.get("description") or ""))
+    deadline = (activity.get("deadline") or "").strip()
+
+    def with_deadline(candidate: str) -> str:
+        text = (candidate or "").strip()
+        if not text:
+            return text
+        if deadline and deadline not in text and not re.search(r",\s*dl\s+", text, flags=re.IGNORECASE):
+            return f"{text}, dl {deadline}"
+        return text
+
+    if not _is_weak_activity_display_line(composed):
+        # Prefer a clearly richer free-form stored title when structured fields are thin.
+        if (
+            stored
+            and not _is_weak_activity_display_line(stored)
+            and len(stored) > len(composed) + 8
+        ):
+            return stored
+        return composed
+
+    for candidate in (stored, title):
+        if candidate and not _is_weak_activity_display_line(candidate):
+            return with_deadline(candidate)
+
+    if stored:
+        return stored
+    return composed or "Hoạt động hồ sơ"
+
+
 def compose_activity_name(data: dict) -> str:
-    line = _build_activity_name_line(data)
+    line = resolve_activity_display_name(data)
     link = (data.get("link") or "").strip()
-    if link:
+    if link and link not in line:
         line = f"{line} {link}"
     return line
 
@@ -1998,12 +2049,8 @@ def serialize_admin_registration(activity: dict, state: dict, mentee: dict) -> d
 
 
 def format_activity_feed_line(activity: dict, mentee: dict | None = None) -> str:
-    line = _build_activity_name_line(activity)
-    stored = (activity.get("activity_name") or "").strip()
-    if stored and line in {"Khác", "Hoạt động hồ sơ"} and len(stored) > len(line):
-        line = stored
-    if not line:
-        line = "Hoạt động hồ sơ"
+    _ = mentee  # reserved for future mentee-specific labels
+    line = resolve_activity_display_name(activity) or "Hoạt động hồ sơ"
     link = (activity.get("link") or "").strip()
     if link:
         return f"{line}\nLink: {link}"
@@ -2066,7 +2113,7 @@ def serialize_profile_activity_for_feed(
     )
     payload = {
         "id": str(doc["_id"]),
-        "activity_name": doc.get("activity_name", ""),
+        "activity_name": resolve_activity_display_name(doc),
         "activity_type": doc.get("activity_type", "Khác"),
         "link": doc.get("link", ""),
         "deadline": doc.get("deadline", ""),
@@ -3824,7 +3871,7 @@ def resolve_individual_choice_report(activity: dict, mentee_id: str) -> dict:
 
 
 def _profile_activity_label(activity: dict) -> str:
-    return (activity.get("activity_name") or activity.get("description") or "Hoạt động hồ sơ").strip()
+    return resolve_activity_display_name(activity) or "Hoạt động hồ sơ"
 
 
 def _mentee_display_name(mentee_or_id) -> str:
@@ -4279,10 +4326,20 @@ def list_progress_tracking_for_admin(admin: dict) -> list[dict]:
             )
 
         if rows:
+            link = (activity.get("link") or "").strip()
+            if not link:
+                embedded = _HTTP_URL_RE.findall(activity.get("activity_name") or "")
+                link = embedded[-1] if embedded else ""
             activities_out.append(
                 {
                     "activity_id": str(activity["_id"]),
-                    "activity_name": compose_activity_name(activity),
+                    "activity_name": resolve_activity_display_name(activity),
+                    "activity_type": (activity.get("activity_type") or "").strip() or "Khác",
+                    "organizer": (activity.get("organizer") or "").strip(),
+                    "content": (activity.get("content") or "").strip(),
+                    "target_audience": (activity.get("target_audience") or "").strip(),
+                    "description": (activity.get("description") or "").strip(),
+                    "link": link,
                     "deadline": activity.get("deadline", "") or "",
                     "rows": rows,
                 }
