@@ -169,7 +169,7 @@ export default function ActivityKeeptrackBar({
               disabled={saving || (hasAward && !awardLevel)}
               onClick={handleConfirmComplete}
             >
-              {saving ? 'Đang lưu...' : 'Xác nhận đã xong'}
+              {saving ? 'Đang lưu...' : 'Xác nhận đã hoàn thành'}
             </button>
           </div>
         </div>
@@ -191,7 +191,7 @@ export default function ActivityKeeptrackBar({
             disabled={isDisabled}
             onClick={handleCompleteClick}
           >
-            Đã xong
+            Đã hoàn thành
           </button>
           <button
             type="button"

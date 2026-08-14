@@ -2453,6 +2453,31 @@ td.apply-progress-tone-black .apply-progress-readonly-cell {
   margin-top: 0;
 }
 
+.profile-activities-info-notice {
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #7a5c2e;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.profile-activities-info-notice p {
+  margin: 0 0 0.45rem;
+}
+
+.profile-activities-info-notice p:last-child {
+  margin-bottom: 0;
+}
+
+.profile-activities-keeptrack-panel > .profile-activities-info-notice {
+  border-color: #fecaca;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
 .profile-activities-feed-title {
   margin: 0;
   font-size: 1rem;

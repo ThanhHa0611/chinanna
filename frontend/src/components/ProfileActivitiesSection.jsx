@@ -12,8 +12,38 @@ import {
   participationModeDisplayLabel,
 } from '../utils/profileActivities';
 
-const COMPLETE_TOAST_MESSAGE = 'Giỏi quá, cố gắng lên nha ❤️';
+const COMPLETE_TOAST_MESSAGE = 'Giỏi quá, cố gắng lên nha ❤️ Mentor đã được thông báo.';
 const COMPLETE_TOAST_MS = 3000;
+
+const HDNK_REGISTER_NOTICE = (
+  <>
+    <p>
+      Mentee có thể đăng ký tham gia HĐNK dưới hình thức cá nhân hoặc nhóm. Vui lòng
+      bấm vào link để đọc kỹ thể lệ trước khi đăng ký.
+    </p>
+    <p>
+      <strong>Đăng ký cá nhân:</strong> Mentee cần đăng ký trực tiếp với Ban Tổ chức,
+      đồng thời bấm “Đăng ký” trên app để Mentor nắm được thông tin tham gia.
+    </p>
+    <p>
+      <strong>Đăng ký theo nhóm:</strong> Mentee bấm “Đăng ký” trên app và chờ Mentor
+      hỗ trợ ghép nhóm.
+    </p>
+  </>
+);
+
+const HDNK_IN_PROGRESS_NOTICE = (
+  <>
+    <p>
+      Sau khi hoàn thành tác phẩm dự thi và đã nộp bài cho Ban Tổ chức, Mentee hãy
+      bấm “Đã submit” trên app để Mentor cập nhật tình trạng nộp bài.
+    </p>
+    <p>
+      Khi cuộc thi/hoạt động chính thức kết thúc, Mentee bấm “Đã hoàn thành” để Mentor
+      ghi nhận việc hoàn tất HĐNK.
+    </p>
+  </>
+);
 
 function isActivityViewed(item) {
   return Boolean(item?.viewed ?? item?.read);
@@ -556,7 +586,7 @@ export default function ProfileActivitiesSection({
               className="btn btn-outline btn-sm"
               onClick={() => registerActivity(item)}
             >
-              Báo danh
+              Đăng ký
             </button>
           )}
           {item.can_cancel_registration && (
@@ -623,24 +653,29 @@ export default function ProfileActivitiesSection({
             </button>
           </div>
           {keeptrackExpanded ? (
-            <div className="profile-activities-keeptrack-list">
-              {activeKeeptrack.map((item) => (
-                <div key={item.id} className="profile-activities-keeptrack-item">
-                  <p className="profile-activities-keeptrack-item-label muted">
-                    <ActivityInlineLink activity={item} />
-                  </p>
-                  <ActivityKeeptrackBar
-                    activity={item}
-                    keeptrack={item.keeptrack}
-                    hideHead
-                    saving={Boolean(keeptrackSaving[item.id])}
-                    onSubmit={() => submitKeeptrack(item.id)}
-                    onComplete={(body) => completeKeeptrack(item.id, body)}
-                    onAbandon={(body) => abandonKeeptrack(item.id, body)}
-                  />
-                </div>
-              ))}
-            </div>
+            <>
+              <div className="profile-activities-info-notice" role="note">
+                {HDNK_IN_PROGRESS_NOTICE}
+              </div>
+              <div className="profile-activities-keeptrack-list">
+                {activeKeeptrack.map((item) => (
+                  <div key={item.id} className="profile-activities-keeptrack-item">
+                    <p className="profile-activities-keeptrack-item-label muted">
+                      <ActivityInlineLink activity={item} />
+                    </p>
+                    <ActivityKeeptrackBar
+                      activity={item}
+                      keeptrack={item.keeptrack}
+                      hideHead
+                      saving={Boolean(keeptrackSaving[item.id])}
+                      onSubmit={() => submitKeeptrack(item.id)}
+                      onComplete={(body) => completeKeeptrack(item.id, body)}
+                      onAbandon={(body) => abandonKeeptrack(item.id, body)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
           ) : (
             <p className="profile-activities-keeptrack-collapsed muted">
               {activeKeeptrack.length} hoạt động đang theo dõi tiến độ — bấm Mở rộng để xem
@@ -650,6 +685,9 @@ export default function ProfileActivitiesSection({
       )}
 
       <div className="profile-card profile-activities-feed-panel">
+        <div className="profile-activities-info-notice" role="note">
+          {HDNK_REGISTER_NOTICE}
+        </div>
         <div className="profile-activities-head">
           <h3 className="profile-activities-feed-title">Thông báo hoạt động</h3>
           {!loading && (
