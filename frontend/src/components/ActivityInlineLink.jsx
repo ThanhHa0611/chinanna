@@ -1,4 +1,4 @@
-import { feedLineLink, feedLineText } from '../utils/profileActivities';
+import { feedLineLink, feedLineText, FEED_INLINE_LINK_LABEL } from '../utils/profileActivities';
 
 export default function ActivityInlineLink({ activity, fallback = '—', className = '' }) {
   const text = activity ? feedLineText(activity) : fallback;
@@ -16,7 +16,7 @@ export default function ActivityInlineLink({ activity, fallback = '—', classNa
             rel="noreferrer"
             className="profile-activity-inline-link"
           >
-            (Link)
+            {FEED_INLINE_LINK_LABEL}
           </a>
         </>
       ) : null}

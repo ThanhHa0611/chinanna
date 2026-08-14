@@ -4,10 +4,12 @@ import { api } from '../services/api';
 import { isLevel1MentorAccount } from '../utils/mentorDisplay';
 import {
   APPROVAL_STATUS_LABELS,
+  FEED_INLINE_LINK_LABEL,
   PARTICIPATION_MODE_OPTIONS,
   compose_activity_name,
   feedLineLink,
   feedLineText,
+  format_activity_feed_line,
   formatImportanceStars,
   getDeadlineBadge,
   isDeadlineExpired,
@@ -343,10 +345,8 @@ function ActivityContentFields({
       <div className="profile-activity-feed-preview">
         <p className="profile-activity-feed-preview-label">Tên hoạt động (tự động)</p>
         <p className="muted profile-activity-feed-preview-hint">
-          Dòng compact hiển thị trên feed mentee — cập nhật theo các trường bên trên
+          Dòng compact hiển thị trên feed mentee — URL gộp thành {FEED_INLINE_LINK_LABEL} có thể bấm
         </p>
-        <p className="profile-activity-name-preview">{compose_activity_name(form)}</p>
-        <p className="profile-activity-feed-preview-label">Xem trước feed</p>
         <FeedLinePreview activity={form} />
       </div>
     </>
@@ -388,8 +388,9 @@ function FeedLinePreview({ activity }) {
               target="_blank"
               rel="noreferrer"
               className="profile-activity-inline-link"
+              onClick={(event) => event.stopPropagation()}
             >
-              (Link)
+              {FEED_INLINE_LINK_LABEL}
             </a>
           </>
         )}
@@ -406,7 +407,7 @@ function approvalBadgeClass(status) {
 }
 
 function activityPickerLabel(item) {
-  const name = compose_activity_name(item);
+  const name = format_activity_feed_line(item);
   const registrations = item.registration_count || 0;
   const awaitingGroup = item.awaiting_group_assignment_count || 0;
   let label = `${name} (${registrations} báo danh)`;
@@ -751,7 +752,17 @@ export default function ProfileActivities() {
     const items = [];
     for (const activity of activities) {
       for (const action of activity.pending_l1_actions || []) {
-        items.push({ ...action, activity_id: activity.id, activity_name: compose_activity_name(activity) });
+        items.push({
+          ...action,
+          activity_id: activity.id,
+          activity_name: compose_activity_name(activity),
+          link: (activity.link || '').trim(),
+          activity_type: activity.activity_type,
+          organizer: activity.organizer,
+          content: activity.content,
+          target_audience: activity.target_audience,
+          deadline: activity.deadline,
+        });
       }
     }
     return items;
@@ -2803,7 +2814,9 @@ export default function ProfileActivities() {
                         </div>
                       )}
                     </td>
-                    <td>{item.activity_name}</td>
+                    <td>
+                      <FeedLinePreview activity={item} />
+                    </td>
                     <td>{item.progress_summary || item.progress_label || '—'}</td>
                     <td>
                       <div className="action-cell">
@@ -2857,7 +2870,9 @@ export default function ProfileActivities() {
                         </div>
                       )}
                     </td>
-                    <td>{item.activity_name}</td>
+                    <td>
+                      <FeedLinePreview activity={item} />
+                    </td>
                     <td>{item.note || '—'}</td>
                     <td>
                       <div className="action-cell">
@@ -2967,7 +2982,9 @@ export default function ProfileActivities() {
                             />
                           )}
                         </td>
-                        <td>{item.activity_name}</td>
+                        <td>
+                          <FeedLinePreview activity={item} />
+                        </td>
                         <td>{pendingActionTypeLabel(item)}</td>
                         <td>
                           {item.action_type === 'assign_group'
@@ -3307,7 +3324,7 @@ export default function ProfileActivities() {
                     checked={selectedDeadlineHideIds.includes(item.id)}
                     onChange={() => toggleDeadlineHideSelection(item.id)}
                     disabled={saving || pendingBulkSaving}
-                    aria-label={`Chọn cuộc thi hết hạn ${item.activity_name || item.id}`}
+                    aria-label={`Chọn cuộc thi hết hạn ${feedLineText(item) || item.id}`}
                   />
                 </label>
                 <div className="profile-activity-pending-line">
@@ -3376,7 +3393,7 @@ export default function ProfileActivities() {
                     checked={selectedPendingIds.includes(item.id)}
                     onChange={() => togglePendingSelection(item.id)}
                     disabled={saving || pendingBulkSaving}
-                    aria-label={`Chọn hoạt động ${item.activity_name || item.id}`}
+                    aria-label={`Chọn hoạt động ${feedLineText(item) || item.id}`}
                   />
                 </label>
                 <div className="profile-activity-pending-line">
@@ -3530,7 +3547,7 @@ export default function ProfileActivities() {
                         aria-expanded={expanded}
                       >
                         <span className="profile-activity-progress-activity-title">
-                          {activityBlock.activity_name}
+                          <FeedLinePreview activity={activityBlock} />
                         </span>
                         <span className="daily-summary-toggle">
                           {expanded ? 'Thu gọn' : 'Mở rộng'}
@@ -3662,7 +3679,7 @@ export default function ProfileActivities() {
                               />
                             </td>
                             <td>
-                              <div>{row.activity_name}</div>
+                              <FeedLinePreview activity={row} />
                               {row._error && <p className="form-error">{row._error}</p>}
                             </td>
                             <td>

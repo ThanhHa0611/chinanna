@@ -76,13 +76,26 @@ export function compose_activity_name(data) {
 
 export const FEED_INLINE_LINK_LABEL = '(Link)';
 
+function httpUrlPattern() {
+  return /https?:\/\/[^\s]+/gi;
+}
+
+/** Extract http(s) URLs embedded in free text (e.g. stored activity_name). */
+export function extractHttpUrls(text) {
+  const matches = String(text || '').match(httpUrlPattern());
+  return matches ? [...matches] : [];
+}
+
+/** Remove embedded http(s) URLs so feed/list UIs can show a short "(Link)" instead. */
+export function stripHttpUrls(text) {
+  return String(text || '')
+    .replace(httpUrlPattern(), ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 export function format_activity_feed_line(activity) {
-  let line = buildActivityNameLine(activity);
-  const stored = (activity?.activity_name || '').trim();
-  if (stored && (line === 'Khác' || line === 'Hoạt động hồ sơ') && stored.length > line.length) {
-    line = stored;
-  }
-  if (!line) line = 'Hoạt động hồ sơ';
+  const line = feedLineText(activity);
   const link = feedLineLink(activity);
   if (link) {
     return `${line} ${FEED_INLINE_LINK_LABEL}`;
@@ -91,11 +104,25 @@ export function format_activity_feed_line(activity) {
 }
 
 export function feedLineText(activity) {
-  return buildActivityNameLine(activity);
+  let line = buildActivityNameLine(activity);
+  const isDefault = line === 'Khác' || line === 'Hoạt động hồ sơ';
+  if (isDefault) {
+    const stored = (activity?.activity_name || '').trim();
+    if (stored) {
+      const stripped = stripHttpUrls(stored);
+      if (stripped) line = stripped;
+    }
+  } else {
+    line = stripHttpUrls(line) || line;
+  }
+  return line || 'Hoạt động hồ sơ';
 }
 
 export function feedLineLink(activity) {
-  return (activity?.link || '').trim();
+  const direct = (activity?.link || '').trim();
+  if (direct) return direct;
+  const embedded = extractHttpUrls(activity?.activity_name || '');
+  return embedded.length ? embedded[embedded.length - 1] : '';
 }
 
 export function formatImportanceStars(importance) {

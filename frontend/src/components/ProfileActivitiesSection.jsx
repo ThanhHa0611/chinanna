@@ -4,6 +4,7 @@ import ActivityInlineLink from './ActivityInlineLink';
 import ActivityKeeptrackBar from './ActivityKeeptrackBar';
 import {
   MENTEE_PARTICIPATION_CHOICES,
+  FEED_INLINE_LINK_LABEL,
   feedLineLink,
   feedLineText,
   formatImportanceStars,
@@ -43,7 +44,7 @@ function FeedLine({ item, onLinkClick }) {
               className="profile-activity-inline-link"
               onClick={onLinkClick}
             >
-              (Link)
+              {FEED_INLINE_LINK_LABEL}
             </a>
           </>
         )}
