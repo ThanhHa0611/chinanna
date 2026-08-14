@@ -4348,6 +4348,11 @@ html.device-phone .daily-summary-status {
   color: #15803d;
 }
 
+.profile-activity-progress-status.is-submitted {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
 .profile-activity-progress-status.is-in-progress {
   color: #b45309;
 }

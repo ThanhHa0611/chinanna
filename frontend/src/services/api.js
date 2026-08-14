@@ -298,6 +298,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  submitProfileActivityKeeptrack: (activityId) =>
+    request(`/api/profile-activities/${activityId}/keeptrack/submit`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
   completeProfileActivityKeeptrack: (activityId, body = {}) =>
     request(`/api/profile-activities/${activityId}/keeptrack/complete`, {
       method: 'POST',

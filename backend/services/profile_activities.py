@@ -59,11 +59,23 @@ PARTICIPATION_MODE_LABELS = {
 MENTEE_PARTICIPATION_CHOICES = ("individual", "group")
 
 KEEPTRACK_PROGRESS_IN_PROGRESS = "in_progress"
+KEEPTRACK_PROGRESS_SUBMITTED = "submitted"
 KEEPTRACK_PROGRESS_COMPLETED = "completed"
+KEEPTRACK_PROGRESS_ACTIVE_STATUSES = {
+    KEEPTRACK_PROGRESS_IN_PROGRESS,
+    KEEPTRACK_PROGRESS_SUBMITTED,
+}
+KEEPTRACK_PROGRESS_STATUSES = {
+    KEEPTRACK_PROGRESS_IN_PROGRESS,
+    KEEPTRACK_PROGRESS_SUBMITTED,
+    KEEPTRACK_PROGRESS_COMPLETED,
+}
 KEEPTRACK_HDNK_PROGRESS_ACTIVE = "đang tiến hành"
+KEEPTRACK_HDNK_PROGRESS_SUBMITTED = "đã submit"
 KEEPTRACK_HDNK_PROGRESS_DONE = "đã hoàn thành"
 KEEPTRACK_UI_LABELS = {
     KEEPTRACK_PROGRESS_IN_PROGRESS: "Đang tiến hành",
+    KEEPTRACK_PROGRESS_SUBMITTED: "Đã submit",
     KEEPTRACK_PROGRESS_COMPLETED: "Đã xong",
 }
 
@@ -694,10 +706,22 @@ def _compose_keeptrack_category(activity: dict) -> str:
     return compose_activity_name(activity)
 
 
+def _keeptrack_is_active(progress_status: str, active_flag: bool) -> bool:
+    return bool(active_flag) and progress_status in KEEPTRACK_PROGRESS_ACTIVE_STATUSES
+
+
+def _hdnk_progress_for_keeptrack(progress_status: str) -> str:
+    if progress_status == KEEPTRACK_PROGRESS_COMPLETED:
+        return KEEPTRACK_HDNK_PROGRESS_DONE
+    if progress_status == KEEPTRACK_PROGRESS_SUBMITTED:
+        return KEEPTRACK_HDNK_PROGRESS_SUBMITTED
+    return KEEPTRACK_HDNK_PROGRESS_ACTIVE
+
+
 def _normalize_keeptrack(raw: dict | None) -> dict:
     source = raw or {}
     progress_status = (source.get("progress_status") or "").strip()
-    if progress_status not in {KEEPTRACK_PROGRESS_IN_PROGRESS, KEEPTRACK_PROGRESS_COMPLETED}:
+    if progress_status not in KEEPTRACK_PROGRESS_STATUSES:
         progress_status = ""
     active_flag = bool(source.get("active"))
     if active_flag and not progress_status:
@@ -706,7 +730,7 @@ def _normalize_keeptrack(raw: dict | None) -> dict:
     award_level = (source.get("award_level") or "").strip()
     if not has_award or award_level not in {"giải 1", "giải 2", "giải 3", "khác"}:
         award_level = ""
-    active = active_flag and progress_status == KEEPTRACK_PROGRESS_IN_PROGRESS
+    active = _keeptrack_is_active(progress_status, active_flag)
     return {
         "active": active,
         "start_date": (source.get("start_date") or "").strip(),
@@ -1035,7 +1059,7 @@ def update_activity_keeptrack(
         raise ProfileActivityKeeptrackError("Hoạt động không còn trong trạng thái đang tiến hành.")
 
     progress_status = (payload.get("progress_status") or keeptrack["progress_status"]).strip()
-    if progress_status not in {KEEPTRACK_PROGRESS_IN_PROGRESS, KEEPTRACK_PROGRESS_COMPLETED}:
+    if progress_status not in KEEPTRACK_PROGRESS_STATUSES:
         raise ProfileActivityKeeptrackError("Trạng thái tiến độ không hợp lệ.")
 
     start_date = (payload.get("start_date") or keeptrack["start_date"] or "").strip()
@@ -1065,11 +1089,7 @@ def update_activity_keeptrack(
         )
 
     now = datetime.now(timezone.utc)
-    hdnk_progress = (
-        KEEPTRACK_HDNK_PROGRESS_DONE
-        if progress_status == KEEPTRACK_PROGRESS_COMPLETED
-        else KEEPTRACK_HDNK_PROGRESS_ACTIVE
-    )
+    hdnk_progress = _hdnk_progress_for_keeptrack(progress_status)
     participation_type, zalo_group_name = _resolve_keeptrack_hdnk_fields(activity, state, mentee_id)
     entry_id = _upsert_mentee_hdnk_entry(
         mentee,
@@ -1086,7 +1106,7 @@ def update_activity_keeptrack(
         mentor_updated=from_mentor,
     )
     submitted_keeptrack = {
-        "active": progress_status == KEEPTRACK_PROGRESS_IN_PROGRESS,
+        "active": _keeptrack_is_active(progress_status, True),
         "start_date": start_date,
         "progress_status": progress_status,
         "has_award": has_award,
@@ -1122,6 +1142,76 @@ def update_activity_keeptrack(
                 f"{_keeptrack_progress_description(submitted_keeptrack)}"
             ),
         )
+
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"mentee_states": activity.get("mentee_states", []), "updated_at": now}},
+    )
+    return profile_activities.find_one({"_id": activity["_id"]}) or activity
+
+
+def submit_activity_keeptrack(activity: dict, mentee_id: str) -> dict:
+    """Mark keeptrack as submitted (project turned in) while keeping the bar active."""
+    state = _get_mentee_state(activity, mentee_id)
+    if not state:
+        raise ProfileActivityKeeptrackError("Bạn chưa báo danh hoạt động này.")
+    keeptrack = _normalize_keeptrack(state.get("keeptrack"))
+    if not keeptrack["active"]:
+        raise ProfileActivityKeeptrackError("Hoạt động không còn trong trạng thái đang tiến hành.")
+    if keeptrack["progress_status"] == KEEPTRACK_PROGRESS_SUBMITTED:
+        return profile_activities.find_one({"_id": activity["_id"]}) or activity
+    abandon_pending = state.get("keeptrack_abandon_pending") or {}
+    if abandon_pending.get("status") == "pending":
+        raise ProfileActivityKeeptrackError("Đang chờ mentor xử lý yêu cầu từ bỏ — không thể submit.")
+
+    start_date = (keeptrack["start_date"] or "").strip()
+    if not start_date:
+        raise ProfileActivityKeeptrackError("Cần ngày bắt đầu.")
+
+    mentee = users.find_one({"_id": ObjectId(mentee_id), "role": {"$ne": ROLE_PARENT}})
+    if not mentee:
+        raise ProfileActivityKeeptrackError("Mentee không tồn tại.")
+
+    participation_type, zalo_group_name = _resolve_keeptrack_hdnk_fields(activity, state, mentee_id)
+    now = datetime.now(timezone.utc)
+    entry_id = _upsert_mentee_hdnk_entry(
+        mentee,
+        entry_id=keeptrack.get("hdnk_entry_id") or None,
+        entry_data={
+            "start_date": start_date,
+            "category": _compose_keeptrack_category(activity),
+            "participation_type": participation_type,
+            "zalo_group_name": zalo_group_name,
+            "progress": KEEPTRACK_HDNK_PROGRESS_SUBMITTED,
+            "has_award": False,
+            "award_level": "",
+        },
+        mentor_updated=False,
+    )
+    next_keeptrack = {
+        "active": True,
+        "start_date": start_date,
+        "progress_status": KEEPTRACK_PROGRESS_SUBMITTED,
+        "has_award": False,
+        "award_level": "",
+        "hdnk_entry_id": entry_id,
+        "synced_at": now,
+    }
+    state["keeptrack"] = next_keeptrack
+    state.pop("keeptrack_pending_review", None)
+    state.pop("keeptrack_last_rejection", None)
+
+    activity_name = compose_activity_name(activity)
+    mentee_name = mentee.get("full_name") or mentee.get("username") or mentee.get("email", "")
+    notify_mentors_mentee_activity(
+        mentee,
+        action="profile_activity_keeptrack_submitted",
+        title=f"{mentee_name} đã submit dự án",
+        description=(
+            f"Hoạt động: {activity_name}. "
+            f"{_keeptrack_progress_description(next_keeptrack)}"
+        ),
+    )
 
     profile_activities.update_one(
         {"_id": activity["_id"]},
@@ -4174,10 +4264,7 @@ def _has_progress_keeptrack(state: dict) -> bool:
     keeptrack = _normalize_keeptrack(raw)
     if keeptrack.get("hdnk_entry_id"):
         return True
-    return keeptrack.get("progress_status") in {
-        KEEPTRACK_PROGRESS_IN_PROGRESS,
-        KEEPTRACK_PROGRESS_COMPLETED,
-    }
+    return keeptrack.get("progress_status") in KEEPTRACK_PROGRESS_STATUSES
 
 
 def _keeptrack_status_fields(state: dict) -> tuple[str, str, str]:
@@ -4199,11 +4286,12 @@ def _aggregate_group_keeptrack_status(member_states: list[dict]) -> tuple[str, s
             dates.append(start_date)
     if not statuses:
         return "", "", ""
-    agg_status = (
-        KEEPTRACK_PROGRESS_IN_PROGRESS
-        if any(item == KEEPTRACK_PROGRESS_IN_PROGRESS for item in statuses)
-        else KEEPTRACK_PROGRESS_COMPLETED
-    )
+    if any(item == KEEPTRACK_PROGRESS_IN_PROGRESS for item in statuses):
+        agg_status = KEEPTRACK_PROGRESS_IN_PROGRESS
+    elif any(item == KEEPTRACK_PROGRESS_SUBMITTED for item in statuses):
+        agg_status = KEEPTRACK_PROGRESS_SUBMITTED
+    else:
+        agg_status = KEEPTRACK_PROGRESS_COMPLETED
     return agg_status, KEEPTRACK_UI_LABELS.get(agg_status, ""), min(dates) if dates else ""
 
 

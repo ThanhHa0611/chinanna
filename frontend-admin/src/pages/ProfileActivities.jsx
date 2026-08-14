@@ -426,6 +426,7 @@ function activityPickerLabel(item) {
 
 function progressTrackingStatusClass(status) {
   if (status === 'completed') return 'is-completed';
+  if (status === 'submitted') return 'is-submitted';
   return 'is-in-progress';
 }
 

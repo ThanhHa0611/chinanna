@@ -1,7 +1,7 @@
 export const HDNK_NCKH_GROUP_INTERNAL = 'nhóm Du học Trung Quốc';
 export const HDNK_NCKH_GROUP_INTERNAL_LEGACY = 'nhóm Trơn Tru';
 export const HDNK_NCKH_PARTICIPATION_TYPES = ['cá nhân', 'nhóm ngoài', HDNK_NCKH_GROUP_INTERNAL];
-export const HDNK_NCKH_PROGRESS_OPTIONS = ['mới tạo nhóm', 'đang tiến hành', 'đã hoàn thành'];
+export const HDNK_NCKH_PROGRESS_OPTIONS = ['mới tạo nhóm', 'đang tiến hành', 'đã submit', 'đã hoàn thành'];
 export const HDNK_NCKH_AWARD_LEVELS = ['giải 1', 'giải 2', 'giải 3', 'khác'];
 
 export function isInternalGroupParticipation(value) {

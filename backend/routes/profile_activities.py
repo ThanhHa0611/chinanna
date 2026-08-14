@@ -18,6 +18,7 @@ from services.profile_activities import (
     request_keeptrack_abandon,
     serialize_profile_activity_for_feed,
     set_activity_hidden,
+    submit_activity_keeptrack,
     update_group_response,
 )
 
@@ -206,6 +207,30 @@ def mentee_profile_activity_group_response(activity_id: str):
     return jsonify({"message": "Đã gửi phản hồi nhóm", "activity": payload})
 
 
+@app.post("/api/profile-activities/<activity_id>/keeptrack/submit")
+@with_db
+def mentee_submit_profile_activity_keeptrack(activity_id: str):
+    user, error_response = get_authenticated_user()
+    if error_response:
+        return error_response
+    user, error_response = require_mentee_account(user)
+    if error_response:
+        return error_response
+
+    activity, error = _find_activity_or_404(activity_id, user)
+    if error:
+        return error
+    if not activity_visible_to_mentee(activity, user):
+        return jsonify({"detail": "Hoạt động không tồn tại"}), 404
+    try:
+        submit_activity_keeptrack(activity, str(user["_id"]))
+    except ProfileActivityKeeptrackError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
+    payload = serialize_profile_activity_for_feed(refreshed, user, include_hidden=True)
+    return jsonify({"message": "Đã submit dự án — mentor đã được thông báo", "activity": payload})
+
+
 @app.post("/api/profile-activities/<activity_id>/keeptrack/complete")
 @with_db
 def mentee_complete_profile_activity_keeptrack(activity_id: str):
@@ -271,4 +296,4 @@ def mentee_update_profile_activity_keeptrack(activity_id: str):
         return error
     if not activity_visible_to_mentee(activity, user):
         return jsonify({"detail": "Hoạt động không tồn tại"}), 404
-    return jsonify({"detail": "Vui lòng dùng Hoàn thành hoặc Từ bỏ để cập nhật tiến độ."}), 400
+    return jsonify({"detail": "Vui lòng dùng Đã submit, Đã xong hoặc Từ bỏ để cập nhật tiến độ."}), 400

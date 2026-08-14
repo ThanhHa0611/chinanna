@@ -311,6 +311,25 @@ export default function ProfileActivitiesSection({
     }
   };
 
+  const submitKeeptrack = async (itemId) => {
+    if (keeptrackSaving[itemId]) return;
+    setKeeptrackSaving((prev) => ({ ...prev, [itemId]: true }));
+    setError('');
+    try {
+      const result = await api.submitProfileActivityKeeptrack(itemId);
+      if (result?.activity) {
+        patchKeeptrackItem(itemId, result.activity);
+      } else {
+        await refresh();
+      }
+      setSuccessToast('Đã submit dự án — mentor đã được thông báo.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setKeeptrackSaving((prev) => ({ ...prev, [itemId]: false }));
+    }
+  };
+
   const abandonKeeptrack = async (itemId, body) => {
     if (keeptrackSaving[itemId]) return;
     setKeeptrackSaving((prev) => ({ ...prev, [itemId]: true }));
@@ -615,6 +634,7 @@ export default function ProfileActivitiesSection({
                     keeptrack={item.keeptrack}
                     hideHead
                     saving={Boolean(keeptrackSaving[item.id])}
+                    onSubmit={() => submitKeeptrack(item.id)}
                     onComplete={(body) => completeKeeptrack(item.id, body)}
                     onAbandon={(body) => abandonKeeptrack(item.id, body)}
                   />

@@ -6,6 +6,7 @@ export default function ActivityKeeptrackBar({
   keeptrack,
   activity = null,
   onComplete,
+  onSubmit,
   onAbandon,
   saving = false,
   disabled = false,
@@ -21,6 +22,9 @@ export default function ActivityKeeptrackBar({
   const isDisabled = disabled || saving || isAbandonPending;
   const reviewMessage = keeptrack.review_message || '';
   const reviewStatus = keeptrack.abandon_status || '';
+  const progressStatus = keeptrack.progress_status || 'in_progress';
+  const isSubmitted = progressStatus === 'submitted';
+  const progressLabel = keeptrack.progress_label || (isSubmitted ? 'Đã submit' : 'Đang tiến hành');
 
   const resetPrizeStep = () => {
     setShowPrizeStep(false);
@@ -47,6 +51,12 @@ export default function ActivityKeeptrackBar({
     }
   };
 
+  const handleSubmit = () => {
+    if (isDisabled || isSubmitted) return;
+    if (!window.confirm('Xác nhận đã submit dự án? Mentor sẽ thấy trạng thái Đã submit.')) return;
+    onSubmit?.({});
+  };
+
   const handleAbandon = () => {
     if (isDisabled) return;
     if (!window.confirm('Gửi yêu cầu từ bỏ hoạt động này cho mentor xác nhận?')) return;
@@ -54,13 +64,17 @@ export default function ActivityKeeptrackBar({
   };
 
   return (
-    <div className="profile-activity-keeptrack profile-activity-keeptrack--active">
+    <div
+      className={`profile-activity-keeptrack profile-activity-keeptrack--active${
+        isSubmitted ? ' is-submitted' : ''
+      }`}
+    >
       {!hideHead && (
         <div className="profile-activity-keeptrack-head">
           <span className="profile-activity-keeptrack-icon" aria-hidden="true">
             🍀
           </span>
-          <strong>Đang tiến hành</strong>
+          <strong>{progressLabel}</strong>
         </div>
       )}
 
@@ -87,8 +101,12 @@ export default function ActivityKeeptrackBar({
         </div>
         <div className="profile-activity-keeptrack-field">
           <span className="profile-activity-keeptrack-label">Tiến độ</span>
-          <span className="profile-activity-keeptrack-value">
-            {keeptrack.progress_label || 'Đang tiến hành'}
+          <span
+            className={`profile-activity-keeptrack-value${
+              isSubmitted ? ' is-submitted' : ''
+            }`}
+          >
+            {progressLabel}
           </span>
         </div>
       </div>
@@ -151,7 +169,7 @@ export default function ActivityKeeptrackBar({
               disabled={saving || (hasAward && !awardLevel)}
               onClick={handleConfirmComplete}
             >
-              {saving ? 'Đang lưu...' : 'Xác nhận hoàn thành'}
+              {saving ? 'Đang lưu...' : 'Xác nhận đã xong'}
             </button>
           </div>
         </div>
@@ -161,11 +179,19 @@ export default function ActivityKeeptrackBar({
         <div className="profile-activity-keeptrack-actions">
           <button
             type="button"
+            className="btn btn-outline btn-sm"
+            disabled={isDisabled || isSubmitted}
+            onClick={handleSubmit}
+          >
+            {isSubmitted ? 'Đã submit' : saving ? 'Đang gửi...' : 'Đã submit'}
+          </button>
+          <button
+            type="button"
             className="btn btn-primary btn-sm"
             disabled={isDisabled}
             onClick={handleCompleteClick}
           >
-            Hoàn thành
+            Đã xong
           </button>
           <button
             type="button"
