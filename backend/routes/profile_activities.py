@@ -253,7 +253,7 @@ def mentee_complete_profile_activity_keeptrack(activity_id: str):
         return jsonify({"detail": str(exc)}), 400
     refreshed = profile_activities.find_one({"_id": activity["_id"]}) or activity
     payload = serialize_profile_activity_for_feed(refreshed, user, include_hidden=True)
-    return jsonify({"message": "Đã hoàn thành — tiến độ đã lưu vào Keep track", "activity": payload})
+    return jsonify({"message": "Đã hoàn thành — mentor đã được thông báo", "activity": payload})
 
 
 @app.post("/api/profile-activities/<activity_id>/keeptrack/abandon")

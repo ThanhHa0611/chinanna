@@ -59,6 +59,7 @@ from services.profile_activities import (
     reject_pending_mentor_reject,
     reject_profile_activity,
     remove_progress_tracking_row,
+    confirm_progress_tracking_row,
     remove_mentee_from_group,
     resubmit_profile_activity,
     sanitize_profile_activity_input,
@@ -1341,6 +1342,32 @@ def admin_list_progress_tracking():
     activities = list_progress_tracking_for_admin(admin)
     row_count = sum(len(item.get("rows") or []) for item in activities)
     return jsonify({"activities": activities, "row_count": row_count})
+
+
+@app.post("/api/admin/profile-activities/<activity_id>/progress-tracking/confirm")
+@with_db
+def admin_confirm_progress_tracking_row(activity_id: str):
+    admin, error_response = get_authenticated_admin()
+    if error_response:
+        return error_response
+    if not admin_is_approved(admin):
+        return jsonify({"detail": "Tài khoản chưa được cấp quyền admin."}), 403
+
+    activity, error = _get_activity_or_404(activity_id, admin)
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    try:
+        confirm_progress_tracking_row(
+            activity,
+            row_type=data.get("type", ""),
+            group_id=data.get("group_id", ""),
+            mentee_id=data.get("mentee_id", ""),
+            admin=admin,
+        )
+    except ProfileActivityKeeptrackError as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return jsonify({"message": "Đã xác nhận — mục không còn ở Theo dõi tiến độ"})
 
 
 @app.delete("/api/admin/profile-activities/<activity_id>/progress-tracking")

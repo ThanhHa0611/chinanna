@@ -183,6 +183,13 @@ def apply_inbox_confirm_side_effects(task: dict):
             {"_id": mentee_oid},
             {"$set": {"preferred_schools_note_mentor_unread": False}},
         )
+    elif action in {
+        "profile_activity_keeptrack_submitted",
+        "profile_activity_keeptrack_completed",
+    }:
+        from services.profile_activities import dismiss_keeptrack_progress_from_inbox_task
+
+        dismiss_keeptrack_progress_from_inbox_task(task)
 
 
 def build_inbox_document_payload(task: dict):

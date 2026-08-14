@@ -739,6 +739,7 @@ def _normalize_keeptrack(raw: dict | None) -> dict:
         "award_level": award_level,
         "hdnk_entry_id": (source.get("hdnk_entry_id") or "").strip(),
         "synced_at": source.get("synced_at"),
+        "tracking_dismissed_at": source.get("tracking_dismissed_at"),
     }
 
 
@@ -802,6 +803,7 @@ def _snapshot_keeptrack(raw: dict | None) -> dict:
         "award_level": keeptrack["award_level"],
         "hdnk_entry_id": keeptrack["hdnk_entry_id"],
         "synced_at": keeptrack.get("synced_at"),
+        "tracking_dismissed_at": keeptrack.get("tracking_dismissed_at"),
     }
 
 
@@ -866,6 +868,7 @@ def _apply_keeptrack_snapshot(state: dict, snapshot: dict | None) -> None:
         "award_level": snapshot.get("award_level") or "",
         "hdnk_entry_id": snapshot.get("hdnk_entry_id") or "",
         "synced_at": snapshot.get("synced_at"),
+        "tracking_dismissed_at": snapshot.get("tracking_dismissed_at"),
     }
 
 
@@ -1196,6 +1199,7 @@ def submit_activity_keeptrack(activity: dict, mentee_id: str) -> dict:
         "award_level": "",
         "hdnk_entry_id": entry_id,
         "synced_at": now,
+        "tracking_dismissed_at": None,
     }
     state["keeptrack"] = next_keeptrack
     state.pop("keeptrack_pending_review", None)
@@ -1211,6 +1215,7 @@ def submit_activity_keeptrack(activity: dict, mentee_id: str) -> dict:
             f"Hoạt động: {activity_name}. "
             f"{_keeptrack_progress_description(next_keeptrack)}"
         ),
+        doc_id=str(activity["_id"]),
     )
 
     profile_activities.update_one(
@@ -1270,11 +1275,25 @@ def complete_activity_keeptrack(activity: dict, mentee_id: str, payload: dict) -
         "award_level": award_level,
         "hdnk_entry_id": entry_id,
         "synced_at": now,
+        "tracking_dismissed_at": None,
     }
     state.pop("keeptrack_abandon_pending", None)
     state.pop("keeptrack_abandon_last_rejection", None)
     state.pop("keeptrack_pending_review", None)
     state.pop("keeptrack_last_rejection", None)
+
+    activity_name = compose_activity_name(activity)
+    mentee_name = mentee.get("full_name") or mentee.get("username") or mentee.get("email", "")
+    notify_mentors_mentee_activity(
+        mentee,
+        action="profile_activity_keeptrack_completed",
+        title=f"{mentee_name} đã hoàn thành hoạt động",
+        description=(
+            f"Hoạt động: {activity_name}. "
+            f"{_keeptrack_progress_description(state['keeptrack'])}"
+        ),
+        doc_id=str(activity["_id"]),
+    )
 
     profile_activities.update_one(
         {"_id": activity["_id"]},
@@ -4262,6 +4281,8 @@ def _has_progress_keeptrack(state: dict) -> bool:
     if not raw:
         return False
     keeptrack = _normalize_keeptrack(raw)
+    if keeptrack.get("tracking_dismissed_at"):
+        return False
     if keeptrack.get("hdnk_entry_id"):
         return True
     return keeptrack.get("progress_status") in KEEPTRACK_PROGRESS_STATUSES
@@ -4272,6 +4293,151 @@ def _keeptrack_status_fields(state: dict) -> tuple[str, str, str]:
     status = keeptrack.get("progress_status") or KEEPTRACK_PROGRESS_IN_PROGRESS
     label = KEEPTRACK_UI_LABELS.get(status, "Đang tiến hành")
     return status, label, keeptrack.get("start_date") or ""
+
+
+def _dismiss_keeptrack_tracking_for_mentee(state: dict, *, now: datetime) -> bool:
+    keeptrack = _normalize_keeptrack(state.get("keeptrack"))
+    if not keeptrack.get("progress_status") and not keeptrack.get("hdnk_entry_id"):
+        return False
+    if keeptrack.get("tracking_dismissed_at"):
+        return False
+    if keeptrack.get("progress_status") not in {
+        KEEPTRACK_PROGRESS_SUBMITTED,
+        KEEPTRACK_PROGRESS_COMPLETED,
+    }:
+        return False
+    state["keeptrack"] = {
+        **keeptrack,
+        "tracking_dismissed_at": now,
+    }
+    return True
+
+
+def _ack_keeptrack_progress_inbox_tasks(
+    *,
+    mentee_ids: list[str],
+    activity_id: str,
+    actions: set[str],
+    admin: dict | None = None,
+) -> None:
+    from database import mentor_inbox
+    from inbox_tasks import confirm_inbox_task
+
+    if not mentee_ids or not activity_id or not actions:
+        return
+    query = {
+        "audience": "mentor",
+        "status": "pending",
+        "mentee_id": {"$in": [str(item) for item in mentee_ids]},
+        "doc_id": str(activity_id),
+        "action": {"$in": list(actions)},
+    }
+    for task in mentor_inbox.find(query):
+        confirm_inbox_task(
+            mentor_inbox,
+            task_id=str(task["_id"]),
+            via="app",
+            processed_by=str((admin or {}).get("_id", "")),
+            processed_by_name=(admin or {}).get("mentor_name") or "",
+            admin=admin,
+        )
+
+
+def dismiss_keeptrack_progress_tracking_for_mentees(
+    activity: dict,
+    mentee_ids: list[str],
+    *,
+    admin: dict | None = None,
+    ack_inbox: bool = True,
+) -> int:
+    """Hide submitted/completed keeptrack rows from mentor progress tracking."""
+    now = datetime.now(timezone.utc)
+    updated = 0
+    touched_ids: list[str] = []
+    # Ack both notice types: mentee may submit then complete before mentor confirms.
+    actions = {
+        "profile_activity_keeptrack_submitted",
+        "profile_activity_keeptrack_completed",
+    }
+    for mentee_id in mentee_ids:
+        state = _get_mentee_state(activity, str(mentee_id))
+        if not state:
+            continue
+        if not _dismiss_keeptrack_tracking_for_mentee(state, now=now):
+            continue
+        updated += 1
+        touched_ids.append(str(mentee_id))
+    if not updated:
+        return 0
+    profile_activities.update_one(
+        {"_id": activity["_id"]},
+        {"$set": {"mentee_states": activity.get("mentee_states", []), "updated_at": now}},
+    )
+    if ack_inbox:
+        _ack_keeptrack_progress_inbox_tasks(
+            mentee_ids=touched_ids,
+            activity_id=str(activity["_id"]),
+            actions=actions,
+            admin=admin,
+        )
+    return updated
+
+
+def confirm_progress_tracking_row(
+    activity: dict,
+    *,
+    row_type: str,
+    group_id: str = "",
+    mentee_id: str = "",
+    admin: dict | None = None,
+) -> int:
+    """Mentor confirms submitted/completed status → leave Theo dõi tiến độ."""
+    row_type = (row_type or "").strip().lower()
+    if row_type == "individual":
+        if not mentee_id:
+            raise ProfileActivityKeeptrackError("Thiếu mentee.")
+        mentee_ids = [str(mentee_id)]
+    elif row_type == "group":
+        group = _find_group(activity, group_id)
+        if not group:
+            raise ProfileActivityKeeptrackError("Nhóm không tồn tại.")
+        mentee_ids = [str(item) for item in (group.get("mentee_ids") or []) if str(item)]
+    else:
+        raise ProfileActivityKeeptrackError("Loại dòng không hợp lệ.")
+
+    updated = dismiss_keeptrack_progress_tracking_for_mentees(
+        activity,
+        mentee_ids,
+        admin=admin,
+        ack_inbox=True,
+    )
+    if updated <= 0:
+        raise ProfileActivityKeeptrackError(
+            "Chỉ xác nhận được mục Đã submit hoặc Đã xong — hoặc mục đã được xác nhận."
+        )
+    return updated
+
+
+def dismiss_keeptrack_progress_from_inbox_task(task: dict, *, admin: dict | None = None) -> int:
+    action = (task.get("action") or "").strip()
+    if action not in {
+        "profile_activity_keeptrack_submitted",
+        "profile_activity_keeptrack_completed",
+    }:
+        return 0
+    activity_id = (task.get("doc_id") or "").strip()
+    mentee_id = (task.get("mentee_id") or "").strip()
+    if not ObjectId.is_valid(activity_id) or not mentee_id:
+        return 0
+    activity = profile_activities.find_one({"_id": ObjectId(activity_id)})
+    if not activity:
+        return 0
+    return dismiss_keeptrack_progress_tracking_for_mentees(
+        activity,
+        [mentee_id],
+        admin=admin,
+        ack_inbox=False,
+    )
 
 
 def _aggregate_group_keeptrack_status(member_states: list[dict]) -> tuple[str, str, str]:
@@ -4371,6 +4537,8 @@ def list_progress_tracking_for_admin(admin: dict) -> list[dict]:
                     "start_date": start_date,
                     "status": status,
                     "status_label": status_label,
+                    "confirmable": status
+                    in {KEEPTRACK_PROGRESS_SUBMITTED, KEEPTRACK_PROGRESS_COMPLETED},
                     "mentee_ids": [member["mentee_id"] for member in members],
                     "finalized": bool(group.get("finalized_at")),
                 }
@@ -4408,6 +4576,8 @@ def list_progress_tracking_for_admin(admin: dict) -> list[dict]:
                     "start_date": start_date,
                     "status": status,
                     "status_label": status_label,
+                    "confirmable": status
+                    in {KEEPTRACK_PROGRESS_SUBMITTED, KEEPTRACK_PROGRESS_COMPLETED},
                     "mentee_ids": [mentee_id],
                     "finalized": True,
                 }

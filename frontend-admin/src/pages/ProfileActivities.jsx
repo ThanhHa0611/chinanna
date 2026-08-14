@@ -430,10 +430,11 @@ function progressTrackingStatusClass(status) {
   return 'is-in-progress';
 }
 
-function ProgressTrackingRows({ rows, activityId, saving, onDelete }) {
+function ProgressTrackingRows({ rows, activityId, saving, onDelete, onConfirm }) {
   return rows.flatMap((row) => {
     const memberCount = row.members.length;
     const typeLabel = row.type === 'group' ? 'Tên nhóm' : 'Cá nhân';
+    const confirmable = Boolean(row.confirmable);
     return row.members.map((member, index) => (
       <tr key={`${row.row_id}:${member.mentee_id}`}>
         {index === 0 && (
@@ -456,11 +457,23 @@ function ProgressTrackingRows({ rows, activityId, saving, onDelete }) {
           <>
             <td rowSpan={memberCount}>{row.start_date || '—'}</td>
             <td rowSpan={memberCount}>
-              <span
-                className={`profile-activity-progress-status ${progressTrackingStatusClass(row.status)}`}
-              >
-                {row.status_label || '—'}
-              </span>
+              {confirmable ? (
+                <button
+                  type="button"
+                  className={`profile-activity-progress-status profile-activity-progress-status-btn ${progressTrackingStatusClass(row.status)}`}
+                  onClick={() => onConfirm(activityId, row)}
+                  disabled={saving}
+                  title="Xác nhận — gỡ khỏi Theo dõi tiến độ"
+                >
+                  {row.status_label || '—'}
+                </button>
+              ) : (
+                <span
+                  className={`profile-activity-progress-status ${progressTrackingStatusClass(row.status)}`}
+                >
+                  {row.status_label || '—'}
+                </span>
+              )}
             </td>
             <td rowSpan={memberCount} className="profile-activity-progress-delete">
               <button
@@ -2348,6 +2361,35 @@ export default function ProfileActivities() {
 
   const isProgressActivityExpanded = (activityId) => Boolean(progressActivityExpanded[activityId]);
 
+  const handleConfirmProgressTracking = async (activityId, row) => {
+    const label = row.status_label || 'trạng thái này';
+    if (
+      !window.confirm(
+        `Xác nhận ${label}? Mục sẽ không còn hiện ở Theo dõi tiến độ.`,
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const menteeId =
+        row.type === 'individual' ? row.members?.[0]?.mentee_id || row.mentee_ids?.[0] || '' : '';
+      const result = await api.confirmProfileActivityProgressTrackingRow(activityId, {
+        type: row.type,
+        group_id: row.group_id || '',
+        mentee_id: menteeId,
+      });
+      setMessage(result?.message || 'Đã xác nhận — mục không còn ở Theo dõi tiến độ');
+      await loadProgressTracking();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleRemoveProgressTracking = async (activityId, row) => {
     const label =
       row.type === 'group'
@@ -3573,6 +3615,7 @@ export default function ProfileActivities() {
                                   activityId={activityBlock.activity_id}
                                   saving={saving}
                                   onDelete={handleRemoveProgressTracking}
+                                  onConfirm={handleConfirmProgressTracking}
                                 />
                               </tbody>
                             </table>

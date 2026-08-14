@@ -650,6 +650,12 @@ export const api = {
   getProfileActivityProgressTracking: () =>
     request('/api/admin/profile-activities/progress-tracking'),
 
+  confirmProfileActivityProgressTrackingRow: (activityId, body) =>
+    request(`/api/admin/profile-activities/${activityId}/progress-tracking/confirm`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   removeProfileActivityProgressTrackingRow: (activityId, body) =>
     request(`/api/admin/profile-activities/${activityId}/progress-tracking`, {
       method: 'DELETE',

@@ -176,6 +176,7 @@ def notify_mentors_mentee_activity(
     description: str,
     doc_id: str = "",
     reminder_hours: int = 24,
+    has_file: bool = False,
 ):
     mentor_name = (user.get("mentor") or "").strip()
     if not mentor_name:
@@ -194,6 +195,7 @@ def notify_mentors_mentee_activity(
         title=title,
         description=description,
         doc_id=doc_id,
+        has_file=has_file,
         reminder_hours=reminder_hours,
     )
 
